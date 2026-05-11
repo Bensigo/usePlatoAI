@@ -74,3 +74,7 @@ Canonical triage roles map directly to GitHub label names. See `docs/agents/tria
 ### Domain docs
 
 This is a single-context repo with `CONTEXT.md` at the root and architecture docs under `docs/architecture/`. See `docs/agents/domain.md`.
+
+### Ralph loop
+
+Implementation issues are executed through a Ralph loop: a command-driven fresh-context loop that picks one ready GitHub issue, implements it, verifies it, opens or updates a PR, records verification, and exits. See `docs/agents/ralph-loop.md`.
