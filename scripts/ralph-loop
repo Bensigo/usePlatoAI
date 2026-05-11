@@ -128,7 +128,11 @@ run_codex() {
     extra_args=(${RALPH_CODEX_ARGS})
   fi
 
-  codex exec --cd "$root" --sandbox danger-full-access "${extra_args[@]}" "$prompt"
+  if [[ ${#extra_args[@]} -gt 0 ]]; then
+    codex exec --cd "$root" --sandbox danger-full-access "${extra_args[@]}" "$prompt"
+  else
+    codex exec --cd "$root" --sandbox danger-full-access "$prompt"
+  fi
 }
 
 run_claude() {
