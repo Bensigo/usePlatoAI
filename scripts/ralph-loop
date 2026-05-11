@@ -59,6 +59,7 @@ issue_queue() {
   gh issue list \
     --state open \
     --label "$label" \
+    --search "sort:created-asc" \
     --limit "$limit" \
     --json number,title,url \
     | jq -r 'sort_by(.number)[] | [.number, .title, .url] | @tsv'
@@ -121,8 +122,12 @@ run_codex() {
   local prompt
   prompt="$(ralph_prompt "$issue_number" "$title" "$url")"
 
-  # shellcheck disable=SC2206
-  local extra_args=(${RALPH_CODEX_ARGS:-})
+  local extra_args=()
+  if [[ -n "${RALPH_CODEX_ARGS:-}" ]]; then
+    # shellcheck disable=SC2206
+    extra_args=(${RALPH_CODEX_ARGS})
+  fi
+
   codex exec --cd "$root" --sandbox danger-full-access "${extra_args[@]}" "$prompt"
 }
 
