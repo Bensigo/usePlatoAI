@@ -1,0 +1,244 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  cat <<'USAGE'
+Usage:
+  scripts/ralph-loop list [--label ready-for-agent] [--limit 50]
+  scripts/ralph-loop run [--issue NUMBER] [--label ready-for-agent] [--limit 1] [--engine codex]
+
+Runs repo implementation issues through the Ralph loop.
+
+Defaults:
+  list: shows open issues labeled ready-for-agent
+  run: runs one ready issue, then exits
+
+Options:
+  --issue NUMBER       Run one explicit GitHub issue.
+  --label LABEL        Queue label to select. Default: ready-for-agent.
+  --limit NUMBER       Max issues to list or run. Default list: 50, run: 1.
+  --engine ENGINE      Agent engine. Supported: codex, claude. Default: codex.
+  --base BRANCH        Base branch to refresh before each issue. Default: main.
+
+Environment:
+  RALPH_CODEX_ARGS     Extra arguments passed to `codex exec`.
+  RALPH_CLAUDE_CMD     Command used for the claude engine. It receives the prompt on stdin.
+
+Examples:
+  scripts/ralph-loop list
+  scripts/ralph-loop run --issue 7
+  scripts/ralph-loop run --limit 3
+  ralph/once.sh --issue 7
+  ralph/afk.sh 3
+USAGE
+}
+
+die() {
+  echo "ralph-loop: $*" >&2
+  exit 1
+}
+
+need() {
+  command -v "$1" >/dev/null 2>&1 || die "missing required command: $1"
+}
+
+repo_root() {
+  git rev-parse --show-toplevel
+}
+
+ensure_clean_tree() {
+  local status
+  status="$(git status --porcelain)"
+  [[ -z "$status" ]] || die "working tree is dirty; commit, stash, or clean changes before running Ralph"
+}
+
+issue_queue() {
+  local label="$1"
+  local limit="$2"
+
+  gh issue list \
+    --state open \
+    --label "$label" \
+    --limit "$limit" \
+    --json number,title,url \
+    | jq -r 'sort_by(.number)[] | [.number, .title, .url] | @tsv'
+}
+
+single_issue() {
+  local number="$1"
+
+  gh issue view "$number" \
+    --json number,title,url \
+    | jq -r '[.number, .title, .url] | @tsv'
+}
+
+ralph_prompt() {
+  local issue_number="$1"
+  local title="$2"
+  local url="$3"
+  local prompt_file="ralph/prompt.md"
+
+  cat <<PROMPT
+Run exactly one Ralph loop iteration for GitHub issue #${issue_number}.
+
+Issue title: ${title}
+Issue URL: ${url}
+
+Use the Ralph instructions below:
+
+$(cat "$prompt_file")
+
+Follow the repo workflow:
+
+1. Start from a clean checkout of main or the correct base branch.
+2. Read CONTEXT.md, docs/architecture/baseline.md, AGENTS.md, and docs/agents/.
+3. Read GitHub issue #${issue_number}, including labels, body, and comments.
+4. Read the linked PRD and milestone if the issue references them.
+5. Create or switch to a branch for issue #${issue_number}.
+6. Implement the smallest vertical change that satisfies the issue.
+7. Run relevant verification.
+8. Commit only the intended changes.
+9. Push the branch.
+10. Open or update a pull request.
+11. Include verification notes in the PR.
+12. Exit after this single issue.
+
+Rules:
+
+- One issue only. Do not continue to another issue.
+- Do not commit directly to main.
+- Do not invent scope beyond the issue, milestone, PRD, context, or architecture baseline.
+- If the issue is underspecified, stop and report the missing information instead of guessing.
+- If verification cannot run, record the blocker in the PR notes.
+PROMPT
+}
+
+run_codex() {
+  local root="$1"
+  local issue_number="$2"
+  local title="$3"
+  local url="$4"
+  local prompt
+  prompt="$(ralph_prompt "$issue_number" "$title" "$url")"
+
+  # shellcheck disable=SC2206
+  local extra_args=(${RALPH_CODEX_ARGS:-})
+  codex exec --cd "$root" --sandbox danger-full-access "${extra_args[@]}" "$prompt"
+}
+
+run_claude() {
+  local issue_number="$1"
+  local title="$2"
+  local url="$3"
+  [[ -n "${RALPH_CLAUDE_CMD:-}" ]] || die "set RALPH_CLAUDE_CMD to use --engine claude"
+
+  ralph_prompt "$issue_number" "$title" "$url" | bash -lc "$RALPH_CLAUDE_CMD"
+}
+
+main() {
+  local command="${1:-}"
+  [[ -n "$command" ]] || { usage; exit 1; }
+  shift || true
+
+  local label="ready-for-agent"
+  local limit=""
+  local issue=""
+  local engine="codex"
+  local base="main"
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --issue)
+        issue="${2:-}"
+        [[ -n "$issue" ]] || die "--issue requires a number"
+        shift 2
+        ;;
+      --label)
+        label="${2:-}"
+        [[ -n "$label" ]] || die "--label requires a value"
+        shift 2
+        ;;
+      --limit)
+        limit="${2:-}"
+        [[ -n "$limit" ]] || die "--limit requires a number"
+        shift 2
+        ;;
+      --engine)
+        engine="${2:-}"
+        [[ -n "$engine" ]] || die "--engine requires a value"
+        shift 2
+        ;;
+      --base)
+        base="${2:-}"
+        [[ -n "$base" ]] || die "--base requires a branch"
+        shift 2
+        ;;
+      -h|--help)
+        usage
+        exit 0
+        ;;
+      *)
+        die "unknown option: $1"
+        ;;
+    esac
+  done
+
+  need git
+  need gh
+  need jq
+
+  local root
+  root="$(repo_root)"
+  cd "$root"
+
+  case "$command" in
+    list)
+      limit="${limit:-50}"
+      if [[ -n "$issue" ]]; then
+        single_issue "$issue"
+      else
+        issue_queue "$label" "$limit"
+      fi
+      ;;
+    run)
+      limit="${limit:-1}"
+      [[ "$engine" == "codex" || "$engine" == "claude" ]] || die "unsupported engine: $engine"
+      [[ "$engine" != "codex" ]] || need codex
+
+      local queue
+      if [[ -n "$issue" ]]; then
+        queue="$(single_issue "$issue")"
+      else
+        queue="$(issue_queue "$label" "$limit")"
+      fi
+
+      if [[ -z "$queue" ]]; then
+        echo "NO MORE TASKS"
+        exit 0
+      fi
+
+      while IFS=$'\t' read -r issue_number issue_title issue_url; do
+        [[ -n "$issue_number" ]] || continue
+        echo "==> Ralph issue #${issue_number}: ${issue_title}"
+        echo "    ${issue_url}"
+
+        ensure_clean_tree
+        git fetch origin "$base"
+        git switch "$base"
+        git pull --ff-only origin "$base"
+        ensure_clean_tree
+
+        case "$engine" in
+          codex) run_codex "$root" "$issue_number" "$issue_title" "$issue_url" ;;
+          claude) run_claude "$issue_number" "$issue_title" "$issue_url" ;;
+        esac
+      done <<< "$queue"
+      ;;
+    *)
+      usage
+      exit 1
+      ;;
+  esac
+}
+
+main "$@"

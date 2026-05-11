@@ -47,24 +47,22 @@ Each Ralph loop iteration should:
 
 ## Command Expectation
 
-The Ralph loop should eventually be runnable as a project command.
-
-The exact command is intentionally not fixed yet because the monorepo and agent engine setup do not exist. Once the repo is scaffolded, add package scripts or local scripts for the supported engines.
-
-Expected future command shape:
+The Ralph loop is runnable through the repo helper:
 
 ```bash
-pnpm ralph:codex
-pnpm ralph:claude
+scripts/ralph-loop run --issue 7
 ```
 
-or, if an external Ralph loop package is adopted:
+For the shorter Ralph folder entrypoints:
 
 ```bash
-pnpm ralph
+ralph/once.sh --issue 7
+ralph/afk.sh 3
 ```
 
-The command should wrap the same workflow described in this file. The command does not replace the workflow rules.
+See `docs/agents/ralph-runner.md` for queue and engine options.
+
+Once the monorepo is scaffolded, package scripts such as `pnpm ralph:codex` and `pnpm ralph:claude` may wrap this helper. The command does not replace the workflow rules.
 
 ## Engine Mapping
 
