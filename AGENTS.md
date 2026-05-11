@@ -78,3 +78,5 @@ This is a single-context repo with `CONTEXT.md` at the root and architecture doc
 ### Ralph loop
 
 Implementation issues are executed through a Ralph loop: a command-driven fresh-context loop that picks one ready GitHub issue, implements it, verifies it, opens or updates a PR, records verification, and exits. See `docs/agents/ralph-loop.md`.
+
+Use `scripts/ralph-loop`, `ralph/once.sh`, or `ralph/afk.sh` to list ready issues or run one or more Ralph iterations. See `docs/agents/ralph-runner.md`.
