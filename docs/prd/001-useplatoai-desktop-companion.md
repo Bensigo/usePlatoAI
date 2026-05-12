@@ -178,6 +178,7 @@ Major modules to build over time:
 - Desktop/UI flows should use Playwright where practical.
 - Tauri/native commands should use Rust tests where useful.
 - Every PR should include verification notes.
+- Every implementation PR should include visual evidence: screenshot or short video for UI-visible work, or an explicit `No visual surface` note for non-visual changes.
 - Docs-only PRs should still describe the validation performed.
 - The PRD should be broken into vertical milestones before implementation issues are created.
 - Each vertical milestone should define a demoable or verifiable product outcome.

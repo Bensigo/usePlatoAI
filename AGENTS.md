@@ -63,6 +63,8 @@ Then:
 
 Implementation issues and pull requests live in GitHub. PRDs are local markdown files under `docs/prd/`. See `docs/agents/issue-tracker.md`.
 
+Every implementation PR must include a visual evidence section. For UI-visible work, attach a screenshot or short video showing the completed behavior. If the PR has no visual surface, say that explicitly and include the relevant verification notes instead.
+
 ### Milestones
 
 PRDs are converted into vertical, testable local markdown milestones before issues. See `docs/agents/milestones.md`.

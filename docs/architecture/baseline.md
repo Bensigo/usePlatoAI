@@ -193,6 +193,7 @@ capability.invoked
 - Use Playwright for desktop/UI flows where practical.
 - Use Rust tests for Tauri/native commands where useful.
 - Every pull request must include verification notes.
+- Every implementation pull request must include visual evidence: screenshot or short video for UI-visible work, or an explicit `No visual surface` note for non-visual changes.
 - Docs-only PRs should still describe the validation performed.
 
 ## Docs And Workflow

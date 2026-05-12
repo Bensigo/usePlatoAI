@@ -31,3 +31,9 @@ When creating PRDs, write local markdown under `docs/prd/`.
 When creating milestones, write local markdown under `docs/milestones/`.
 
 When implementing an issue, create a branch and pull request. Do not commit directly to `main`.
+
+Every implementation PR must include a `Visual evidence` section:
+
+- For UI-visible work, attach at least one screenshot or short video that shows the completed behavior.
+- For flows that depend on motion, interaction, or before/after state, prefer a short video.
+- If the change has no visual surface, write `No visual surface` and explain what verification proves the change.
