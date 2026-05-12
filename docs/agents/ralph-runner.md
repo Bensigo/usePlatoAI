@@ -48,6 +48,14 @@ or:
 ralph/afk.sh 3
 ```
 
+Run implementation plus review in parallel workers:
+
+```bash
+scripts/afk-workflow run --concurrency 2
+```
+
+Use this when the operator wants the full loop, including PR review and review-fix issue creation.
+
 ## Queue
 
 The default queue is open GitHub issues labeled `ready-for-agent`.

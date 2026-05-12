@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+root="$(git rev-parse --show-toplevel)"
+cd "$root"
+
+output="$(
+  AFK_WORKFLOW_MOCK_QUEUE=$'7\tScaffold shell\thttps://example.test/issues/7\n8\tFloating avatar\thttps://example.test/issues/8\n9\tMenu bar\thttps://example.test/issues/9' \
+    scripts/afk-workflow run --dry-run --concurrency 2 --max-waves 1
+)"
+
+grep -q "wave 1: selected issue #7" <<< "$output"
+grep -q "wave 1: selected issue #8" <<< "$output"
+if grep -q "selected issue #9" <<< "$output"; then
+  echo "expected dry run to respect concurrency limit" >&2
+  exit 1
+fi
+
+grep -q "dry-run: would claim issue #7" <<< "$output"
+grep -q "dry-run: would run Ralph for issue #8" <<< "$output"
+grep -q "dry-run: would review PR for issue #8" <<< "$output"
+
+echo "afk workflow tests passed"

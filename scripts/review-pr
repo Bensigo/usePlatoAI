@@ -4,7 +4,7 @@ set -euo pipefail
 usage() {
   cat <<'USAGE'
 Usage:
-  scripts/review-pr --pr NUMBER [--base main] [--engine codex]
+  scripts/review-pr --pr NUMBER [--base main] [--engine codex] [--output FILE]
   review/pr.sh NUMBER
 
 Runs a pull request review in a fresh agent context window.
@@ -13,6 +13,7 @@ Options:
   --pr NUMBER       Pull request number to review. Required.
   --base BRANCH     Base branch to review against. Default: PR base branch.
   --engine ENGINE   Review engine. Supported: codex. Default: codex.
+  --output FILE     Write the review agent's final message to FILE.
 
 Environment:
   REVIEW_CODEX_ARGS Extra arguments passed to `codex exec review`.
@@ -74,6 +75,7 @@ run_codex_review() {
   local pr="$2"
   local title="$3"
   local url="$4"
+  local output_file="$5"
   local prompt
   prompt="$(review_prompt "$pr" "$title" "$url")"
 
@@ -83,10 +85,16 @@ run_codex_review() {
     extra_args=(${REVIEW_CODEX_ARGS})
   fi
 
+  local output_args=()
+  if [[ -n "$output_file" ]]; then
+    mkdir -p "$(dirname "$output_file")"
+    output_args=(-o "$output_file")
+  fi
+
   if [[ ${#extra_args[@]} -gt 0 ]]; then
-    codex exec review --base "$base" "${extra_args[@]}" "$prompt"
+    codex exec review --base "$base" "${output_args[@]}" "${extra_args[@]}" "$prompt"
   else
-    codex exec review --base "$base" "$prompt"
+    codex exec review --base "$base" "${output_args[@]}" "$prompt"
   fi
 }
 
@@ -94,6 +102,7 @@ main() {
   local pr=""
   local base=""
   local engine="codex"
+  local output_file=""
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -110,6 +119,11 @@ main() {
       --engine)
         engine="${2:-}"
         [[ -n "$engine" ]] || die "--engine requires a value"
+        shift 2
+        ;;
+      --output)
+        output_file="${2:-}"
+        [[ -n "$output_file" ]] || die "--output requires a file path"
         shift 2
         ;;
       -h|--help)
@@ -155,7 +169,7 @@ main() {
   echo "    base: ${base}"
   echo "    head: ${head_ref}"
 
-  run_codex_review "$base" "$pr" "$title" "$url"
+  run_codex_review "$base" "$pr" "$title" "$url" "$output_file"
 }
 
 main "$@"

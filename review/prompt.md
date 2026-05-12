@@ -44,6 +44,29 @@ For each finding include:
 
 If there are no findings, say that clearly and mention remaining test gaps or residual risk.
 
+End every review with a machine-readable issue draft block:
+
+```text
+BEGIN_REVIEW_FIX_ISSUES_JSON
+{"fix_issues":[]}
+END_REVIEW_FIX_ISSUES_JSON
+```
+
+If there are actionable findings, put one object per follow-up issue in `fix_issues`:
+
+```json
+{
+  "fix_issues": [
+    {
+      "title": "Short imperative title",
+      "severity": "P1",
+      "file": "path/to/file",
+      "body": "What is wrong, why it matters, and what should change."
+    }
+  ]
+}
+```
+
 Do not modify files.
 Do not commit.
 Do not push.
