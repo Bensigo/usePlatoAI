@@ -28,6 +28,8 @@ Environment:
   AFK_WORKFLOW_MOCK_QUEUE  Test-only TSV queue: number, title, url, labels_csv.
   AFK_WORKFLOW_MOCK_BLOCKERS  Test-only TSV blockers: issue, comma-separated blocker issues.
   AFK_WORKFLOW_MOCK_OPEN_ISSUES  Test-only comma-separated issue numbers treated as open.
+  AFK_WORKFLOW_MOCK_WORKER Test-only mode that starts worker worktrees without GitHub writes.
+  AFK_WORKFLOW_RALPH_CMD   Test-only command used instead of scripts/ralph-loop.
   AFK_WORKFLOW_REVIEW     Set to 0 to skip review. Default: 1.
 
 Examples:
@@ -315,8 +317,8 @@ worker_run() {
 
   echo "worker ${slot}: issue #${issue} ${title}"
 
-  git -C "$root" fetch origin "$base"
-  git -C "$root" worktree add --detach "$worktree" "origin/${base}" >/dev/null
+  git -C "$root" fetch origin "$base" || return 1
+  git -C "$root" worktree add --detach "$worktree" "origin/${base}" >/dev/null || return 1
   cleanup_worktree() {
     git -C "$root" worktree remove --force "$worktree" >/dev/null 2>&1 || true
   }
@@ -324,8 +326,13 @@ worker_run() {
 
   (
     cd "$worktree"
-    scripts/ralph-loop run --issue "$issue" --engine "$engine" --base "$base" \
+    "${AFK_WORKFLOW_RALPH_CMD:-scripts/ralph-loop}" run --issue "$issue" --engine "$engine" --base "$base" --skip-base-refresh \
       >"${logs_dir}/issue-${issue}-ralph.log" 2>&1
+
+    if [[ "${AFK_WORKFLOW_MOCK_WORKER:-0}" == "1" ]]; then
+      echo "worker ${slot}: issue #${issue} mock Ralph completed"
+      return 0
+    fi
 
     local pr
     pr="$(detect_pr_for_issue "$issue")"
@@ -412,13 +419,15 @@ main() {
   root="$(repo_root)"
   cd "$root"
 
-  if [[ "$dry_run" == "0" ]]; then
+  if [[ "$dry_run" == "0" && "${AFK_WORKFLOW_MOCK_WORKER:-0}" != "1" ]]; then
     need git
     need gh
     need jq
     [[ "$engine" != "codex" ]] || need codex
     ensure_clean_tree
     ensure_workflow_labels "$afk_label"
+  elif [[ "$dry_run" == "0" ]]; then
+    need git
   fi
 
   local run_dir="${root}/.afk-workflow/$(date +%Y%m%d-%H%M%S)"
@@ -451,10 +460,14 @@ main() {
         continue
       fi
 
-      claim_issue "$issue"
+      if [[ "${AFK_WORKFLOW_MOCK_WORKER:-0}" != "1" ]]; then
+        claim_issue "$issue"
+      fi
       (
         if ! worker_run "$root" "$run_dir" "$slot" "$issue" "$title" "$base" "$engine" "$review_enabled" "$queue_labels" "$afk_label"; then
-          release_issue_to_queue "$issue"
+          if [[ "${AFK_WORKFLOW_MOCK_WORKER:-0}" != "1" ]]; then
+            release_issue_to_queue "$issue"
+          fi
           exit 1
         fi
       ) &

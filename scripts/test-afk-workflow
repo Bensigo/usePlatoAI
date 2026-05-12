@@ -122,4 +122,63 @@ PATH="$tmp_dir/bin:$PATH" TEST_REPO_ROOT="$root" \
   scripts/review-pr --pr 19 --output "$review_output" >/dev/null
 grep -q "BEGIN_REVIEW_FIX_ISSUES_JSON" "$review_output"
 
+mock_ralph="${tmp_dir}/mock-ralph-loop"
+cat >"$mock_ralph" <<'MOCK_RALPH'
+#!/usr/bin/env bash
+set -euo pipefail
+
+[[ "${1:-}" == "run" ]] || exit 2
+
+issue=""
+skip_base_refresh="0"
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --issue)
+      issue="${2:-}"
+      shift 2
+      ;;
+    --skip-base-refresh)
+      skip_base_refresh="1"
+      shift
+      ;;
+    --engine|--base)
+      shift 2
+      ;;
+    run)
+      shift
+      ;;
+    *)
+      shift
+      ;;
+  esac
+done
+
+[[ "$skip_base_refresh" == "1" ]] || {
+  echo "expected AFK workflow to run Ralph without switching the shared base branch" >&2
+  exit 1
+}
+
+if git symbolic-ref -q --short HEAD >/dev/null; then
+  echo "expected worker checkout to remain detached" >&2
+  exit 1
+fi
+
+echo "started ${issue}" >> "${AFK_WORKFLOW_MOCK_STARTED_FILE:?}"
+MOCK_RALPH
+chmod +x "$mock_ralph"
+
+started_file="${tmp_dir}/started"
+mock_worker_output="$(
+  AFK_WORKFLOW_MOCK_QUEUE=$'12\tConcurrent one\thttps://example.test/issues/12\tready-for-agent,afk\n13\tConcurrent two\thttps://example.test/issues/13\tready-for-agent,afk' \
+  AFK_WORKFLOW_MOCK_WORKER=1 \
+  AFK_WORKFLOW_MOCK_STARTED_FILE="$started_file" \
+  AFK_WORKFLOW_RALPH_CMD="$mock_ralph" \
+    scripts/afk-workflow run --concurrency 2 --max-waves 1 --base main
+)"
+
+grep -q "worker 1: issue #12 mock Ralph completed" <<< "$mock_worker_output"
+grep -q "worker 2: issue #13 mock Ralph completed" <<< "$mock_worker_output"
+grep -q "started 12" "$started_file"
+grep -q "started 13" "$started_file"
+
 echo "afk workflow tests passed"
