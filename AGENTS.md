@@ -81,7 +81,7 @@ Implementation issues are executed through a Ralph loop: a command-driven fresh-
 
 Use `scripts/ralph-loop`, `ralph/once.sh`, or `ralph/afk.sh` to list ready issues or run one or more Ralph iterations. See `docs/agents/ralph-runner.md`.
 
-Use `scripts/afk-workflow` to run the full two-worker AFK loop: issue claim, Ralph implementation, PR review, review-fix issue creation, and repeat. See `docs/agents/afk-workflow.md`.
+Use `scripts/afk-workflow` to run the full two-worker AFK loop: issue claim, Ralph implementation, PR review, review-fix issue creation, and repeat. AFK workflow only picks issues explicitly labeled `afk`. See `docs/agents/afk-workflow.md`.
 
 ### PR review
 

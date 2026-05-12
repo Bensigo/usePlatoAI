@@ -4,7 +4,7 @@ set -euo pipefail
 usage() {
   cat <<'USAGE'
 Usage:
-  scripts/afk-workflow run [--concurrency 2] [--max-waves 20] [--base main] [--engine codex] [--dry-run]
+  scripts/afk-workflow run [--concurrency 2] [--max-waves 20] [--base main] [--engine codex] [--afk-label afk] [--dry-run]
 
 Runs the full AFK issue workflow:
 
@@ -21,10 +21,11 @@ Defaults:
   --max-waves 20
   --base main
   --engine codex
+  --afk-label afk
   --queue-labels review-fix,ready-for-agent
 
 Environment:
-  AFK_WORKFLOW_MOCK_QUEUE  Test-only TSV queue: number, title, url.
+  AFK_WORKFLOW_MOCK_QUEUE  Test-only TSV queue: number, title, url, labels_csv.
   AFK_WORKFLOW_REVIEW     Set to 0 to skip review. Default: 1.
 
 Examples:
@@ -63,6 +64,9 @@ ensure_label() {
 }
 
 ensure_workflow_labels() {
+  local afk_label="$1"
+
+  ensure_label "$afk_label" "5319E7" "Issue is approved for unattended AFK agent execution."
   ensure_label "afk-in-progress" "BFDADC" "Issue is currently claimed by the AFK workflow."
   ensure_label "pr-reviewed" "C5DEF5" "Implementation PR has completed automated review."
   ensure_label "review-fix" "D93F0B" "Follow-up issue created from PR review feedback."
@@ -72,9 +76,19 @@ ensure_workflow_labels() {
 queue_issues() {
   local labels_csv="$1"
   local limit="$2"
+  local afk_label="$3"
 
   if [[ -n "${AFK_WORKFLOW_MOCK_QUEUE:-}" ]]; then
-    printf '%s\n' "$AFK_WORKFLOW_MOCK_QUEUE" | head -n "$limit"
+    local emitted=0
+    local number title url mock_labels
+    while IFS=$'\t' read -r number title url mock_labels; do
+      [[ -n "$number" ]] || continue
+      if [[ ",${mock_labels}," == *",${afk_label},"* ]]; then
+        printf '%s\t%s\t%s\n' "$number" "$title" "$url"
+        emitted=$((emitted + 1))
+        [[ "$emitted" -lt "$limit" ]] || break
+      fi
+    done <<< "$AFK_WORKFLOW_MOCK_QUEUE"
     return 0
   fi
 
@@ -98,6 +112,7 @@ queue_issues() {
     for label in "${labels[@]}"; do
       gh issue list \
         --state open \
+        --label "$afk_label" \
         --label "$label" \
         --search "sort:created-asc -label:afk-in-progress" \
         --limit "$candidate_limit" \
@@ -158,6 +173,7 @@ create_review_fix_issues() {
   local source_issue="$1"
   local pr="$2"
   local review_file="$3"
+  local afk_label="$4"
 
   local json
   json="$(extract_review_fix_json "$review_file")"
@@ -195,6 +211,7 @@ Run this through the Ralph loop as a small follow-up issue.
 BODY
 )" \
       --label "review-fix" \
+      --label "$afk_label" \
       --label "ready-for-agent" >/dev/null
   done
 }
@@ -209,6 +226,7 @@ worker_run() {
   local engine="$7"
   local review_enabled="$8"
   local queue_labels="$9"
+  local afk_label="${10}"
 
   local worktree="${run_dir}/worktrees/slot-${slot}-issue-${issue}"
   local logs_dir="${run_dir}/logs"
@@ -237,7 +255,7 @@ worker_run() {
     if [[ "$review_enabled" == "1" ]]; then
       scripts/review-pr --pr "$pr" --output "${logs_dir}/pr-${pr}-review.md" \
         >"${logs_dir}/pr-${pr}-review.log" 2>&1
-      create_review_fix_issues "$issue" "$pr" "${logs_dir}/pr-${pr}-review.md"
+      create_review_fix_issues "$issue" "$pr" "${logs_dir}/pr-${pr}-review.md" "$afk_label"
     fi
 
     mark_issue_reviewed "$issue" "$queue_labels"
@@ -254,6 +272,7 @@ main() {
   local base="main"
   local engine="codex"
   local queue_labels="review-fix,ready-for-agent"
+  local afk_label="afk"
   local dry_run="0"
   local review_enabled="${AFK_WORKFLOW_REVIEW:-1}"
 
@@ -282,6 +301,11 @@ main() {
       --queue-labels)
         queue_labels="${2:-}"
         [[ -n "$queue_labels" ]] || die "--queue-labels requires comma-separated labels"
+        shift 2
+        ;;
+      --afk-label)
+        afk_label="${2:-}"
+        [[ -n "$afk_label" ]] || die "--afk-label requires a label"
         shift 2
         ;;
       --dry-run)
@@ -313,7 +337,7 @@ main() {
     need jq
     [[ "$engine" != "codex" ]] || need codex
     ensure_clean_tree
-    ensure_workflow_labels
+    ensure_workflow_labels "$afk_label"
   fi
 
   local run_dir="${root}/.afk-workflow/$(date +%Y%m%d-%H%M%S)"
@@ -324,7 +348,7 @@ main() {
   local wave
   for ((wave = 1; wave <= max_waves; wave++)); do
     local queue
-    queue="$(queue_issues "$queue_labels" "$concurrency")"
+    queue="$(queue_issues "$queue_labels" "$concurrency" "$afk_label")"
 
     if [[ -z "$queue" ]]; then
       echo "NO MORE TASKS"
@@ -348,7 +372,7 @@ main() {
 
       claim_issue "$issue"
       (
-        if ! worker_run "$root" "$run_dir" "$slot" "$issue" "$title" "$base" "$engine" "$review_enabled" "$queue_labels"; then
+        if ! worker_run "$root" "$run_dir" "$slot" "$issue" "$title" "$base" "$engine" "$review_enabled" "$queue_labels" "$afk_label"; then
           release_issue_to_queue "$issue"
           exit 1
         fi

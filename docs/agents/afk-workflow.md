@@ -26,7 +26,7 @@ scripts/afk-workflow run --dry-run
 
 The workflow:
 
-1. Picks open issues labeled `review-fix` or `ready-for-agent` that do not already have an open PR.
+1. Picks open issues labeled `afk` plus `review-fix` or `ready-for-agent` that do not already have an open PR.
 2. Claims each issue with `afk-in-progress`.
 3. Creates one isolated git worktree per worker.
 4. Runs `scripts/ralph-loop run --issue <number>` in that worktree.
@@ -54,4 +54,6 @@ BEGIN_REVIEW_FIX_ISSUES_JSON
 END_REVIEW_FIX_ISSUES_JSON
 ```
 
-Each object in `fix_issues` becomes a new GitHub issue labeled `review-fix` and `ready-for-agent`, so the next workflow wave can pick it up.
+Each object in `fix_issues` becomes a new GitHub issue labeled `review-fix`, `ready-for-agent`, and `afk`, so the next workflow wave can pick it up.
+
+Do not put `afk` on issues that require product judgment, credentials, spending money, external messages, destructive file changes, or any other human approval.
