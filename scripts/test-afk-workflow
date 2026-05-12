@@ -31,6 +31,21 @@ if grep -q "selected issue #10" <<< "$human_only_output"; then
 fi
 grep -q "wave 1: selected issue #11" <<< "$human_only_output"
 
+blocked_output="$(
+  AFK_WORKFLOW_MOCK_QUEUE=$'7\tScaffold shell\thttps://example.test/issues/7\tready-for-agent,afk\n8\tFloating avatar\thttps://example.test/issues/8\tready-for-agent,afk\n9\tMenu bar\thttps://example.test/issues/9\tready-for-agent,afk' \
+  AFK_WORKFLOW_MOCK_BLOCKERS=$'8\t7' \
+  AFK_WORKFLOW_MOCK_OPEN_ISSUES="7,8,9" \
+    scripts/afk-workflow run --dry-run --concurrency 2 --max-waves 1 2>&1
+)"
+
+grep -q "wave 1: selected issue #7" <<< "$blocked_output"
+if grep -q "selected issue #8" <<< "$blocked_output"; then
+  echo "expected AFK workflow to skip issues blocked by open issues" >&2
+  exit 1
+fi
+grep -q "skipping issue #8: blocked by open issue #7" <<< "$blocked_output"
+grep -q "wave 1: selected issue #9" <<< "$blocked_output"
+
 tmp_dir="$(mktemp -d)"
 trap 'rm -rf "$tmp_dir"' EXIT
 mkdir -p "$tmp_dir/bin"
