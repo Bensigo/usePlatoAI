@@ -103,6 +103,12 @@ for arg in "$@"; do
   last_arg="$arg"
 done
 
+[[ "${1:-}" == "exec" ]] || { echo "expected generic codex exec" >&2; exit 63; }
+if [[ "${2:-}" == "review" ]]; then
+  echo "expected generic codex exec, not codex exec review" >&2
+  exit 64
+fi
+
 for arg in "$@"; do
   if [[ "$arg" == "-" ]]; then
     echo "expected review prompt on stdin without a '-' prompt argument" >&2
@@ -110,7 +116,7 @@ for arg in "$@"; do
   fi
 done
 
-prompt="$(cat)"
+prompt="${@: -1}"
 grep -q "Review exactly one pull request: #19." <<< "$prompt"
 [[ -n "$output_file" ]] || { echo "missing output file argument" >&2; exit 65; }
 mkdir -p "$(dirname "$output_file")"
