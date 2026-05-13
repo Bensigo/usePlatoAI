@@ -26,6 +26,8 @@ Defaults:
 
 Environment:
   AFK_WORKFLOW_MOCK_QUEUE  Test-only TSV queue: number, title, url, labels_csv.
+  AFK_WORKFLOW_MOCK_BLOCKERS  Test-only TSV blockers: issue, comma-separated blocker issues.
+  AFK_WORKFLOW_MOCK_OPEN_ISSUES  Test-only comma-separated issue numbers treated as open.
   AFK_WORKFLOW_REVIEW     Set to 0 to skip review. Default: 1.
 
 Examples:
@@ -83,7 +85,7 @@ queue_issues() {
     local number title url mock_labels
     while IFS=$'\t' read -r number title url mock_labels; do
       [[ -n "$number" ]] || continue
-      if [[ ",${mock_labels}," == *",${afk_label},"* ]]; then
+      if [[ ",${mock_labels}," == *",${afk_label},"* ]] && ! issue_has_open_blockers "$number"; then
         printf '%s\t%s\t%s\n' "$number" "$title" "$url"
         emitted=$((emitted + 1))
         [[ "$emitted" -lt "$limit" ]] || break
@@ -102,7 +104,7 @@ queue_issues() {
   local number title url
   while IFS=$'\t' read -r number title url; do
     [[ -n "$number" ]] || continue
-    if [[ -z "$(detect_pr_for_issue "$number")" ]]; then
+    if [[ -z "$(detect_pr_for_issue "$number")" ]] && ! issue_has_open_blockers "$number"; then
       printf '%s\t%s\t%s\n' "$number" "$title" "$url"
       emitted=$((emitted + 1))
       [[ "$emitted" -lt "$limit" ]] || break
@@ -120,6 +122,77 @@ queue_issues() {
         | jq -r 'sort_by(.number)[] | [.number, .title, .url] | @tsv'
     done | awk -F '\t' 'NF >= 3 && !seen[$1]++'
   )
+}
+
+mock_issue_blockers() {
+  local issue="$1"
+  local mock_issue blockers
+
+  [[ -n "${AFK_WORKFLOW_MOCK_BLOCKERS:-}" ]] || return 0
+  while IFS=$'\t' read -r mock_issue blockers; do
+    [[ "$mock_issue" == "$issue" ]] || continue
+    tr ',' '\n' <<< "$blockers" | sed '/^$/d'
+    return 0
+  done <<< "$AFK_WORKFLOW_MOCK_BLOCKERS"
+}
+
+mock_issue_is_open() {
+  local issue="$1"
+
+  [[ -n "${AFK_WORKFLOW_MOCK_OPEN_ISSUES:-}" ]] || return 1
+  [[ ",${AFK_WORKFLOW_MOCK_OPEN_ISSUES}," == *",${issue},"* ]]
+}
+
+issue_body() {
+  local issue="$1"
+
+  gh issue view "$issue" --json body --jq '.body // ""'
+}
+
+extract_blockers_from_body() {
+  awk '
+    BEGIN { in_blockers = 0 }
+    tolower($0) ~ /blocked by/ { in_blockers = 1; print; next }
+    in_blockers && /^##[[:space:]]+/ { in_blockers = 0 }
+    in_blockers { print }
+  ' | grep -Eo '#[0-9]+' | tr -d '#' | sort -n -u || true
+}
+
+issue_blockers() {
+  local issue="$1"
+
+  if [[ -n "${AFK_WORKFLOW_MOCK_QUEUE:-}" ]]; then
+    mock_issue_blockers "$issue"
+    return 0
+  fi
+
+  issue_body "$issue" | extract_blockers_from_body
+}
+
+issue_is_open() {
+  local issue="$1"
+
+  if [[ -n "${AFK_WORKFLOW_MOCK_OPEN_ISSUES:-}" ]]; then
+    mock_issue_is_open "$issue"
+    return
+  fi
+
+  [[ "$(gh issue view "$issue" --json state --jq '.state')" == "OPEN" ]]
+}
+
+issue_has_open_blockers() {
+  local issue="$1"
+  local blocker
+
+  while IFS= read -r blocker; do
+    [[ -n "$blocker" ]] || continue
+    if issue_is_open "$blocker"; then
+      echo "skipping issue #${issue}: blocked by open issue #${blocker}" >&2
+      return 0
+    fi
+  done < <(issue_blockers "$issue")
+
+  return 1
 }
 
 claim_issue() {
