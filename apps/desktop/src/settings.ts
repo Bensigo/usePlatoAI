@@ -17,9 +17,10 @@ export type CompanionSettings = {
   onboardingComplete: boolean;
 };
 
-export type SettingsStorage = Pick<Storage, "getItem" | "setItem">;
-
-export const companionSettingsKey = "useplatoai.companionSettings.v1";
+export type SettingsStore = {
+  read: () => Promise<CompanionSettings>;
+  save: (settings: CompanionSettings) => Promise<void>;
+};
 
 export const defaultCompanionSettings: CompanionSettings = {
   companionName: "Plato",
@@ -31,41 +32,59 @@ export const defaultCompanionSettings: CompanionSettings = {
   onboardingComplete: false,
 };
 
-export function getBrowserSettingsStorage(): SettingsStorage | undefined {
-  if (typeof window === "undefined") {
-    return undefined;
-  }
-
-  return window.localStorage;
-}
-
-export function readCompanionSettings(
-  storage: SettingsStorage | undefined = getBrowserSettingsStorage(),
+export function normalizeCompanionSettings(
+  settings: Partial<CompanionSettings> | null | undefined,
 ): CompanionSettings {
-  if (!storage) {
-    return defaultCompanionSettings;
-  }
-
-  const storedSettings = storage.getItem(companionSettingsKey);
-  if (!storedSettings) {
-    return defaultCompanionSettings;
-  }
-
-  try {
-    return {
-      ...defaultCompanionSettings,
-      ...(JSON.parse(storedSettings) as Partial<CompanionSettings>),
-    };
-  } catch {
-    return defaultCompanionSettings;
-  }
+  return {
+    ...defaultCompanionSettings,
+    ...settings,
+  };
 }
 
-export function saveCompanionSettings(
-  settings: CompanionSettings,
-  storage: SettingsStorage | undefined = getBrowserSettingsStorage(),
-) {
-  storage?.setItem(companionSettingsKey, JSON.stringify(settings));
+export function createMemorySettingsStore(
+  initialSettings?: Partial<CompanionSettings>,
+): SettingsStore {
+  let storedSettings = normalizeCompanionSettings(initialSettings);
+
+  return {
+    async read() {
+      return storedSettings;
+    },
+    async save(settings) {
+      storedSettings = normalizeCompanionSettings(settings);
+    },
+  };
+}
+
+function isTauriRuntime() {
+  return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+}
+
+export function createTauriSettingsStore(): SettingsStore {
+  return {
+    async read() {
+      if (!isTauriRuntime()) {
+        return defaultCompanionSettings;
+      }
+
+      const { invoke } = await import("@tauri-apps/api/core");
+      const settings = await invoke<Partial<CompanionSettings> | null>(
+        "read_companion_settings",
+      );
+
+      return normalizeCompanionSettings(settings);
+    },
+    async save(settings) {
+      if (!isTauriRuntime()) {
+        return;
+      }
+
+      const { invoke } = await import("@tauri-apps/api/core");
+      await invoke("save_companion_settings", {
+        settings: normalizeCompanionSettings(settings),
+      });
+    },
+  };
 }
 
 export function providerPlaceholderLabel(value: ProviderPlaceholder) {

@@ -1,6 +1,12 @@
 import "./styles.css";
 
-import { useEffect, useState, type FormEvent, type MouseEvent } from "react";
+import {
+  useEffect,
+  useMemo,
+  useState,
+  type FormEvent,
+  type MouseEvent,
+} from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 
 import {
@@ -9,15 +15,15 @@ import {
   type ControlSurfaceId,
 } from "./controlSurface";
 import {
+  createTauriSettingsStore,
   defaultCompanionSettings,
   providerPlaceholderLabel,
-  readCompanionSettings,
-  saveCompanionSettings,
   type CompanionSettings,
   type ExecutionAuthority,
   type LaunchBehavior,
   type MemoryMode,
   type ProviderPlaceholder,
+  type SettingsStore,
 } from "./settings";
 
 function startPresenceDrag(event: MouseEvent<HTMLButtonElement>) {
@@ -114,9 +120,11 @@ export function FirstRunOnboarding({
   onComplete,
 }: {
   initialSettings: CompanionSettings;
-  onComplete: (settings: CompanionSettings) => void;
+  onComplete: (settings: CompanionSettings) => void | Promise<void>;
 }) {
-  function completeOnboarding(event: FormEvent<HTMLFormElement>) {
+  const [isSaving, setIsSaving] = useState(false);
+
+  async function completeOnboarding(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
     const formData = new FormData(event.currentTarget);
@@ -138,7 +146,12 @@ export function FirstRunOnboarding({
       onboardingComplete: true,
     };
 
-    onComplete(settings);
+    try {
+      setIsSaving(true);
+      await onComplete(settings);
+    } finally {
+      setIsSaving(false);
+    }
   }
 
   return (
@@ -247,8 +260,8 @@ export function FirstRunOnboarding({
           </select>
         </label>
 
-        <button className="primary-button" type="submit">
-          Save setup
+        <button className="primary-button" type="submit" disabled={isSaving}>
+          {isSaving ? "Saving setup" : "Save setup"}
         </button>
       </form>
     </section>
@@ -257,14 +270,53 @@ export function FirstRunOnboarding({
 
 export function App({
   initialSettings,
+  settingsStore,
 }: {
   initialSettings?: CompanionSettings;
+  settingsStore?: SettingsStore;
 }) {
+  const durableSettingsStore = useMemo(
+    () => settingsStore ?? createTauriSettingsStore(),
+    [settingsStore],
+  );
   const [activeEntry, setActiveEntry] = useState<ControlSurfaceId>("settings");
   const [isDismissed, setIsDismissed] = useState(false);
-  const [settings, setSettings] = useState(
-    () => initialSettings ?? readCompanionSettings(),
+  const [settings, setSettings] = useState<CompanionSettings>(
+    () => initialSettings ?? defaultCompanionSettings,
   );
+  const [isSettingsLoaded, setIsSettingsLoaded] = useState(
+    () => initialSettings !== undefined,
+  );
+
+  useEffect(() => {
+    if (initialSettings) {
+      return;
+    }
+
+    let isCurrent = true;
+
+    durableSettingsStore
+      .read()
+      .then((savedSettings) => {
+        if (isCurrent) {
+          setSettings(savedSettings);
+        }
+      })
+      .catch(() => {
+        if (isCurrent) {
+          setSettings(defaultCompanionSettings);
+        }
+      })
+      .finally(() => {
+        if (isCurrent) {
+          setIsSettingsLoaded(true);
+        }
+      });
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [initialSettings, durableSettingsStore]);
 
   useEffect(() => {
     if (typeof window === "undefined" || !("__TAURI_INTERNALS__" in window)) {
@@ -293,9 +345,20 @@ export function App({
     };
   }, []);
 
-  function completeOnboarding(updatedSettings: CompanionSettings) {
-    saveCompanionSettings(updatedSettings);
+  async function completeOnboarding(updatedSettings: CompanionSettings) {
+    await durableSettingsStore.save(updatedSettings);
     setSettings(updatedSettings);
+  }
+
+  if (!isSettingsLoaded) {
+    return (
+      <main className="presence-shell">
+        <section className="onboarding-panel" aria-live="polite">
+          <p className="product-name">usePlatoAI</p>
+          <h1>Loading setup</h1>
+        </section>
+      </main>
+    );
   }
 
   if (!settings.onboardingComplete) {
