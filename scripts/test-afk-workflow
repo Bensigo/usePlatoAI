@@ -31,4 +31,80 @@ if grep -q "selected issue #10" <<< "$human_only_output"; then
 fi
 grep -q "wave 1: selected issue #11" <<< "$human_only_output"
 
+tmp_dir="$(mktemp -d)"
+trap 'rm -rf "$tmp_dir"' EXIT
+mkdir -p "$tmp_dir/bin"
+
+cat >"$tmp_dir/bin/git" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ "${1:-}" == "-C" ]]; then
+  shift 2
+fi
+
+case "${1:-}" in
+  rev-parse)
+    printf '%s\n' "$TEST_REPO_ROOT"
+    ;;
+  status)
+    exit 0
+    ;;
+  fetch|switch|pull)
+    exit 0
+    ;;
+  *)
+    echo "unexpected git command: $*" >&2
+    exit 1
+    ;;
+esac
+SH
+
+cat >"$tmp_dir/bin/gh" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ "$1 $2" == "pr view" ]]; then
+  cat <<'JSON'
+{"number":19,"title":"Handle blocked AFK issues","url":"https://example.test/pull/19","headRefName":"codex/issue-17-afk-blocked-issues","baseRefName":"main","state":"OPEN"}
+JSON
+  exit 0
+fi
+
+echo "unexpected gh command: $*" >&2
+exit 1
+SH
+
+cat >"$tmp_dir/bin/codex" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+
+output_file=""
+last_arg=""
+for arg in "$@"; do
+  if [[ "$last_arg" == "-o" || "$last_arg" == "--output-last-message" ]]; then
+    output_file="$arg"
+  fi
+  last_arg="$arg"
+done
+
+if [[ "${@: -1}" != "-" ]]; then
+  echo "expected review prompt to be read from stdin with '-'" >&2
+  exit 64
+fi
+
+prompt="$(cat)"
+grep -q "Review exactly one pull request: #19." <<< "$prompt"
+[[ -n "$output_file" ]] || { echo "missing output file argument" >&2; exit 65; }
+mkdir -p "$(dirname "$output_file")"
+printf 'review ok\nBEGIN_REVIEW_FIX_ISSUES_JSON\n{"fix_issues":[]}\nEND_REVIEW_FIX_ISSUES_JSON\n' >"$output_file"
+SH
+
+chmod +x "$tmp_dir/bin/git" "$tmp_dir/bin/gh" "$tmp_dir/bin/codex"
+
+review_output="$tmp_dir/review.md"
+PATH="$tmp_dir/bin:$PATH" TEST_REPO_ROOT="$root" \
+  scripts/review-pr --pr 19 --output "$review_output" >/dev/null
+grep -q "BEGIN_REVIEW_FIX_ISSUES_JSON" "$review_output"
+
 echo "afk workflow tests passed"
