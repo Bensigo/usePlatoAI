@@ -175,13 +175,21 @@ create_review_fix_issues() {
   local review_file="$3"
   local afk_label="$4"
 
+  if [[ ! -s "$review_file" ]]; then
+    echo "review for PR #${pr} did not write output file: ${review_file}" >&2
+    return 1
+  fi
+
   local json
   json="$(extract_review_fix_json "$review_file")"
-  [[ -n "$json" ]] || return 0
+  if [[ -z "$json" ]]; then
+    echo "review for PR #${pr} did not include review fix issue JSON; leaving review output at ${review_file}" >&2
+    return 1
+  fi
 
   if ! jq -e '.fix_issues | type == "array"' >/dev/null <<< "$json"; then
     echo "review for PR #${pr} did not include valid fix issue JSON; leaving review output at ${review_file}" >&2
-    return 0
+    return 1
   fi
 
   local count

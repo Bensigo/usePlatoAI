@@ -92,9 +92,13 @@ run_codex_review() {
   fi
 
   if [[ ${#extra_args[@]} -gt 0 ]]; then
-    codex exec review --base "$base" "${output_args[@]}" "${extra_args[@]}" "$prompt"
+    printf '%s\n' "$prompt" | codex exec review --base "$base" "${output_args[@]}" "${extra_args[@]}" -
   else
-    codex exec review --base "$base" "${output_args[@]}" "$prompt"
+    printf '%s\n' "$prompt" | codex exec review --base "$base" "${output_args[@]}" -
+  fi
+
+  if [[ -n "$output_file" && ! -s "$output_file" ]]; then
+    die "review did not write output file: $output_file"
   fi
 }
 
