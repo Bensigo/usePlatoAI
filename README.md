@@ -27,3 +27,6 @@ pnpm typecheck
 pnpm test
 pnpm build
 ```
+
+Milestone 001 has a manual launch and verification path in
+[`docs/milestones/001-desktop-shell-and-first-run.md`](docs/milestones/001-desktop-shell-and-first-run.md#local-launch-and-verification).
