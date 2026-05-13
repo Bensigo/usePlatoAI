@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
-import { App } from "../src/App";
+import { App, controlSurfaceEntries } from "../src/App";
 
 describe("desktop app shell", () => {
   it("renders the minimal Plato first-window shell", () => {
@@ -11,5 +11,25 @@ describe("desktop app shell", () => {
     expect(markup).toContain("Plato");
     expect(markup).toContain("First run shell");
     expect(markup).toContain("Ready for local setup");
+  });
+
+  it("renders every menu bar placeholder entry", () => {
+    const markup = renderToStaticMarkup(<App />);
+
+    expect(controlSurfaceEntries.map((entry) => entry.id)).toEqual([
+      "settings",
+      "tasks",
+      "memory",
+      "permissions",
+      "providers",
+      "soul",
+    ]);
+
+    for (const entry of controlSurfaceEntries) {
+      expect(markup).toContain(entry.label);
+    }
+
+    expect(markup).toContain(controlSurfaceEntries[0].description);
+    expect(markup).toContain("This area is reachable from the macOS menu bar");
   });
 });
