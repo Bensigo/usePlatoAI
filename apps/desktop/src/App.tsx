@@ -1,6 +1,6 @@
 import "./styles.css";
 
-import { useEffect, useState, type MouseEvent } from "react";
+import { useEffect, useState, type FormEvent, type MouseEvent } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 
 import {
@@ -8,6 +8,17 @@ import {
   isControlSurfaceId,
   type ControlSurfaceId,
 } from "./controlSurface";
+import {
+  defaultCompanionSettings,
+  providerPlaceholderLabel,
+  readCompanionSettings,
+  saveCompanionSettings,
+  type CompanionSettings,
+  type ExecutionAuthority,
+  type LaunchBehavior,
+  type MemoryMode,
+  type ProviderPlaceholder,
+} from "./settings";
 
 function startPresenceDrag(event: MouseEvent<HTMLButtonElement>) {
   if (event.button !== 0) {
@@ -31,8 +42,10 @@ export function DismissedPresence({ onRestore }: { onRestore: () => void }) {
 
 export function ControlSurfacePanel({
   activeEntry,
+  settings,
 }: {
   activeEntry: ControlSurfaceId;
+  settings?: CompanionSettings;
 }) {
   const activeControl = controlSurfaceEntries.find(
     (entry) => entry.id === activeEntry,
@@ -40,20 +53,218 @@ export function ControlSurfacePanel({
 
   return (
     <section className="placeholder-panel" aria-live="polite">
-      <p className="status-label">Placeholder panel</p>
+      <p className="status-label">
+        {activeEntry === "settings" ? "Local settings" : "Placeholder panel"}
+      </p>
       <h2>{activeControl.label}</h2>
       <p>{activeControl.description}</p>
-      <p className="placeholder-note">
-        This area is reachable from the macOS menu bar now. The underlying
-        feature is intentionally not implemented in this slice.
-      </p>
+      {activeEntry === "settings" && settings ? (
+        <SettingsSummary settings={settings} />
+      ) : (
+        <p className="placeholder-note">
+          This area is reachable from the macOS menu bar now. The underlying
+          feature is intentionally not implemented in this slice.
+        </p>
+      )}
     </section>
   );
 }
 
-export function App() {
+export function SettingsSummary({ settings }: { settings: CompanionSettings }) {
+  return (
+    <dl className="settings-summary" aria-label="Saved companion settings">
+      <div>
+        <dt>Companion</dt>
+        <dd>{settings.companionName}</dd>
+      </div>
+      <div>
+        <dt>Wake name</dt>
+        <dd>{settings.wakeName}</dd>
+      </div>
+      <div>
+        <dt>Launch behavior</dt>
+        <dd>
+          {settings.launchBehavior === "launch-at-login"
+            ? "Launch at login"
+            : "Manual-only"}
+        </dd>
+      </div>
+      <div>
+        <dt>Memory mode</dt>
+        <dd>{settings.memoryMode === "enabled" ? "Memory on" : "Paused"}</dd>
+      </div>
+      <div>
+        <dt>Execution authority</dt>
+        <dd>
+          {settings.executionAuthority === "ask-first"
+            ? "Ask first"
+            : "Trusted local actions"}
+        </dd>
+      </div>
+      <div>
+        <dt>Provider placeholder</dt>
+        <dd>{providerPlaceholderLabel(settings.providerPlaceholder)}</dd>
+      </div>
+    </dl>
+  );
+}
+
+export function FirstRunOnboarding({
+  initialSettings,
+  onComplete,
+}: {
+  initialSettings: CompanionSettings;
+  onComplete: (settings: CompanionSettings) => void;
+}) {
+  function completeOnboarding(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    const formData = new FormData(event.currentTarget);
+    const settings: CompanionSettings = {
+      companionName:
+        formData.get("companionName")?.toString().trim() ||
+        defaultCompanionSettings.companionName,
+      wakeName:
+        formData.get("wakeName")?.toString().trim() ||
+        defaultCompanionSettings.wakeName,
+      launchBehavior: formData.get("launchBehavior") as LaunchBehavior,
+      memoryMode: formData.get("memoryMode") as MemoryMode,
+      executionAuthority: formData.get(
+        "executionAuthority",
+      ) as ExecutionAuthority,
+      providerPlaceholder: formData.get(
+        "providerPlaceholder",
+      ) as ProviderPlaceholder,
+      onboardingComplete: true,
+    };
+
+    onComplete(settings);
+  }
+
+  return (
+    <section className="onboarding-panel" aria-labelledby="onboarding-title">
+      <p className="product-name">usePlatoAI</p>
+      <h1 id="onboarding-title">First-run setup</h1>
+      <form className="onboarding-form" onSubmit={completeOnboarding}>
+        <label>
+          <span>Companion name</span>
+          <input
+            name="companionName"
+            defaultValue={initialSettings.companionName}
+            autoComplete="off"
+          />
+        </label>
+
+        <label>
+          <span>Wake name</span>
+          <input
+            name="wakeName"
+            defaultValue={initialSettings.wakeName}
+            autoComplete="off"
+          />
+        </label>
+
+        <fieldset>
+          <legend>Launch behavior</legend>
+          <label>
+            <input
+              type="radio"
+              name="launchBehavior"
+              value="launch-at-login"
+              defaultChecked={
+                initialSettings.launchBehavior === "launch-at-login"
+              }
+            />
+            <span>Launch at login</span>
+          </label>
+          <label>
+            <input
+              type="radio"
+              name="launchBehavior"
+              value="manual-only"
+              defaultChecked={initialSettings.launchBehavior === "manual-only"}
+            />
+            <span>Manual-only</span>
+          </label>
+        </fieldset>
+
+        <fieldset>
+          <legend>Memory mode</legend>
+          <label>
+            <input
+              type="radio"
+              name="memoryMode"
+              value="enabled"
+              defaultChecked={initialSettings.memoryMode === "enabled"}
+            />
+            <span>Memory on</span>
+          </label>
+          <label>
+            <input
+              type="radio"
+              name="memoryMode"
+              value="paused"
+              defaultChecked={initialSettings.memoryMode === "paused"}
+            />
+            <span>Paused</span>
+          </label>
+        </fieldset>
+
+        <fieldset>
+          <legend>Execution authority</legend>
+          <label>
+            <input
+              type="radio"
+              name="executionAuthority"
+              value="ask-first"
+              defaultChecked={initialSettings.executionAuthority === "ask-first"}
+            />
+            <span>Ask first</span>
+          </label>
+          <label>
+            <input
+              type="radio"
+              name="executionAuthority"
+              value="trusted-local"
+              defaultChecked={
+                initialSettings.executionAuthority === "trusted-local"
+              }
+            />
+            <span>Trusted local actions</span>
+          </label>
+        </fieldset>
+
+        <label>
+          <span>Provider placeholder</span>
+          <select
+            name="providerPlaceholder"
+            defaultValue={initialSettings.providerPlaceholder}
+          >
+            <option value="configure-later">Configure later</option>
+            <option value="openai-api-key">OpenAI API key later</option>
+            <option value="claude-sdk">Claude local SDK auth later</option>
+            <option value="local-model">Local model later</option>
+          </select>
+        </label>
+
+        <button className="primary-button" type="submit">
+          Save setup
+        </button>
+      </form>
+    </section>
+  );
+}
+
+export function App({
+  initialSettings,
+}: {
+  initialSettings?: CompanionSettings;
+}) {
   const [activeEntry, setActiveEntry] = useState<ControlSurfaceId>("settings");
   const [isDismissed, setIsDismissed] = useState(false);
+  const [settings, setSettings] = useState(
+    () => initialSettings ?? readCompanionSettings(),
+  );
 
   useEffect(() => {
     if (typeof window === "undefined" || !("__TAURI_INTERNALS__" in window)) {
@@ -81,6 +292,22 @@ export function App() {
       dispose?.();
     };
   }, []);
+
+  function completeOnboarding(updatedSettings: CompanionSettings) {
+    saveCompanionSettings(updatedSettings);
+    setSettings(updatedSettings);
+  }
+
+  if (!settings.onboardingComplete) {
+    return (
+      <main className="presence-shell">
+        <FirstRunOnboarding
+          initialSettings={settings}
+          onComplete={completeOnboarding}
+        />
+      </main>
+    );
+  }
 
   return (
     <main className="presence-shell" aria-labelledby="presence-title">
@@ -116,8 +343,9 @@ export function App() {
 
           <div className="presence-copy">
             <p className="product-name">usePlatoAI</p>
-            <h1 id="presence-title">Plato</h1>
+            <h1 id="presence-title">{settings.companionName}</h1>
             <p className="status-label">Idle presence</p>
+            <p className="wake-name">Wake name: {settings.wakeName}</p>
           </div>
         </section>
       )}
@@ -137,7 +365,7 @@ export function App() {
           ))}
         </nav>
 
-        <ControlSurfacePanel activeEntry={activeEntry} />
+        <ControlSurfacePanel activeEntry={activeEntry} settings={settings} />
       </section>
     </main>
   );
