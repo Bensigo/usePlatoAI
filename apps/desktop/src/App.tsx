@@ -1,36 +1,65 @@
 import "./styles.css";
 
-const shellItems = [
-  "Floating presence placeholder",
-  "Menu bar controls pending",
-  "First-run setup pending",
-];
+import { useState, type MouseEvent } from "react";
+import { getCurrentWindow } from "@tauri-apps/api/window";
+
+function startPresenceDrag(event: MouseEvent<HTMLButtonElement>) {
+  if (event.button !== 0) {
+    return;
+  }
+
+  event.preventDefault();
+  void getCurrentWindow().startDragging();
+}
 
 export function App() {
+  const [isHiddenFallback, setIsHiddenFallback] = useState(false);
+
+  function hidePresence() {
+    setIsHiddenFallback(true);
+    void getCurrentWindow().hide().catch(() => {
+      setIsHiddenFallback(true);
+    });
+  }
+
+  if (isHiddenFallback) {
+    return null;
+  }
+
   return (
-    <main className="app-shell" aria-labelledby="app-title">
-      <section className="presence-panel" aria-label="Plato desktop shell">
-        <div className="presence-orb" aria-hidden="true">
-          P
+    <main className="presence-shell" aria-labelledby="presence-title">
+      <section className="presence-card" aria-label="Floating Plato presence">
+        <div className="presence-controls">
+          <button
+            className="drag-handle"
+            type="button"
+            onMouseDown={startPresenceDrag}
+            aria-label="Drag Plato presence"
+          >
+            <span aria-hidden="true" />
+          </button>
+          <button
+            className="hide-button"
+            type="button"
+            onClick={hidePresence}
+            aria-label="Hide Plato presence"
+          >
+            x
+          </button>
         </div>
+
+        <div className="avatar-placeholder" aria-hidden="true">
+          <div className="avatar-face">
+            <span className="avatar-eye" />
+            <span className="avatar-eye" />
+          </div>
+        </div>
+
         <div className="presence-copy">
           <p className="product-name">usePlatoAI</p>
-          <h1 id="app-title">Plato</h1>
-          <p className="status-label">First run shell</p>
-          <p className="status-copy">
-            Ready for local setup. This launchable shell establishes the desktop
-            foundation before Live2D, voice, memory, or agent features exist.
-          </p>
+          <h1 id="presence-title">Plato</h1>
+          <p className="status-label">Idle presence</p>
         </div>
-      </section>
-
-      <section className="readiness-panel" aria-label="Shell readiness">
-        <h2>Desktop foundation</h2>
-        <ul>
-          {shellItems.map((item) => (
-            <li key={item}>{item}</li>
-          ))}
-        </ul>
       </section>
     </main>
   );

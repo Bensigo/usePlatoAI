@@ -3,7 +3,7 @@
     Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
     sans-serif;
   color: #111827;
-  background: #f7f8fb;
+  background: transparent;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -18,6 +18,8 @@ body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
+  background: transparent;
+  overflow: hidden;
 }
 
 button,
@@ -27,45 +29,118 @@ select {
   font: inherit;
 }
 
-.app-shell {
+.presence-shell {
   min-height: 100vh;
   display: grid;
-  align-content: center;
-  gap: 16px;
-  padding: 32px;
+  place-items: center;
+  padding: 14px;
 }
 
-.presence-panel,
-.readiness-panel {
-  width: min(100%, 640px);
-  border: 1px solid #dde3ec;
-  border-radius: 8px;
-  background: #ffffff;
-  box-shadow: 0 24px 70px rgb(15 23 42 / 10%);
-}
-
-.presence-panel {
+.presence-card {
+  width: min(100%, 236px);
   display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 24px;
-  padding: 28px;
+  justify-items: center;
+  gap: 12px;
+  border: 1px solid rgb(17 24 39 / 14%);
+  border-radius: 8px;
+  background: rgb(255 255 255 / 94%);
+  box-shadow: 0 18px 44px rgb(15 23 42 / 18%);
+  padding: 10px 14px 18px;
+  backdrop-filter: blur(16px);
 }
 
-.presence-orb {
-  width: 84px;
-  height: 84px;
+.presence-controls {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.drag-handle,
+.hide-button {
+  border: 0;
+  background: transparent;
+  color: #374151;
+  cursor: pointer;
+}
+
+.drag-handle {
+  width: 44px;
+  height: 28px;
   display: grid;
   place-items: center;
+  padding: 0;
+}
+
+.drag-handle span,
+.drag-handle::before,
+.drag-handle::after {
+  width: 24px;
+  height: 2px;
+  border-radius: 999px;
+  background: #6b7280;
+  content: "";
+}
+
+.drag-handle {
+  gap: 4px;
+}
+
+.drag-handle::before,
+.drag-handle::after {
+  display: block;
+}
+
+.hide-button {
+  width: 28px;
+  height: 28px;
   border-radius: 50%;
-  background: #1f2937;
-  color: #ffffff;
-  font-size: 2.25rem;
-  font-weight: 700;
+  padding: 0;
+  font-size: 1.1rem;
   line-height: 1;
 }
 
+.drag-handle:hover,
+.hide-button:hover {
+  background: #eef2f7;
+}
+
+.avatar-placeholder {
+  width: 118px;
+  height: 118px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 34% 30%, #ffffff 0 9%, transparent 10%),
+    linear-gradient(145deg, #f2c3d5, #7fd1c2 52%, #334155);
+  box-shadow:
+    inset 0 -10px 22px rgb(15 23 42 / 18%),
+    0 12px 28px rgb(15 23 42 / 16%);
+}
+
+.avatar-face {
+  width: 56px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 16px;
+}
+
+.avatar-eye {
+  width: 12px;
+  height: 18px;
+  border-radius: 50%;
+  background: #111827;
+}
+
 .presence-copy {
+  display: grid;
+  justify-items: center;
   min-width: 0;
+  text-align: center;
 }
 
 .product-name,
@@ -75,7 +150,14 @@ select {
   font-weight: 700;
   letter-spacing: 0;
   text-transform: uppercase;
-  color: #4f46e5;
+}
+
+.product-name {
+  color: #0f766e;
+}
+
+.status-label {
+  color: #475569;
 }
 
 h1,
@@ -85,49 +167,22 @@ p {
 }
 
 h1 {
-  margin-bottom: 8px;
-  font-size: clamp(2.5rem, 4vw, 4rem);
-  line-height: 0.95;
+  margin-bottom: 6px;
+  font-size: 2.35rem;
+  line-height: 1;
   letter-spacing: 0;
 }
 
-.status-copy {
-  max-width: 42rem;
-  margin-bottom: 0;
-  color: #4b5563;
-  line-height: 1.6;
-}
-
-.readiness-panel {
-  padding: 22px 28px;
-}
-
-.readiness-panel h2 {
-  margin-bottom: 12px;
-  font-size: 1rem;
-  line-height: 1.3;
-}
-
-.readiness-panel ul {
-  display: grid;
-  gap: 8px;
-  margin: 0;
-  padding-left: 1.1rem;
-  color: #4b5563;
-}
-
 @media (max-width: 560px) {
-  .app-shell {
-    padding: 20px;
+  body {
+    min-width: 260px;
   }
 
-  .presence-panel {
-    grid-template-columns: 1fr;
+  .presence-shell {
+    padding: 10px;
   }
 
-  .presence-orb {
-    width: 72px;
-    height: 72px;
-    font-size: 2rem;
+  .presence-card {
+    width: min(100%, 216px);
   }
 }

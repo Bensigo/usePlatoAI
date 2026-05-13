@@ -3,5 +3,9 @@
   "identifier": "default",
   "description": "Default permissions for the usePlatoAI desktop shell",
   "windows": ["main"],
-  "permissions": ["core:default"]
+  "permissions": [
+    "core:default",
+    "core:window:allow-hide",
+    "core:window:allow-start-dragging"
+  ]
 }
