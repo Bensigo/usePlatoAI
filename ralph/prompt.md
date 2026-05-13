@@ -77,6 +77,7 @@ The PR must include:
 - issue reference
 - summary
 - verification notes
+- visual evidence: screenshot or short video for UI-visible work, or an explicit `No visual surface` note for non-visual changes
 - any known blockers
 
 ## Completion

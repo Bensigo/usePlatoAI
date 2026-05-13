@@ -63,6 +63,8 @@ Then:
 
 Implementation issues and pull requests live in GitHub. PRDs are local markdown files under `docs/prd/`. See `docs/agents/issue-tracker.md`.
 
+Every implementation PR must include a visual evidence section. For UI-visible work, attach a screenshot or short video showing the completed behavior. If the PR has no visual surface, say that explicitly and include the relevant verification notes instead.
+
 ### Milestones
 
 PRDs are converted into vertical, testable local markdown milestones before issues. See `docs/agents/milestones.md`.
@@ -80,3 +82,9 @@ This is a single-context repo with `CONTEXT.md` at the root and architecture doc
 Implementation issues are executed through a Ralph loop: a command-driven fresh-context loop that picks one ready GitHub issue, implements it, verifies it, opens or updates a PR, records verification, and exits. See `docs/agents/ralph-loop.md`.
 
 Use `scripts/ralph-loop`, `ralph/once.sh`, or `ralph/afk.sh` to list ready issues or run one or more Ralph iterations. See `docs/agents/ralph-runner.md`.
+
+Use `scripts/afk-workflow` to run the full two-worker AFK loop: issue claim, Ralph implementation, PR review, review-fix issue creation, and repeat. AFK workflow only picks issues explicitly labeled `afk`. See `docs/agents/afk-workflow.md`.
+
+### PR review
+
+Pull request review should run in its own fresh Codex context window. Use `scripts/review-pr` or `review/pr.sh`. See `docs/agents/pr-review-runner.md`.

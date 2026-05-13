@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+root="$(git rev-parse --show-toplevel)"
+cd "$root"
+
+output="$(
+  AFK_WORKFLOW_MOCK_QUEUE=$'7\tScaffold shell\thttps://example.test/issues/7\tready-for-agent,afk\n8\tFloating avatar\thttps://example.test/issues/8\tready-for-agent,afk\n9\tMenu bar\thttps://example.test/issues/9\tready-for-agent,afk' \
+    scripts/afk-workflow run --dry-run --concurrency 2 --max-waves 1
+)"
+
+grep -q "wave 1: selected issue #7" <<< "$output"
+grep -q "wave 1: selected issue #8" <<< "$output"
+if grep -q "selected issue #9" <<< "$output"; then
+  echo "expected dry run to respect concurrency limit" >&2
+  exit 1
+fi
+
+grep -q "dry-run: would claim issue #7" <<< "$output"
+grep -q "dry-run: would run Ralph for issue #8" <<< "$output"
+grep -q "dry-run: would review PR for issue #8" <<< "$output"
+
+human_only_output="$(
+  AFK_WORKFLOW_MOCK_QUEUE=$'10\tNeeds product call\thttps://example.test/issues/10\tready-for-agent\n11\tSafe cleanup\thttps://example.test/issues/11\tready-for-agent,afk' \
+    scripts/afk-workflow run --dry-run --concurrency 2 --max-waves 1
+)"
+
+if grep -q "selected issue #10" <<< "$human_only_output"; then
+  echo "expected AFK workflow to skip issues without afk label" >&2
+  exit 1
+fi
+grep -q "wave 1: selected issue #11" <<< "$human_only_output"
+
+echo "afk workflow tests passed"

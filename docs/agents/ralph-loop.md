@@ -32,7 +32,8 @@ Each Ralph loop iteration should:
 9. Push the branch.
 10. Open or update a pull request.
 11. Include verification notes in the PR.
-12. Exit so the next iteration starts fresh.
+12. Include visual evidence in the PR: screenshot or short video for UI-visible work, or an explicit `No visual surface` note for non-visual changes.
+13. Exit so the next iteration starts fresh.
 
 ## Rules
 
@@ -43,6 +44,7 @@ Each Ralph loop iteration should:
 - Do not invent scope beyond the issue, milestone, PRD, context, or architecture baseline.
 - If the issue is underspecified, stop and ask for clarification instead of guessing.
 - If verification cannot run, record the blocker in the PR notes.
+- Do not leave a UI-visible PR without a screenshot or short video in the PR body.
 - If implementation reveals that the milestone or issue is wrong, stop and report the mismatch.
 
 ## Command Expectation
