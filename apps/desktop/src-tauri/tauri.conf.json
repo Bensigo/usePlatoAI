@@ -14,10 +14,10 @@
     "windows": [
       {
         "title": "usePlatoAI",
-        "width": 280,
-        "height": 340,
+        "width": 320,
+        "height": 560,
         "minWidth": 260,
-        "minHeight": 300,
+        "minHeight": 420,
         "resizable": false,
         "decorations": false,
         "transparent": true,

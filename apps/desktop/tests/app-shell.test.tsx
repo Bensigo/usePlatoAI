@@ -1,7 +1,8 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
-import { App, DismissedPresence } from "../src/App";
+import { App, ControlSurfacePanel, DismissedPresence } from "../src/App";
+import { controlSurfaceEntries } from "../src/controlSurface";
 
 describe("desktop app shell", () => {
   it("renders the floating Plato presence controls", () => {
@@ -23,5 +24,36 @@ describe("desktop app shell", () => {
     expect(markup).toContain("Plato presence hidden");
     expect(markup).toContain("Plato is hidden");
     expect(markup).toContain("Show Plato presence");
+  });
+
+  it("renders every menu bar placeholder entry", () => {
+    const markup = renderToStaticMarkup(<App />);
+
+    expect(controlSurfaceEntries.map((entry) => entry.id)).toEqual([
+      "settings",
+      "tasks",
+      "memory",
+      "permissions",
+      "providers",
+      "soul",
+    ]);
+
+    for (const entry of controlSurfaceEntries) {
+      expect(markup).toContain(entry.label);
+    }
+
+    expect(markup).toContain(controlSurfaceEntries[0].description);
+    expect(markup).toContain("This area is reachable from the macOS menu bar");
+  });
+
+  it("renders a placeholder panel for every menu bar entry", () => {
+    for (const entry of controlSurfaceEntries) {
+      const markup = renderToStaticMarkup(
+        <ControlSurfacePanel activeEntry={entry.id} />,
+      );
+
+      expect(markup).toContain(entry.label);
+      expect(markup).toContain(entry.description);
+    }
   });
 });
