@@ -5,7 +5,7 @@ usage() {
   cat <<'USAGE'
 Usage:
   scripts/ralph-loop list [--label ready-for-agent] [--limit 50]
-  scripts/ralph-loop run [--issue NUMBER] [--label ready-for-agent] [--limit 1] [--engine codex]
+  scripts/ralph-loop run [--issue NUMBER] [--label ready-for-agent] [--limit 1] [--engine codex] [--skip-base-refresh]
 
 Runs repo implementation issues through the Ralph loop.
 
@@ -19,6 +19,7 @@ Options:
   --limit NUMBER       Max issues to list or run. Default list: 50, run: 1.
   --engine ENGINE      Agent engine. Supported: codex, claude. Default: codex.
   --base BRANCH        Base branch to refresh before each issue. Default: main.
+  --skip-base-refresh  Run from the current clean checkout without switching or pulling the base branch.
 
 Environment:
   RALPH_CODEX_ARGS     Extra arguments passed to `codex exec`.
@@ -156,6 +157,7 @@ main() {
   local issue=""
   local engine="codex"
   local base="main"
+  local skip_base_refresh="0"
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -183,6 +185,10 @@ main() {
         base="${2:-}"
         [[ -n "$base" ]] || die "--base requires a branch"
         shift 2
+        ;;
+      --skip-base-refresh)
+        skip_base_refresh="1"
+        shift
         ;;
       -h|--help)
         usage
@@ -234,10 +240,12 @@ main() {
         echo "    ${issue_url}"
 
         ensure_clean_tree
-        git fetch origin "$base"
-        git switch "$base"
-        git pull --ff-only origin "$base"
-        ensure_clean_tree
+        if [[ "$skip_base_refresh" == "0" ]]; then
+          git fetch origin "$base"
+          git switch "$base"
+          git pull --ff-only origin "$base"
+          ensure_clean_tree
+        fi
 
         case "$engine" in
           codex) run_codex "$root" "$issue_number" "$issue_title" "$issue_url" ;;
