@@ -10,9 +10,8 @@ import {
 import { controlSurfaceEntries } from "../src/controlSurface";
 import {
   type CompanionSettings,
+  createMemorySettingsStore,
   defaultCompanionSettings,
-  readCompanionSettings,
-  saveCompanionSettings,
 } from "../src/settings";
 
 const completedSettings: CompanionSettings = {
@@ -96,8 +95,8 @@ describe("desktop app shell", () => {
     expect(markup).toContain("Provider placeholder");
   });
 
-  it("persists first-run settings locally", () => {
-    const storage = new Map<string, string>();
+  it("persists first-run settings through the settings store", async () => {
+    const settingsStore = createMemorySettingsStore();
     const localSettings = {
       companionName: "Ada",
       wakeName: "Ada",
@@ -108,16 +107,17 @@ describe("desktop app shell", () => {
       onboardingComplete: true,
     };
 
-    saveCompanionSettings(localSettings, {
-      getItem: (key) => storage.get(key) ?? null,
-      setItem: (key, value) => storage.set(key, value),
-    });
+    await settingsStore.save(localSettings);
 
-    expect(
-      readCompanionSettings({
-        getItem: (key) => storage.get(key) ?? null,
-        setItem: (key, value) => storage.set(key, value),
-      }),
-    ).toEqual(localSettings);
+    await expect(settingsStore.read()).resolves.toEqual(localSettings);
+  });
+
+  it("does not render onboarding until saved settings are loaded", () => {
+    const markup = renderToStaticMarkup(
+      <App settingsStore={createMemorySettingsStore(completedSettings)} />,
+    );
+
+    expect(markup).toContain("Loading setup");
+    expect(markup).not.toContain("First-run setup");
   });
 });
