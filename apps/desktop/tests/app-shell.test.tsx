@@ -1,7 +1,8 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
-import { App, controlSurfaceEntries } from "../src/App";
+import { App } from "../src/App";
+import { controlSurfaceEntries } from "../src/controlSurface";
 
 describe("desktop app shell", () => {
   it("renders the minimal Plato first-window shell", () => {
