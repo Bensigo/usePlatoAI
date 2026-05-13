@@ -13,6 +13,28 @@ const shellItems = [
   "First-run setup pending",
 ];
 
+export function ControlSurfacePanel({
+  activeEntry,
+}: {
+  activeEntry: ControlSurfaceId;
+}) {
+  const activeControl = controlSurfaceEntries.find(
+    (entry) => entry.id === activeEntry,
+  )!;
+
+  return (
+    <section className="placeholder-panel" aria-live="polite">
+      <p className="status-label">Placeholder panel</p>
+      <h2>{activeControl.label}</h2>
+      <p>{activeControl.description}</p>
+      <p className="placeholder-note">
+        This area is reachable from the macOS menu bar now. The underlying
+        feature is intentionally not implemented in this slice.
+      </p>
+    </section>
+  );
+}
+
 export function App() {
   const [activeEntry, setActiveEntry] = useState<ControlSurfaceId>("settings");
   const [presenceVisible, setPresenceVisible] = useState(true);
@@ -43,10 +65,6 @@ export function App() {
       dispose?.();
     };
   }, []);
-
-  const activeControl = controlSurfaceEntries.find(
-    (entry) => entry.id === activeEntry,
-  )!;
 
   return (
     <main className="app-shell" aria-labelledby="app-title">
@@ -104,15 +122,7 @@ export function App() {
           ))}
         </nav>
 
-        <section className="placeholder-panel" aria-live="polite">
-          <p className="status-label">Placeholder panel</p>
-          <h2>{activeControl.label}</h2>
-          <p>{activeControl.description}</p>
-          <p className="placeholder-note">
-            This area is reachable from the macOS menu bar now. The underlying
-            feature is intentionally not implemented in this slice.
-          </p>
-        </section>
+        <ControlSurfacePanel activeEntry={activeEntry} />
       </section>
 
       <section className="readiness-panel" aria-label="Shell readiness">

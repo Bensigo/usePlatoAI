@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
-import { App } from "../src/App";
+import { App, ControlSurfacePanel } from "../src/App";
 import { controlSurfaceEntries } from "../src/controlSurface";
 
 describe("desktop app shell", () => {
@@ -32,5 +32,16 @@ describe("desktop app shell", () => {
 
     expect(markup).toContain(controlSurfaceEntries[0].description);
     expect(markup).toContain("This area is reachable from the macOS menu bar");
+  });
+
+  it("renders a placeholder panel for every menu bar entry", () => {
+    for (const entry of controlSurfaceEntries) {
+      const markup = renderToStaticMarkup(
+        <ControlSurfacePanel activeEntry={entry.id} />,
+      );
+
+      expect(markup).toContain(entry.label);
+      expect(markup).toContain(entry.description);
+    }
   });
 });

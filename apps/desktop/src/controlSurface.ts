@@ -45,7 +45,7 @@ export const controlSurfaceEntries: {
     id: "soul",
     label: "Soul editing",
     description:
-      "Placeholder for editing the local soul markdown that shapes Plato's companion identity.",
+      "Placeholder for editing the local soul markdown that shapes the Plato companion identity.",
   },
 ];
 
