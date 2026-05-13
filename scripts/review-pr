@@ -91,10 +91,14 @@ run_codex_review() {
     output_args=(-o "$output_file")
   fi
 
+  prompt="${prompt}
+
+Review changes against base branch: ${base}"
+
   if [[ ${#extra_args[@]} -gt 0 ]]; then
-    printf '%s\n' "$prompt" | codex exec review --base "$base" "${output_args[@]}" "${extra_args[@]}"
+    codex exec "${output_args[@]}" "${extra_args[@]}" "$prompt"
   else
-    printf '%s\n' "$prompt" | codex exec review --base "$base" "${output_args[@]}"
+    codex exec "${output_args[@]}" "$prompt"
   fi
 
   if [[ -n "$output_file" && ! -s "$output_file" ]]; then
