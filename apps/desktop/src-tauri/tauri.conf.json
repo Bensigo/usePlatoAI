@@ -10,14 +10,20 @@
     "frontendDist": "../dist"
   },
   "app": {
+    "macOSPrivateApi": true,
     "windows": [
       {
         "title": "usePlatoAI",
-        "width": 900,
-        "height": 640,
-        "minWidth": 360,
-        "minHeight": 480,
-        "resizable": true
+        "width": 280,
+        "height": 340,
+        "minWidth": 260,
+        "minHeight": 300,
+        "resizable": false,
+        "decorations": false,
+        "transparent": true,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "shadow": true
       }
     ],
     "security": {
