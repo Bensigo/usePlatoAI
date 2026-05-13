@@ -1,17 +1,33 @@
-import { useEffect, useState } from "react";
+import "./styles.css";
+
+import { useEffect, useState, type MouseEvent } from "react";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 
 import {
   controlSurfaceEntries,
   isControlSurfaceId,
   type ControlSurfaceId,
 } from "./controlSurface";
-import "./styles.css";
 
-const shellItems = [
-  "Floating presence placeholder",
-  "Menu bar controls available",
-  "First-run setup pending",
-];
+function startPresenceDrag(event: MouseEvent<HTMLButtonElement>) {
+  if (event.button !== 0) {
+    return;
+  }
+
+  event.preventDefault();
+  void getCurrentWindow().startDragging();
+}
+
+export function DismissedPresence({ onRestore }: { onRestore: () => void }) {
+  return (
+    <section className="restore-card" aria-label="Plato presence hidden">
+      <p id="restore-title">Plato is hidden</p>
+      <button className="restore-button" type="button" onClick={onRestore}>
+        Show Plato presence
+      </button>
+    </section>
+  );
+}
 
 export function ControlSurfacePanel({
   activeEntry,
@@ -37,7 +53,7 @@ export function ControlSurfacePanel({
 
 export function App() {
   const [activeEntry, setActiveEntry] = useState<ControlSurfaceId>("settings");
-  const [presenceVisible, setPresenceVisible] = useState(true);
+  const [isDismissed, setIsDismissed] = useState(false);
 
   useEffect(() => {
     if (typeof window === "undefined" || !("__TAURI_INTERNALS__" in window)) {
@@ -67,43 +83,42 @@ export function App() {
   }, []);
 
   return (
-    <main className="app-shell" aria-labelledby="app-title">
-      {presenceVisible ? (
-        <section className="presence-panel" aria-label="Plato desktop shell">
-          <div className="presence-orb" aria-hidden="true">
-            P
+    <main className="presence-shell" aria-labelledby="presence-title">
+      {isDismissed ? (
+        <DismissedPresence onRestore={() => setIsDismissed(false)} />
+      ) : (
+        <section className="presence-card" aria-label="Floating Plato presence">
+          <div className="presence-controls">
+            <button
+              className="drag-handle"
+              type="button"
+              onMouseDown={startPresenceDrag}
+              aria-label="Drag Plato presence"
+            >
+              <span aria-hidden="true" />
+            </button>
+            <button
+              className="hide-button"
+              type="button"
+              onClick={() => setIsDismissed(true)}
+              aria-label="Hide Plato presence"
+            >
+              x
+            </button>
           </div>
+
+          <div className="avatar-placeholder" aria-hidden="true">
+            <div className="avatar-face">
+              <span className="avatar-eye" />
+              <span className="avatar-eye" />
+            </div>
+          </div>
+
           <div className="presence-copy">
             <p className="product-name">usePlatoAI</p>
-            <h1 id="app-title">Plato</h1>
-            <p className="status-label">First run shell</p>
-            <p className="status-copy">
-              Ready for local setup. This launchable shell establishes the
-              desktop foundation before Live2D, voice, memory, or agent features
-              exist.
-            </p>
+            <h1 id="presence-title">Plato</h1>
+            <p className="status-label">Idle presence</p>
           </div>
-          <button
-            className="presence-dismiss"
-            type="button"
-            onClick={() => setPresenceVisible(false)}
-          >
-            Hide presence
-          </button>
-        </section>
-      ) : (
-        <section className="presence-hidden" aria-labelledby="app-title">
-          <div>
-            <p className="product-name">usePlatoAI</p>
-            <h1 id="app-title">Plato</h1>
-            <p className="status-copy">
-              Floating presence hidden. The macOS menu bar control surface still
-              opens every placeholder area.
-            </p>
-          </div>
-          <button type="button" onClick={() => setPresenceVisible(true)}>
-            Show presence
-          </button>
         </section>
       )}
 
@@ -123,15 +138,6 @@ export function App() {
         </nav>
 
         <ControlSurfacePanel activeEntry={activeEntry} />
-      </section>
-
-      <section className="readiness-panel" aria-label="Shell readiness">
-        <h2>Desktop foundation</h2>
-        <ul>
-          {shellItems.map((item) => (
-            <li key={item}>{item}</li>
-          ))}
-        </ul>
       </section>
     </main>
   );
