@@ -1,0 +1,17 @@
+{
+  "name": "useplatoai",
+  "version": "0.0.0",
+  "private": true,
+  "packageManager": "pnpm@9.15.0",
+  "scripts": {
+    "dev": "turbo dev",
+    "desktop:dev": "pnpm --filter @useplatoai/desktop tauri dev",
+    "build": "turbo build",
+    "typecheck": "turbo typecheck",
+    "test": "turbo test"
+  },
+  "devDependencies": {
+    "turbo": "^2.9.12",
+    "typescript": "^6.0.3"
+  }
+}
