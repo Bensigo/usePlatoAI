@@ -56,7 +56,8 @@ fn save_companion_settings(app: AppHandle, settings: CompanionSettings) -> Resul
 fn read_execution_authority_policy(
     app: AppHandle,
 ) -> Result<local_data::ExecutionAuthorityPolicy, String> {
-    local_data_service(&app)?.read_execution_authority_policy()
+    local_data_service(&app)?
+        .read_or_import_legacy_execution_authority_policy(legacy_companion_settings_path(&app)?)
 }
 
 #[tauri::command]
