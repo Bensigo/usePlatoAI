@@ -46,12 +46,20 @@ fn save_companion_settings(app: AppHandle, settings: CompanionSettings) -> Resul
     local_data_service(&app)?.save_companion_settings(&settings)
 }
 
+#[tauri::command]
+fn read_execution_authority_policy(
+    app: AppHandle,
+) -> Result<local_data::ExecutionAuthorityPolicy, String> {
+    local_data_service(&app)?.read_execution_authority_policy()
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
             read_companion_settings,
-            save_companion_settings
+            save_companion_settings,
+            read_execution_authority_policy
         ])
         .setup(|app| {
             use tauri::{

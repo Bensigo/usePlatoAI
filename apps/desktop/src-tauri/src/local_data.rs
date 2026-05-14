@@ -9,6 +9,7 @@ use serde_json::Value;
 use crate::CompanionSettings;
 
 const COMPANION_SETTINGS_KEY: &str = "companion";
+const DEFAULT_EXECUTION_AUTHORITY: ExecutionAuthorityMode = ExecutionAuthorityMode::AskFirst;
 
 pub struct LocalDataService {
     connection: Connection,
@@ -30,6 +31,85 @@ pub struct TaskMetadata {
     pub title: String,
     pub status: String,
     pub metadata: Value,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ExecutionAuthorityMode {
+    AskFirst,
+    TrustedLocal,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ActionImpact {
+    LowRiskLocal,
+    LocalFileChange,
+    AppControl,
+    ExternalMessage,
+    BrowserSubmission,
+    DestructiveChange,
+    Spending,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum PolicyDecision {
+    Proceed,
+    Warn,
+    Ask,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExecutionAuthorityPolicy {
+    pub mode: ExecutionAuthorityMode,
+    pub low_risk_local: PolicyDecision,
+    pub local_file_change: PolicyDecision,
+    pub app_control: PolicyDecision,
+    pub external_message: PolicyDecision,
+    pub browser_submission: PolicyDecision,
+    pub destructive_change: PolicyDecision,
+    pub spending: PolicyDecision,
+}
+
+impl ExecutionAuthorityPolicy {
+    fn for_mode(mode: ExecutionAuthorityMode) -> Self {
+        match mode {
+            ExecutionAuthorityMode::AskFirst => Self {
+                mode,
+                low_risk_local: PolicyDecision::Proceed,
+                local_file_change: PolicyDecision::Ask,
+                app_control: PolicyDecision::Ask,
+                external_message: PolicyDecision::Ask,
+                browser_submission: PolicyDecision::Ask,
+                destructive_change: PolicyDecision::Ask,
+                spending: PolicyDecision::Ask,
+            },
+            ExecutionAuthorityMode::TrustedLocal => Self {
+                mode,
+                low_risk_local: PolicyDecision::Proceed,
+                local_file_change: PolicyDecision::Warn,
+                app_control: PolicyDecision::Warn,
+                external_message: PolicyDecision::Ask,
+                browser_submission: PolicyDecision::Ask,
+                destructive_change: PolicyDecision::Ask,
+                spending: PolicyDecision::Ask,
+            },
+        }
+    }
+
+    pub fn decision_for(&self, impact: ActionImpact) -> PolicyDecision {
+        match impact {
+            ActionImpact::LowRiskLocal => self.low_risk_local,
+            ActionImpact::LocalFileChange => self.local_file_change,
+            ActionImpact::AppControl => self.app_control,
+            ActionImpact::ExternalMessage => self.external_message,
+            ActionImpact::BrowserSubmission => self.browser_submission,
+            ActionImpact::DestructiveChange => self.destructive_change,
+            ActionImpact::Spending => self.spending,
+        }
+    }
 }
 
 impl LocalDataService {
@@ -166,6 +246,28 @@ impl LocalDataService {
             .map_err(|error| error.to_string())?;
 
         self.record_audit_entry("settings", "companion_settings.saved", Value::Null)
+    }
+
+    pub fn read_execution_authority_policy(&self) -> Result<ExecutionAuthorityPolicy, String> {
+        let mode = self
+            .read_companion_settings()?
+            .map(|settings| parse_execution_authority_mode(&settings.execution_authority))
+            .transpose()?
+            .unwrap_or(DEFAULT_EXECUTION_AUTHORITY);
+
+        Ok(ExecutionAuthorityPolicy::for_mode(mode))
+    }
+
+    pub fn save_execution_authority_mode(
+        &self,
+        mode: ExecutionAuthorityMode,
+    ) -> Result<(), String> {
+        let mut settings = self
+            .read_companion_settings()?
+            .unwrap_or_else(default_companion_settings);
+        settings.execution_authority = execution_authority_mode_key(mode).to_string();
+
+        self.save_companion_settings(&settings)
     }
 
     pub fn upsert_provider_metadata(&self, provider: &ProviderMetadata) -> Result<(), String> {
@@ -345,6 +447,33 @@ fn decode_json<T: DeserializeOwned>(value: &str) -> Result<T, String> {
     serde_json::from_str(value).map_err(|error| error.to_string())
 }
 
+fn default_companion_settings() -> CompanionSettings {
+    CompanionSettings {
+        companion_name: "Plato".to_string(),
+        wake_name: "Plato".to_string(),
+        launch_behavior: "launch-at-login".to_string(),
+        memory_mode: "enabled".to_string(),
+        execution_authority: execution_authority_mode_key(DEFAULT_EXECUTION_AUTHORITY).to_string(),
+        provider_placeholder: "configure-later".to_string(),
+        onboarding_complete: false,
+    }
+}
+
+fn execution_authority_mode_key(mode: ExecutionAuthorityMode) -> &'static str {
+    match mode {
+        ExecutionAuthorityMode::AskFirst => "ask-first",
+        ExecutionAuthorityMode::TrustedLocal => "trusted-local",
+    }
+}
+
+fn parse_execution_authority_mode(value: &str) -> Result<ExecutionAuthorityMode, String> {
+    match value {
+        "ask-first" => Ok(ExecutionAuthorityMode::AskFirst),
+        "trusted-local" => Ok(ExecutionAuthorityMode::TrustedLocal),
+        unknown => Err(format!("unknown execution authority mode `{unknown}`")),
+    }
+}
+
 fn reject_secret_material(value: &Value) -> Result<(), String> {
     match value {
         Value::Object(entries) => {
@@ -405,6 +534,19 @@ mod tests {
     fn temp_legacy_settings_path() -> std::path::PathBuf {
         let unique_name = format!(
             "useplatoai-legacy-settings-{}-{}.json",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system time after unix epoch")
+                .as_nanos()
+        );
+
+        std::env::temp_dir().join(unique_name)
+    }
+
+    fn temp_local_data_path() -> std::path::PathBuf {
+        let unique_name = format!(
+            "useplatoai-local-data-{}-{}.sqlite",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -497,6 +639,110 @@ mod tests {
                 .expect("read task metadata"),
             Some(task)
         );
+    }
+
+    #[test]
+    fn reads_default_execution_authority_policy_without_saved_settings() {
+        let service = LocalDataService::in_memory().expect("create in-memory service");
+        let policy = service
+            .read_execution_authority_policy()
+            .expect("read default policy");
+
+        assert_eq!(policy.mode, ExecutionAuthorityMode::AskFirst);
+        assert_eq!(
+            policy.decision_for(ActionImpact::LowRiskLocal),
+            PolicyDecision::Proceed
+        );
+        assert_eq!(
+            policy.decision_for(ActionImpact::LocalFileChange),
+            PolicyDecision::Ask
+        );
+        assert_eq!(
+            policy.decision_for(ActionImpact::ExternalMessage),
+            PolicyDecision::Ask
+        );
+        assert_eq!(
+            policy.decision_for(ActionImpact::BrowserSubmission),
+            PolicyDecision::Ask
+        );
+        assert_eq!(
+            policy.decision_for(ActionImpact::DestructiveChange),
+            PolicyDecision::Ask
+        );
+        assert_eq!(
+            policy.decision_for(ActionImpact::Spending),
+            PolicyDecision::Ask
+        );
+    }
+
+    #[test]
+    fn updates_execution_authority_and_reads_policy_from_persisted_settings() {
+        let service = LocalDataService::in_memory().expect("create in-memory service");
+
+        service
+            .save_execution_authority_mode(ExecutionAuthorityMode::TrustedLocal)
+            .expect("save trusted local mode");
+
+        let settings = service
+            .read_companion_settings()
+            .expect("read settings")
+            .expect("settings row");
+        assert_eq!(settings.execution_authority, "trusted-local");
+
+        let policy = service
+            .read_execution_authority_policy()
+            .expect("read trusted local policy");
+        assert_eq!(policy.mode, ExecutionAuthorityMode::TrustedLocal);
+        assert_eq!(
+            policy.decision_for(ActionImpact::LowRiskLocal),
+            PolicyDecision::Proceed
+        );
+        assert_eq!(
+            policy.decision_for(ActionImpact::LocalFileChange),
+            PolicyDecision::Warn
+        );
+        assert_eq!(
+            policy.decision_for(ActionImpact::AppControl),
+            PolicyDecision::Warn
+        );
+        assert_eq!(
+            policy.decision_for(ActionImpact::ExternalMessage),
+            PolicyDecision::Ask
+        );
+        assert_eq!(
+            policy.decision_for(ActionImpact::DestructiveChange),
+            PolicyDecision::Ask
+        );
+    }
+
+    #[test]
+    fn reads_execution_authority_policy_after_storage_reopen() {
+        let database_path = temp_local_data_path();
+
+        {
+            let service = LocalDataService::open(&database_path).expect("open local data");
+            service
+                .save_execution_authority_mode(ExecutionAuthorityMode::TrustedLocal)
+                .expect("save trusted local mode");
+        }
+
+        {
+            let service = LocalDataService::open(&database_path).expect("reopen local data");
+            let policy = service
+                .read_execution_authority_policy()
+                .expect("read persisted policy");
+            assert_eq!(policy.mode, ExecutionAuthorityMode::TrustedLocal);
+            assert_eq!(
+                policy.decision_for(ActionImpact::LocalFileChange),
+                PolicyDecision::Warn
+            );
+            assert_eq!(
+                policy.decision_for(ActionImpact::BrowserSubmission),
+                PolicyDecision::Ask
+            );
+        }
+
+        std::fs::remove_file(database_path).expect("remove temp database");
     }
 
     #[test]
