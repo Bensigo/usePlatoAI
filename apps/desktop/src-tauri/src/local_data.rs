@@ -701,6 +701,12 @@ fn settings_audit_metadata(
     if baseline.execution_authority != next_settings.execution_authority {
         changed_fields.push("executionAuthority");
     }
+    if baseline.provider_placeholder != next_settings.provider_placeholder {
+        changed_fields.push("providerPlaceholder");
+    }
+    if baseline.onboarding_complete != next_settings.onboarding_complete {
+        changed_fields.push("onboardingComplete");
+    }
 
     json!({
         "settingKey": COMPANION_SETTINGS_KEY,
@@ -926,11 +932,40 @@ mod tests {
         assert_eq!(entry.category, "settings");
         assert!(!entry.created_at.is_empty());
         assert_eq!(entry.metadata["settingKey"], "companion");
-        assert_eq!(entry.metadata["changedFields"], json!(["memoryMode"]));
+        assert_eq!(
+            entry.metadata["changedFields"],
+            json!(["memoryMode", "providerPlaceholder", "onboardingComplete"])
+        );
         assert!(!entry
             .metadata
             .to_string()
             .contains("sk-test-secret-that-must-not-be-recorded"));
+    }
+
+    #[test]
+    fn records_all_changed_companion_settings_fields_without_raw_values() {
+        let service = LocalDataService::in_memory().expect("create in-memory service");
+        let mut settings = default_companion_settings();
+        settings.provider_placeholder = "openai-api-key".to_string();
+        settings.onboarding_complete = true;
+
+        service
+            .save_companion_settings(&settings)
+            .expect("save settings");
+
+        let audit_entries = service
+            .read_recent_audit_history(5)
+            .expect("read audit history");
+        let entry = audit_entries
+            .iter()
+            .find(|entry| entry.action == "companion_settings.saved")
+            .expect("settings audit entry");
+
+        assert_eq!(
+            entry.metadata["changedFields"],
+            json!(["providerPlaceholder", "onboardingComplete"])
+        );
+        assert!(!entry.metadata.to_string().contains("openai-api-key"));
     }
 
     #[test]
