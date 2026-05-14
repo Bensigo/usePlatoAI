@@ -2,7 +2,7 @@
 
 use std::{io::ErrorKind, path::Path};
 
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{params, Connection, OptionalExtension, Transaction, TransactionBehavior};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_json::{json, Value};
 
@@ -241,16 +241,30 @@ impl LocalDataService {
     }
 
     pub fn save_companion_settings(&self, settings: &CompanionSettings) -> Result<(), String> {
-        let previous_settings = self.read_companion_settings()?;
+        let next_authority_mode = parse_execution_authority_mode(&settings.execution_authority)?;
+        let settings_json = encode_json(settings)?;
+
+        let transaction =
+            Transaction::new_unchecked(&self.connection, TransactionBehavior::Immediate)
+                .map_err(|error| error.to_string())?;
+
+        let previous_settings = transaction
+            .query_row(
+                "SELECT value_json FROM settings WHERE key = ?1",
+                [COMPANION_SETTINGS_KEY],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()
+            .map_err(|error| error.to_string())?
+            .map(|settings_json| decode_json::<CompanionSettings>(&settings_json))
+            .transpose()?;
         let previous_authority_mode = previous_settings
             .as_ref()
             .map(|settings| parse_execution_authority_mode(&settings.execution_authority))
             .transpose()?
             .unwrap_or(DEFAULT_EXECUTION_AUTHORITY);
-        let next_authority_mode = parse_execution_authority_mode(&settings.execution_authority)?;
-        let settings_json = encode_json(settings)?;
 
-        self.connection
+        transaction
             .execute(
                 "
                 INSERT INTO settings (key, value_json, updated_at)
@@ -263,25 +277,46 @@ impl LocalDataService {
             )
             .map_err(|error| error.to_string())?;
 
-        self.record_audit_entry(
-            "settings",
-            "companion_settings.saved",
-            settings_audit_metadata(previous_settings.as_ref(), settings),
-        )?;
+        let settings_audit_metadata = encode_json(&settings_audit_metadata(
+            previous_settings.as_ref(),
+            settings,
+        ))?;
+        transaction
+            .execute(
+                "
+                INSERT INTO audit_history (category, action, metadata_json)
+                VALUES (?1, ?2, ?3)
+                ",
+                params![
+                    "settings",
+                    "companion_settings.saved",
+                    settings_audit_metadata
+                ],
+            )
+            .map_err(|error| error.to_string())?;
 
         if previous_authority_mode != next_authority_mode {
-            self.record_audit_entry(
-                "permissions",
-                "execution_authority.changed",
-                json!({
-                    "settingKey": "executionAuthority",
-                    "previousMode": execution_authority_mode_key(previous_authority_mode),
-                    "newMode": execution_authority_mode_key(next_authority_mode),
-                }),
-            )?;
+            let permissions_audit_metadata = encode_json(&json!({
+                "settingKey": "executionAuthority",
+                "previousMode": execution_authority_mode_key(previous_authority_mode),
+                "newMode": execution_authority_mode_key(next_authority_mode),
+            }))?;
+            transaction
+                .execute(
+                    "
+                    INSERT INTO audit_history (category, action, metadata_json)
+                    VALUES (?1, ?2, ?3)
+                    ",
+                    params![
+                        "permissions",
+                        "execution_authority.changed",
+                        permissions_audit_metadata
+                    ],
+                )
+                .map_err(|error| error.to_string())?;
         }
 
-        Ok(())
+        transaction.commit().map_err(|error| error.to_string())
     }
 
     pub fn read_execution_authority_policy(&self) -> Result<ExecutionAuthorityPolicy, String> {
@@ -601,6 +636,21 @@ impl LocalDataService {
                 BEFORE UPDATE ON provider_metadata
                 BEGIN
                     SELECT RAISE(FAIL, 'forced provider metadata failure');
+                END;
+                ",
+            )
+            .map_err(|error| error.to_string())
+    }
+
+    #[cfg(test)]
+    pub(crate) fn fail_audit_history_writes(&self) -> Result<(), String> {
+        self.connection
+            .execute_batch(
+                "
+                CREATE TRIGGER fail_audit_history_writes
+                BEFORE INSERT ON audit_history
+                BEGIN
+                    SELECT RAISE(FAIL, 'forced audit history failure');
                 END;
                 ",
             )
@@ -976,6 +1026,35 @@ mod tests {
                 && entry.metadata["previousMode"] == "ask-first"
                 && entry.metadata["newMode"] == "trusted-local"
         }));
+    }
+
+    #[test]
+    fn rolls_back_settings_save_when_audit_history_insert_fails() {
+        let service = LocalDataService::in_memory().expect("create in-memory service");
+        let original_settings = test_settings();
+
+        service
+            .save_companion_settings(&original_settings)
+            .expect("save original settings");
+        service
+            .fail_audit_history_writes()
+            .expect("force audit history failure");
+
+        let mut updated_settings = original_settings.clone();
+        updated_settings.memory_mode = "paused".to_string();
+        updated_settings.execution_authority = "trusted-local".to_string();
+
+        let error = service
+            .save_companion_settings(&updated_settings)
+            .expect_err("settings save fails when audit insert fails");
+
+        assert!(error.contains("forced audit history failure"));
+        assert_eq!(
+            service
+                .read_companion_settings()
+                .expect("read settings after failed save"),
+            Some(original_settings)
+        );
     }
 
     #[test]
