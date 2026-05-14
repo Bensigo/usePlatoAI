@@ -42,6 +42,14 @@ export type ExecutionAuthorityPolicy = {
   spending: PolicyDecision;
 };
 
+export type AuditHistoryEntry = {
+  auditId: number;
+  category: string;
+  action: string;
+  metadata: unknown;
+  createdAt: string;
+};
+
 export const defaultCompanionSettings: CompanionSettings = {
   companionName: "Plato",
   wakeName: "Plato",
@@ -125,6 +133,19 @@ export async function readExecutionAuthorityPolicy(): Promise<ExecutionAuthority
 
   const { invoke } = await import("@tauri-apps/api/core");
   return await invoke<ExecutionAuthorityPolicy>("read_execution_authority_policy");
+}
+
+export async function readRecentAuditHistory(
+  limit = 25,
+): Promise<AuditHistoryEntry[]> {
+  if (!isTauriRuntime()) {
+    return [];
+  }
+
+  const { invoke } = await import("@tauri-apps/api/core");
+  return await invoke<AuditHistoryEntry[]>("read_recent_audit_history", {
+    limit,
+  });
 }
 
 export function decisionForActionImpact(

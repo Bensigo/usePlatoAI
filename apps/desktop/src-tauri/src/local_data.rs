@@ -2,9 +2,9 @@
 
 use std::{io::ErrorKind, path::Path};
 
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{params, Connection, OptionalExtension, Transaction, TransactionBehavior};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{json, Value};
 
 use crate::CompanionSettings;
 
@@ -32,6 +32,16 @@ pub struct TaskMetadata {
     pub title: String,
     pub status: String,
     pub metadata: Value,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AuditHistoryEntry {
+    pub audit_id: i64,
+    pub category: String,
+    pub action: String,
+    pub metadata: Value,
+    pub created_at: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
@@ -231,9 +241,30 @@ impl LocalDataService {
     }
 
     pub fn save_companion_settings(&self, settings: &CompanionSettings) -> Result<(), String> {
+        let next_authority_mode = parse_execution_authority_mode(&settings.execution_authority)?;
         let settings_json = encode_json(settings)?;
 
-        self.connection
+        let transaction =
+            Transaction::new_unchecked(&self.connection, TransactionBehavior::Immediate)
+                .map_err(|error| error.to_string())?;
+
+        let previous_settings = transaction
+            .query_row(
+                "SELECT value_json FROM settings WHERE key = ?1",
+                [COMPANION_SETTINGS_KEY],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()
+            .map_err(|error| error.to_string())?
+            .map(|settings_json| decode_json::<CompanionSettings>(&settings_json))
+            .transpose()?;
+        let previous_authority_mode = previous_settings
+            .as_ref()
+            .map(|settings| parse_execution_authority_mode(&settings.execution_authority))
+            .transpose()?
+            .unwrap_or(DEFAULT_EXECUTION_AUTHORITY);
+
+        transaction
             .execute(
                 "
                 INSERT INTO settings (key, value_json, updated_at)
@@ -246,7 +277,46 @@ impl LocalDataService {
             )
             .map_err(|error| error.to_string())?;
 
-        self.record_audit_entry("settings", "companion_settings.saved", Value::Null)
+        let settings_audit_metadata = encode_json(&settings_audit_metadata(
+            previous_settings.as_ref(),
+            settings,
+        ))?;
+        transaction
+            .execute(
+                "
+                INSERT INTO audit_history (category, action, metadata_json)
+                VALUES (?1, ?2, ?3)
+                ",
+                params![
+                    "settings",
+                    "companion_settings.saved",
+                    settings_audit_metadata
+                ],
+            )
+            .map_err(|error| error.to_string())?;
+
+        if previous_authority_mode != next_authority_mode {
+            let permissions_audit_metadata = encode_json(&json!({
+                "settingKey": "executionAuthority",
+                "previousMode": execution_authority_mode_key(previous_authority_mode),
+                "newMode": execution_authority_mode_key(next_authority_mode),
+            }))?;
+            transaction
+                .execute(
+                    "
+                    INSERT INTO audit_history (category, action, metadata_json)
+                    VALUES (?1, ?2, ?3)
+                    ",
+                    params![
+                        "permissions",
+                        "execution_authority.changed",
+                        permissions_audit_metadata
+                    ],
+                )
+                .map_err(|error| error.to_string())?;
+        }
+
+        transaction.commit().map_err(|error| error.to_string())
     }
 
     pub fn read_execution_authority_policy(&self) -> Result<ExecutionAuthorityPolicy, String> {
@@ -419,6 +489,46 @@ impl LocalDataService {
             .map_err(|error| error.to_string())
     }
 
+    pub fn read_recent_audit_history(&self, limit: u32) -> Result<Vec<AuditHistoryEntry>, String> {
+        let limit = limit.clamp(1, 100);
+        let mut statement = self
+            .connection
+            .prepare(
+                "
+                SELECT audit_id, category, action, metadata_json, created_at
+                FROM audit_history
+                ORDER BY audit_id DESC
+                LIMIT ?1
+                ",
+            )
+            .map_err(|error| error.to_string())?;
+
+        let entries = statement
+            .query_map([limit], |row| {
+                let metadata_json: String = row.get(3)?;
+                let metadata = serde_json::from_str(&metadata_json).map_err(|error| {
+                    rusqlite::Error::FromSqlConversionFailure(
+                        3,
+                        rusqlite::types::Type::Text,
+                        Box::new(error),
+                    )
+                })?;
+
+                Ok(AuditHistoryEntry {
+                    audit_id: row.get(0)?,
+                    category: row.get(1)?,
+                    action: row.get(2)?,
+                    metadata,
+                    created_at: row.get(4)?,
+                })
+            })
+            .map_err(|error| error.to_string())?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|error| error.to_string())?;
+
+        Ok(entries)
+    }
+
     fn record_audit_entry(
         &self,
         category: &str,
@@ -533,6 +643,21 @@ impl LocalDataService {
     }
 
     #[cfg(test)]
+    pub(crate) fn fail_audit_history_writes(&self) -> Result<(), String> {
+        self.connection
+            .execute_batch(
+                "
+                CREATE TRIGGER fail_audit_history_writes
+                BEFORE INSERT ON audit_history
+                BEGIN
+                    SELECT RAISE(FAIL, 'forced audit history failure');
+                END;
+                ",
+            )
+            .map_err(|error| error.to_string())
+    }
+
+    #[cfg(test)]
     pub(crate) fn insert_legacy_provider_metadata_for_test(
         &self,
         provider: &ProviderMetadata,
@@ -600,6 +725,43 @@ fn parse_execution_authority_mode(value: &str) -> Result<ExecutionAuthorityMode,
         "trusted-local" => Ok(ExecutionAuthorityMode::TrustedLocal),
         unknown => Err(format!("unknown execution authority mode `{unknown}`")),
     }
+}
+
+fn settings_audit_metadata(
+    previous_settings: Option<&CompanionSettings>,
+    next_settings: &CompanionSettings,
+) -> Value {
+    let baseline = previous_settings
+        .cloned()
+        .unwrap_or_else(default_companion_settings);
+    let mut changed_fields = Vec::new();
+
+    if baseline.companion_name != next_settings.companion_name {
+        changed_fields.push("companionName");
+    }
+    if baseline.wake_name != next_settings.wake_name {
+        changed_fields.push("wakeName");
+    }
+    if baseline.launch_behavior != next_settings.launch_behavior {
+        changed_fields.push("launchBehavior");
+    }
+    if baseline.memory_mode != next_settings.memory_mode {
+        changed_fields.push("memoryMode");
+    }
+    if baseline.execution_authority != next_settings.execution_authority {
+        changed_fields.push("executionAuthority");
+    }
+    if baseline.provider_placeholder != next_settings.provider_placeholder {
+        changed_fields.push("providerPlaceholder");
+    }
+    if baseline.onboarding_complete != next_settings.onboarding_complete {
+        changed_fields.push("onboardingComplete");
+    }
+
+    json!({
+        "settingKey": COMPANION_SETTINGS_KEY,
+        "changedFields": changed_fields,
+    })
 }
 
 pub(crate) fn validate_provider_metadata(value: &Value) -> Result<(), String> {
@@ -795,6 +957,138 @@ mod tests {
                 .read_task_metadata("task-1")
                 .expect("read task metadata"),
             Some(task)
+        );
+    }
+
+    #[test]
+    fn records_recent_audit_history_for_settings_changes() {
+        let service = LocalDataService::in_memory().expect("create in-memory service");
+        let mut settings = test_settings();
+        settings.memory_mode = "paused".to_string();
+        settings.provider_placeholder = "sk-test-secret-that-must-not-be-recorded".to_string();
+
+        service
+            .save_companion_settings(&settings)
+            .expect("save settings");
+
+        let audit_entries = service
+            .read_recent_audit_history(5)
+            .expect("read audit history");
+        let entry = audit_entries
+            .iter()
+            .find(|entry| entry.action == "companion_settings.saved")
+            .expect("settings audit entry");
+
+        assert_eq!(entry.category, "settings");
+        assert!(!entry.created_at.is_empty());
+        assert_eq!(entry.metadata["settingKey"], "companion");
+        assert_eq!(
+            entry.metadata["changedFields"],
+            json!(["memoryMode", "providerPlaceholder", "onboardingComplete"])
+        );
+        assert!(!entry
+            .metadata
+            .to_string()
+            .contains("sk-test-secret-that-must-not-be-recorded"));
+    }
+
+    #[test]
+    fn records_all_changed_companion_settings_fields_without_raw_values() {
+        let service = LocalDataService::in_memory().expect("create in-memory service");
+        let mut settings = default_companion_settings();
+        settings.provider_placeholder = "openai-api-key".to_string();
+        settings.onboarding_complete = true;
+
+        service
+            .save_companion_settings(&settings)
+            .expect("save settings");
+
+        let audit_entries = service
+            .read_recent_audit_history(5)
+            .expect("read audit history");
+        let entry = audit_entries
+            .iter()
+            .find(|entry| entry.action == "companion_settings.saved")
+            .expect("settings audit entry");
+
+        assert_eq!(
+            entry.metadata["changedFields"],
+            json!(["providerPlaceholder", "onboardingComplete"])
+        );
+        assert!(!entry.metadata.to_string().contains("openai-api-key"));
+    }
+
+    #[test]
+    fn records_recent_audit_history_for_execution_authority_changes() {
+        let service = LocalDataService::in_memory().expect("create in-memory service");
+
+        service
+            .save_execution_authority_mode(ExecutionAuthorityMode::TrustedLocal)
+            .expect("save trusted local mode");
+
+        let audit_entries = service
+            .read_recent_audit_history(5)
+            .expect("read audit history");
+        let entry = audit_entries
+            .iter()
+            .find(|entry| entry.action == "execution_authority.changed")
+            .expect("execution authority audit entry");
+
+        assert_eq!(entry.category, "permissions");
+        assert!(!entry.created_at.is_empty());
+        assert_eq!(entry.metadata["settingKey"], "executionAuthority");
+        assert_eq!(entry.metadata["previousMode"], "ask-first");
+        assert_eq!(entry.metadata["newMode"], "trusted-local");
+    }
+
+    #[test]
+    fn records_permission_audit_when_settings_save_changes_execution_authority() {
+        let service = LocalDataService::in_memory().expect("create in-memory service");
+        let mut settings = test_settings();
+        settings.execution_authority = "trusted-local".to_string();
+
+        service
+            .save_companion_settings(&settings)
+            .expect("save settings");
+
+        let audit_entries = service
+            .read_recent_audit_history(5)
+            .expect("read audit history");
+
+        assert!(audit_entries.iter().any(|entry| {
+            entry.category == "permissions"
+                && entry.action == "execution_authority.changed"
+                && entry.metadata["previousMode"] == "ask-first"
+                && entry.metadata["newMode"] == "trusted-local"
+        }));
+    }
+
+    #[test]
+    fn rolls_back_settings_save_when_audit_history_insert_fails() {
+        let service = LocalDataService::in_memory().expect("create in-memory service");
+        let original_settings = test_settings();
+
+        service
+            .save_companion_settings(&original_settings)
+            .expect("save original settings");
+        service
+            .fail_audit_history_writes()
+            .expect("force audit history failure");
+
+        let mut updated_settings = original_settings.clone();
+        updated_settings.memory_mode = "paused".to_string();
+        updated_settings.execution_authority = "trusted-local".to_string();
+
+        let error = service
+            .save_companion_settings(&updated_settings)
+            .expect_err("settings save fails when audit insert fails");
+
+        assert!(error.contains("forced audit history failure"));
+        assert_eq!(
+            service
+                .read_companion_settings()
+                .expect("read settings after failed save"),
+            Some(original_settings)
         );
     }
 

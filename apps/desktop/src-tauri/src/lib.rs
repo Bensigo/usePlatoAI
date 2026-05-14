@@ -61,6 +61,14 @@ fn read_execution_authority_policy(
 }
 
 #[tauri::command]
+fn read_recent_audit_history(
+    app: AppHandle,
+    limit: u32,
+) -> Result<Vec<local_data::AuditHistoryEntry>, String> {
+    local_data_service(&app)?.read_recent_audit_history(limit)
+}
+
+#[tauri::command]
 fn save_provider_credential(
     app: AppHandle,
     credential: provider_credentials::ProviderCredentialInput,
@@ -103,6 +111,7 @@ pub fn run() {
             read_companion_settings,
             save_companion_settings,
             read_execution_authority_policy,
+            read_recent_audit_history,
             save_provider_credential,
             has_provider_credential,
             remove_provider_credential
