@@ -1,11 +1,11 @@
-use std::{fs, io::ErrorKind, path::PathBuf};
-
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager};
 
-#[derive(Debug, Deserialize, Serialize)]
+mod local_data;
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct CompanionSettings {
+pub struct CompanionSettings {
     companion_name: String,
     wake_name: String,
     launch_behavior: String,
@@ -15,42 +15,26 @@ struct CompanionSettings {
     onboarding_complete: bool,
 }
 
-fn companion_settings_path(app: &AppHandle) -> Result<PathBuf, String> {
+fn local_data_path(app: &AppHandle) -> Result<std::path::PathBuf, String> {
     Ok(app
         .path()
         .app_data_dir()
         .map_err(|error| error.to_string())?
-        .join("companion-settings.v1.json"))
+        .join("plato-local-data.v1.sqlite"))
+}
+
+fn local_data_service(app: &AppHandle) -> Result<local_data::LocalDataService, String> {
+    local_data::LocalDataService::open(local_data_path(app)?)
 }
 
 #[tauri::command]
 fn read_companion_settings(app: AppHandle) -> Result<Option<CompanionSettings>, String> {
-    let settings_path = companion_settings_path(&app)?;
-
-    match fs::read_to_string(&settings_path) {
-        Ok(settings_json) => serde_json::from_str(&settings_json)
-            .map(Some)
-            .map_err(|error| error.to_string()),
-        Err(error) if error.kind() == ErrorKind::NotFound => Ok(None),
-        Err(error) => Err(error.to_string()),
-    }
+    local_data_service(&app)?.read_companion_settings()
 }
 
 #[tauri::command]
-fn save_companion_settings(
-    app: AppHandle,
-    settings: CompanionSettings,
-) -> Result<(), String> {
-    let settings_path = companion_settings_path(&app)?;
-
-    if let Some(parent_dir) = settings_path.parent() {
-        fs::create_dir_all(parent_dir).map_err(|error| error.to_string())?;
-    }
-
-    let settings_json =
-        serde_json::to_string_pretty(&settings).map_err(|error| error.to_string())?;
-
-    fs::write(settings_path, settings_json).map_err(|error| error.to_string())
+fn save_companion_settings(app: AppHandle, settings: CompanionSettings) -> Result<(), String> {
+    local_data_service(&app)?.save_companion_settings(&settings)
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
