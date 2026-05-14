@@ -44,6 +44,7 @@ where
         if input.credential.is_empty() {
             return Err("provider credential cannot be empty".to_string());
         }
+        reject_metadata_credential_value(&input.metadata, &input.credential)?;
         validate_provider_metadata(&input.metadata)?;
 
         let previous_credential = self
@@ -95,6 +96,9 @@ where
 
         provider.auth_status = "needs-secret".to_string();
         provider.secret_ref = None;
+        if validate_provider_metadata(&provider.metadata).is_err() {
+            provider.metadata = Value::Object(Default::default());
+        }
         self.local_data.upsert_provider_metadata(&provider)?;
 
         Ok(Some(provider))
@@ -107,6 +111,35 @@ fn validate_provider_id(provider_id: &str) -> Result<(), String> {
     }
 
     Ok(())
+}
+
+fn reject_metadata_credential_value(value: &Value, credential: &str) -> Result<(), String> {
+    match value {
+        Value::String(metadata_value) => {
+            if metadata_value.contains(credential) {
+                return Err(
+                    "provider metadata must not include the submitted credential value".to_string(),
+                );
+            }
+
+            Ok(())
+        }
+        Value::Array(values) => {
+            for value in values {
+                reject_metadata_credential_value(value, credential)?;
+            }
+
+            Ok(())
+        }
+        Value::Object(entries) => {
+            for value in entries.values() {
+                reject_metadata_credential_value(value, credential)?;
+            }
+
+            Ok(())
+        }
+        _ => Ok(()),
+    }
 }
 
 #[cfg(test)]
@@ -228,5 +261,61 @@ mod tests {
                 .display_name,
             "OpenAI"
         );
+    }
+
+    #[test]
+    fn rejects_provider_credential_metadata_with_submitted_credential_value() {
+        let local_data = LocalDataService::in_memory().expect("create local data service");
+        let secret_store = MemoryProviderSecretStore::default();
+        let service = ProviderCredentialService::new(&local_data, secret_store.clone());
+        let credential = "sk-test-provider-secret";
+
+        assert!(service
+            .save_provider_credential(ProviderCredentialInput {
+                provider_id: "openai".to_string(),
+                provider_kind: "model-provider".to_string(),
+                display_name: "OpenAI".to_string(),
+                credential: credential.to_string(),
+                metadata: json!({ "value": { "nested": ["prefix-sk-test-provider-secret"] } }),
+            })
+            .is_err());
+        assert!(local_data
+            .read_provider_metadata("openai")
+            .expect("read provider metadata")
+            .is_none());
+        assert_eq!(secret_store.read_credential("openai"), None);
+    }
+
+    #[test]
+    fn removes_provider_credential_and_repairs_legacy_secret_metadata() {
+        let local_data = LocalDataService::in_memory().expect("create local data service");
+        let secret_store = MemoryProviderSecretStore::default();
+        secret_store
+            .save_provider_credential("openai", "sk-test-provider-secret")
+            .expect("seed provider credential");
+        local_data
+            .insert_legacy_provider_metadata_for_test(&ProviderMetadata {
+                provider_id: "openai".to_string(),
+                provider_kind: "model-provider".to_string(),
+                display_name: "OpenAI".to_string(),
+                auth_status: "configured".to_string(),
+                secret_ref: Some(provider_secret_ref("openai")),
+                metadata: json!({ "value": "sk-test-provider-secret" }),
+            })
+            .expect("seed legacy provider metadata");
+
+        let service = ProviderCredentialService::new(&local_data, secret_store.clone());
+        let metadata_after_removal = service
+            .remove_provider_credential("openai")
+            .expect("remove provider credential")
+            .expect("provider metadata");
+
+        assert_eq!(metadata_after_removal.auth_status, "needs-secret");
+        assert_eq!(metadata_after_removal.secret_ref, None);
+        assert_eq!(metadata_after_removal.metadata, json!({}));
+        assert_eq!(secret_store.read_credential("openai"), None);
+        assert!(!local_data
+            .contains_plaintext("sk-test-provider-secret")
+            .expect("search local data after removal"));
     }
 }
