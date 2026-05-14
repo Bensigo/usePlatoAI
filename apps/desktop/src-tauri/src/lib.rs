@@ -23,13 +23,22 @@ fn local_data_path(app: &AppHandle) -> Result<std::path::PathBuf, String> {
         .join("plato-local-data.v1.sqlite"))
 }
 
+fn legacy_companion_settings_path(app: &AppHandle) -> Result<std::path::PathBuf, String> {
+    Ok(app
+        .path()
+        .app_data_dir()
+        .map_err(|error| error.to_string())?
+        .join("companion-settings.v1.json"))
+}
+
 fn local_data_service(app: &AppHandle) -> Result<local_data::LocalDataService, String> {
     local_data::LocalDataService::open(local_data_path(app)?)
 }
 
 #[tauri::command]
 fn read_companion_settings(app: AppHandle) -> Result<Option<CompanionSettings>, String> {
-    local_data_service(&app)?.read_companion_settings()
+    local_data_service(&app)?
+        .read_or_import_legacy_companion_settings(legacy_companion_settings_path(&app)?)
 }
 
 #[tauri::command]
