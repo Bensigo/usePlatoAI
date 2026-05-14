@@ -1,6 +1,6 @@
 #![cfg_attr(not(test), allow(dead_code))]
 
-use std::path::Path;
+use std::{io::ErrorKind, path::Path};
 
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
@@ -127,6 +127,26 @@ impl LocalDataService {
             .map_err(|error| error.to_string())?
             .map(|settings_json| decode_json(&settings_json))
             .transpose()
+    }
+
+    pub fn read_or_import_legacy_companion_settings(
+        &self,
+        legacy_settings_path: impl AsRef<Path>,
+    ) -> Result<Option<CompanionSettings>, String> {
+        if let Some(settings) = self.read_companion_settings()? {
+            return Ok(Some(settings));
+        }
+
+        let legacy_settings_json = match std::fs::read_to_string(legacy_settings_path) {
+            Ok(settings_json) => settings_json,
+            Err(error) if error.kind() == ErrorKind::NotFound => return Ok(None),
+            Err(error) => return Err(error.to_string()),
+        };
+        let settings = decode_json(&legacy_settings_json)?;
+
+        self.save_companion_settings(&settings)?;
+
+        Ok(Some(settings))
     }
 
     pub fn save_companion_settings(&self, settings: &CompanionSettings) -> Result<(), String> {
@@ -382,6 +402,19 @@ mod tests {
         }
     }
 
+    fn temp_legacy_settings_path() -> std::path::PathBuf {
+        let unique_name = format!(
+            "useplatoai-legacy-settings-{}-{}.json",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system time after unix epoch")
+                .as_nanos()
+        );
+
+        std::env::temp_dir().join(unique_name)
+    }
+
     #[test]
     fn creates_local_data_schema_boundaries() {
         let service = LocalDataService::in_memory().expect("create in-memory service");
@@ -464,6 +497,63 @@ mod tests {
                 .expect("read task metadata"),
             Some(task)
         );
+    }
+
+    #[test]
+    fn imports_legacy_json_companion_settings_when_sqlite_is_empty() {
+        let service = LocalDataService::in_memory().expect("create in-memory service");
+        let settings = test_settings();
+        let legacy_path = temp_legacy_settings_path();
+        let legacy_settings_json =
+            serde_json::to_string_pretty(&settings).expect("encode legacy settings");
+
+        std::fs::write(&legacy_path, legacy_settings_json).expect("write legacy settings");
+
+        assert_eq!(
+            service
+                .read_or_import_legacy_companion_settings(&legacy_path)
+                .expect("import legacy settings"),
+            Some(settings.clone())
+        );
+        assert_eq!(
+            service
+                .read_companion_settings()
+                .expect("read imported settings"),
+            Some(settings)
+        );
+
+        std::fs::remove_file(legacy_path).expect("remove legacy settings");
+    }
+
+    #[test]
+    fn keeps_existing_sqlite_companion_settings_over_legacy_json() {
+        let service = LocalDataService::in_memory().expect("create in-memory service");
+        let mut existing_settings = test_settings();
+        existing_settings.memory_mode = "paused".to_string();
+        let legacy_settings = test_settings();
+        let legacy_path = temp_legacy_settings_path();
+        let legacy_settings_json =
+            serde_json::to_string_pretty(&legacy_settings).expect("encode legacy settings");
+
+        service
+            .save_companion_settings(&existing_settings)
+            .expect("save existing sqlite settings");
+        std::fs::write(&legacy_path, legacy_settings_json).expect("write legacy settings");
+
+        assert_eq!(
+            service
+                .read_or_import_legacy_companion_settings(&legacy_path)
+                .expect("read existing settings"),
+            Some(existing_settings.clone())
+        );
+        assert_eq!(
+            service
+                .read_companion_settings()
+                .expect("read unchanged settings"),
+            Some(existing_settings)
+        );
+
+        std::fs::remove_file(legacy_path).expect("remove legacy settings");
     }
 
     #[test]
