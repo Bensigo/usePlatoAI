@@ -53,6 +53,14 @@ fn save_companion_settings(app: AppHandle, settings: CompanionSettings) -> Resul
 }
 
 #[tauri::command]
+fn read_execution_authority_policy(
+    app: AppHandle,
+) -> Result<local_data::ExecutionAuthorityPolicy, String> {
+    local_data_service(&app)?
+        .read_or_import_legacy_execution_authority_policy(legacy_companion_settings_path(&app)?)
+}
+
+#[tauri::command]
 fn save_provider_credential(
     app: AppHandle,
     credential: provider_credentials::ProviderCredentialInput,
@@ -94,6 +102,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             read_companion_settings,
             save_companion_settings,
+            read_execution_authority_policy,
             save_provider_credential,
             has_provider_credential,
             remove_provider_credential

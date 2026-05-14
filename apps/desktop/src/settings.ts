@@ -1,6 +1,15 @@
 export type LaunchBehavior = "launch-at-login" | "manual-only";
 export type MemoryMode = "enabled" | "paused";
 export type ExecutionAuthority = "ask-first" | "trusted-local";
+export type ActionImpact =
+  | "low-risk-local"
+  | "local-file-change"
+  | "app-control"
+  | "external-message"
+  | "browser-submission"
+  | "destructive-change"
+  | "spending";
+export type PolicyDecision = "proceed" | "warn" | "ask";
 export type ProviderPlaceholder =
   | "configure-later"
   | "openai-api-key"
@@ -22,6 +31,17 @@ export type SettingsStore = {
   save: (settings: CompanionSettings) => Promise<void>;
 };
 
+export type ExecutionAuthorityPolicy = {
+  mode: ExecutionAuthority;
+  lowRiskLocal: PolicyDecision;
+  localFileChange: PolicyDecision;
+  appControl: PolicyDecision;
+  externalMessage: PolicyDecision;
+  browserSubmission: PolicyDecision;
+  destructiveChange: PolicyDecision;
+  spending: PolicyDecision;
+};
+
 export const defaultCompanionSettings: CompanionSettings = {
   companionName: "Plato",
   wakeName: "Plato",
@@ -30,6 +50,17 @@ export const defaultCompanionSettings: CompanionSettings = {
   executionAuthority: "ask-first",
   providerPlaceholder: "configure-later",
   onboardingComplete: false,
+};
+
+export const defaultExecutionAuthorityPolicy: ExecutionAuthorityPolicy = {
+  mode: "ask-first",
+  lowRiskLocal: "proceed",
+  localFileChange: "ask",
+  appControl: "ask",
+  externalMessage: "ask",
+  browserSubmission: "ask",
+  destructiveChange: "ask",
+  spending: "ask",
 };
 
 export function normalizeCompanionSettings(
@@ -85,6 +116,37 @@ export function createTauriSettingsStore(): SettingsStore {
       });
     },
   };
+}
+
+export async function readExecutionAuthorityPolicy(): Promise<ExecutionAuthorityPolicy> {
+  if (!isTauriRuntime()) {
+    return defaultExecutionAuthorityPolicy;
+  }
+
+  const { invoke } = await import("@tauri-apps/api/core");
+  return await invoke<ExecutionAuthorityPolicy>("read_execution_authority_policy");
+}
+
+export function decisionForActionImpact(
+  policy: ExecutionAuthorityPolicy,
+  impact: ActionImpact,
+): PolicyDecision {
+  switch (impact) {
+    case "low-risk-local":
+      return policy.lowRiskLocal;
+    case "local-file-change":
+      return policy.localFileChange;
+    case "app-control":
+      return policy.appControl;
+    case "external-message":
+      return policy.externalMessage;
+    case "browser-submission":
+      return policy.browserSubmission;
+    case "destructive-change":
+      return policy.destructiveChange;
+    case "spending":
+      return policy.spending;
+  }
 }
 
 export function providerPlaceholderLabel(value: ProviderPlaceholder) {

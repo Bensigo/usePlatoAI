@@ -12,6 +12,8 @@ import {
   type CompanionSettings,
   createMemorySettingsStore,
   defaultCompanionSettings,
+  defaultExecutionAuthorityPolicy,
+  decisionForActionImpact,
 } from "../src/settings";
 
 const completedSettings: CompanionSettings = {
@@ -110,6 +112,18 @@ describe("desktop app shell", () => {
     await settingsStore.save(localSettings);
 
     await expect(settingsStore.read()).resolves.toEqual(localSettings);
+  });
+
+  it("exposes execution authority decisions outside React state", () => {
+    expect(
+      decisionForActionImpact(defaultExecutionAuthorityPolicy, "low-risk-local"),
+    ).toBe("proceed");
+    expect(
+      decisionForActionImpact(defaultExecutionAuthorityPolicy, "local-file-change"),
+    ).toBe("ask");
+    expect(
+      decisionForActionImpact(defaultExecutionAuthorityPolicy, "external-message"),
+    ).toBe("ask");
   });
 
   it("does not render onboarding until saved settings are loaded", () => {
