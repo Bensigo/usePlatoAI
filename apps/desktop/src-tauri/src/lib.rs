@@ -2,6 +2,8 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager};
 
 mod local_data;
+mod provider_credentials;
+mod secret_store;
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -35,6 +37,10 @@ fn local_data_service(app: &AppHandle) -> Result<local_data::LocalDataService, S
     local_data::LocalDataService::open(local_data_path(app)?)
 }
 
+fn provider_secret_store() -> Result<secret_store::KeychainProviderSecretStore, String> {
+    secret_store::KeychainProviderSecretStore::new()
+}
+
 #[tauri::command]
 fn read_companion_settings(app: AppHandle) -> Result<Option<CompanionSettings>, String> {
     local_data_service(&app)?
@@ -53,13 +59,52 @@ fn read_execution_authority_policy(
     local_data_service(&app)?.read_execution_authority_policy()
 }
 
+#[tauri::command]
+fn save_provider_credential(
+    app: AppHandle,
+    credential: provider_credentials::ProviderCredentialInput,
+) -> Result<local_data::ProviderMetadata, String> {
+    let local_data = local_data_service(&app)?;
+    let secret_store = provider_secret_store()?;
+    let credential_service =
+        provider_credentials::ProviderCredentialService::new(&local_data, secret_store);
+
+    credential_service.save_provider_credential(credential)
+}
+
+#[tauri::command]
+fn has_provider_credential(app: AppHandle, provider_id: String) -> Result<bool, String> {
+    let local_data = local_data_service(&app)?;
+    let secret_store = provider_secret_store()?;
+    let credential_service =
+        provider_credentials::ProviderCredentialService::new(&local_data, secret_store);
+
+    credential_service.has_provider_credential(&provider_id)
+}
+
+#[tauri::command]
+fn remove_provider_credential(
+    app: AppHandle,
+    provider_id: String,
+) -> Result<Option<local_data::ProviderMetadata>, String> {
+    let local_data = local_data_service(&app)?;
+    let secret_store = provider_secret_store()?;
+    let credential_service =
+        provider_credentials::ProviderCredentialService::new(&local_data, secret_store);
+
+    credential_service.remove_provider_credential(&provider_id)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
             read_companion_settings,
             save_companion_settings,
-            read_execution_authority_policy
+            read_execution_authority_policy,
+            save_provider_credential,
+            has_provider_credential,
+            remove_provider_credential
         ])
         .setup(|app| {
             use tauri::{

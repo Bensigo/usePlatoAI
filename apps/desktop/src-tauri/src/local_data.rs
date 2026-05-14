@@ -16,6 +16,7 @@ pub struct LocalDataService {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ProviderMetadata {
     pub provider_id: String,
     pub provider_kind: String,
@@ -125,7 +126,7 @@ impl LocalDataService {
     }
 
     #[cfg(test)]
-    fn in_memory() -> Result<Self, String> {
+    pub(crate) fn in_memory() -> Result<Self, String> {
         let connection = Connection::open_in_memory().map_err(|error| error.to_string())?;
         let service = Self { connection };
         service.migrate()?;
@@ -271,7 +272,7 @@ impl LocalDataService {
     }
 
     pub fn upsert_provider_metadata(&self, provider: &ProviderMetadata) -> Result<(), String> {
-        reject_secret_material(&provider.metadata)?;
+        validate_provider_metadata(&provider.metadata)?;
         let metadata_json = encode_json(&provider.metadata)?;
 
         self.connection
@@ -437,6 +438,120 @@ impl LocalDataService {
             .map(|value| value.unwrap_or(false))
             .map_err(|error| error.to_string())
     }
+
+    #[cfg(test)]
+    pub(crate) fn contains_plaintext(&self, text: &str) -> Result<bool, String> {
+        use rusqlite::params_from_iter;
+
+        let pattern = format!("%{text}%");
+
+        for (table_name, columns) in [
+            ("settings", &["value_json"][..]),
+            (
+                "provider_metadata",
+                &[
+                    "provider_id",
+                    "provider_kind",
+                    "display_name",
+                    "auth_status",
+                    "secret_ref",
+                    "metadata_json",
+                ][..],
+            ),
+            (
+                "task_metadata",
+                &["task_id", "title", "status", "metadata_json"][..],
+            ),
+            (
+                "memory_metadata",
+                &["memory_id", "summary", "source_kind", "metadata_json"][..],
+            ),
+            (
+                "capability_metadata",
+                &["capability_id", "capability_kind", "metadata_json"][..],
+            ),
+            (
+                "audit_history",
+                &["category", "action", "metadata_json"][..],
+            ),
+            ("user_preferences", &["key", "value_json"][..]),
+        ] {
+            let predicates = columns
+                .iter()
+                .map(|column| format!("COALESCE({column}, '') LIKE ?"))
+                .collect::<Vec<_>>()
+                .join(" OR ");
+            let query = format!("SELECT EXISTS (SELECT 1 FROM {table_name} WHERE {predicates})");
+            let values = std::iter::repeat_n(pattern.as_str(), columns.len());
+            let found = self
+                .connection
+                .query_row(&query, params_from_iter(values), |row| {
+                    row.get::<_, bool>(0)
+                })
+                .map_err(|error| error.to_string())?;
+
+            if found {
+                return Ok(true);
+            }
+        }
+
+        Ok(false)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn fail_provider_metadata_writes(&self) -> Result<(), String> {
+        self.connection
+            .execute_batch(
+                "
+                CREATE TRIGGER fail_provider_metadata_writes
+                BEFORE INSERT ON provider_metadata
+                BEGIN
+                    SELECT RAISE(FAIL, 'forced provider metadata failure');
+                END;
+
+                CREATE TRIGGER fail_provider_metadata_updates
+                BEFORE UPDATE ON provider_metadata
+                BEGIN
+                    SELECT RAISE(FAIL, 'forced provider metadata failure');
+                END;
+                ",
+            )
+            .map_err(|error| error.to_string())
+    }
+
+    #[cfg(test)]
+    pub(crate) fn insert_legacy_provider_metadata_for_test(
+        &self,
+        provider: &ProviderMetadata,
+    ) -> Result<(), String> {
+        let metadata_json = encode_json(&provider.metadata)?;
+
+        self.connection
+            .execute(
+                "
+                INSERT INTO provider_metadata (
+                    provider_id,
+                    provider_kind,
+                    display_name,
+                    auth_status,
+                    secret_ref,
+                    metadata_json,
+                    updated_at
+                )
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, CURRENT_TIMESTAMP)
+                ",
+                params![
+                    provider.provider_id,
+                    provider.provider_kind,
+                    provider.display_name,
+                    provider.auth_status,
+                    provider.secret_ref,
+                    metadata_json
+                ],
+            )
+            .map(|_| ())
+            .map_err(|error| error.to_string())
+    }
 }
 
 fn encode_json(value: &impl Serialize) -> Result<String, String> {
@@ -474,6 +589,10 @@ fn parse_execution_authority_mode(value: &str) -> Result<ExecutionAuthorityMode,
     }
 }
 
+pub(crate) fn validate_provider_metadata(value: &Value) -> Result<(), String> {
+    reject_secret_material(value)
+}
+
 fn reject_secret_material(value: &Value) -> Result<(), String> {
     match value {
         Value::Object(entries) => {
@@ -509,8 +628,33 @@ fn reject_secret_material(value: &Value) -> Result<(), String> {
 
             Ok(())
         }
+        Value::String(value) => {
+            if looks_like_secret_value(value) {
+                return Err("provider metadata must not include secret-looking values".to_string());
+            }
+
+            Ok(())
+        }
         _ => Ok(()),
     }
+}
+
+fn looks_like_secret_value(value: &str) -> bool {
+    let trimmed = value.trim();
+    let lower = trimmed.to_ascii_lowercase();
+
+    if lower.len() >= 20
+        && [
+            "sk-", "sk_ant_", "sk-ant-", "ghp_", "gho_", "ghu_", "ghs_", "ghr_", "xoxb-", "xoxp-",
+            "xoxa-",
+        ]
+        .iter()
+        .any(|prefix| lower.starts_with(prefix))
+    {
+        return true;
+    }
+
+    trimmed.len() >= 40 && trimmed.starts_with("eyJ") && trimmed.matches('.').count() == 2
 }
 
 #[cfg(test)]
@@ -812,6 +956,27 @@ mod tests {
             auth_status: "configured".to_string(),
             secret_ref: None,
             metadata: json!({ "api_key": "should-not-live-here" }),
+        };
+
+        assert!(service.upsert_provider_metadata(&provider).is_err());
+        assert_eq!(
+            service
+                .read_provider_metadata("openai")
+                .expect("read provider metadata"),
+            None
+        );
+    }
+
+    #[test]
+    fn rejects_provider_metadata_that_contains_secret_looking_values() {
+        let service = LocalDataService::in_memory().expect("create in-memory service");
+        let provider = ProviderMetadata {
+            provider_id: "openai".to_string(),
+            provider_kind: "model-provider".to_string(),
+            display_name: "OpenAI".to_string(),
+            auth_status: "configured".to_string(),
+            secret_ref: None,
+            metadata: json!({ "value": ["sk-test-provider-secret-value"] }),
         };
 
         assert!(service.upsert_provider_metadata(&provider).is_err());
