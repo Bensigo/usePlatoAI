@@ -562,7 +562,9 @@ impl LocalDataService {
         let capability_count = self.count_table_rows("capability_metadata")?;
         let audit_count = self.count_table_rows("audit_history")?;
         let preference_count = self.count_table_rows("user_preferences")?;
-        let settings = self.read_companion_settings()?.unwrap_or_else(default_companion_settings);
+        let settings = self
+            .read_companion_settings()?
+            .unwrap_or_else(default_companion_settings);
 
         Ok(LocalDataOverview {
             categories: vec![
