@@ -60,17 +60,12 @@ fn provider_secret_store() -> Result<secret_store::KeychainProviderSecretStore, 
     secret_store::KeychainProviderSecretStore::new()
 }
 
-fn provider_auth_status_for_snapshot(
-    provider_metadata: Option<&local_data::ProviderMetadata>,
-    has_secret: bool,
-) -> String {
-    if !has_secret {
-        return "needs-secret".to_string();
+fn provider_auth_status_for_snapshot(has_secret: bool) -> String {
+    if has_secret {
+        "configured".to_string()
+    } else {
+        "needs-secret".to_string()
     }
-
-    provider_metadata
-        .map(|provider| provider.auth_status.clone())
-        .unwrap_or_else(|| "configured".to_string())
 }
 
 #[tauri::command]
@@ -140,7 +135,7 @@ where
                 .as_ref()
                 .map(|provider| provider.display_name.clone())
                 .unwrap_or_else(|| "OpenAI".to_string()),
-            auth_status: provider_auth_status_for_snapshot(provider_metadata.as_ref(), has_secret),
+            auth_status: provider_auth_status_for_snapshot(has_secret),
             has_secret,
         },
         execution_authority: local_data
@@ -252,7 +247,9 @@ mod tests {
     use serde_json::json;
 
     use super::*;
-    use crate::secret_store::{provider_secret_ref, test_support::MemoryProviderSecretStore};
+    use crate::secret_store::{
+        provider_secret_ref, test_support::MemoryProviderSecretStore, ProviderSecretStore,
+    };
 
     fn missing_legacy_settings_path() -> std::path::PathBuf {
         std::env::temp_dir().join(format!(
@@ -296,6 +293,46 @@ mod tests {
                 .expect("secrets category")
                 .status,
             "empty"
+        );
+    }
+
+    #[test]
+    fn trust_snapshot_reports_configured_when_needs_secret_metadata_has_secret() {
+        let local_data =
+            local_data::LocalDataService::in_memory().expect("create local data service");
+        local_data
+            .insert_legacy_provider_metadata_for_test(&local_data::ProviderMetadata {
+                provider_id: "openai".to_string(),
+                provider_kind: "model-provider".to_string(),
+                display_name: "OpenAI".to_string(),
+                auth_status: "needs-secret".to_string(),
+                secret_ref: None,
+                metadata: json!({ "configuredBy": "test" }),
+            })
+            .expect("seed provider metadata");
+        let secret_store = MemoryProviderSecretStore::default();
+        secret_store
+            .save_provider_credential("openai", "sk-test-provider-secret")
+            .expect("seed provider credential");
+
+        let snapshot = build_trust_foundation_snapshot(
+            &local_data,
+            secret_store,
+            missing_legacy_settings_path(),
+        )
+        .expect("build trust snapshot");
+
+        assert!(snapshot.provider_credential.has_secret);
+        assert_eq!(snapshot.provider_credential.auth_status, "configured");
+        assert_eq!(
+            snapshot
+                .local_data
+                .categories
+                .iter()
+                .find(|category| category.category_id == "secrets")
+                .expect("secrets category")
+                .status,
+            "active"
         );
     }
 }
