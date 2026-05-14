@@ -258,6 +258,19 @@ impl LocalDataService {
         Ok(ExecutionAuthorityPolicy::for_mode(mode))
     }
 
+    pub fn read_or_import_legacy_execution_authority_policy(
+        &self,
+        legacy_settings_path: impl AsRef<Path>,
+    ) -> Result<ExecutionAuthorityPolicy, String> {
+        let mode = self
+            .read_or_import_legacy_companion_settings(legacy_settings_path)?
+            .map(|settings| parse_execution_authority_mode(&settings.execution_authority))
+            .transpose()?
+            .unwrap_or(DEFAULT_EXECUTION_AUTHORITY);
+
+        Ok(ExecutionAuthorityPolicy::for_mode(mode))
+    }
+
     pub fn save_execution_authority_mode(
         &self,
         mode: ExecutionAuthorityMode,
@@ -743,6 +756,37 @@ mod tests {
         }
 
         std::fs::remove_file(database_path).expect("remove temp database");
+    }
+
+    #[test]
+    fn imports_legacy_json_before_reading_execution_authority_policy() {
+        let service = LocalDataService::in_memory().expect("create in-memory service");
+        let mut settings = test_settings();
+        settings.execution_authority = "trusted-local".to_string();
+        let legacy_path = temp_legacy_settings_path();
+        let legacy_settings_json =
+            serde_json::to_string_pretty(&settings).expect("encode legacy settings");
+
+        std::fs::write(&legacy_path, legacy_settings_json).expect("write legacy settings");
+
+        let policy = service
+            .read_or_import_legacy_execution_authority_policy(&legacy_path)
+            .expect("read trusted local legacy policy");
+        assert_eq!(policy.mode, ExecutionAuthorityMode::TrustedLocal);
+        assert_eq!(
+            policy.decision_for(ActionImpact::LocalFileChange),
+            PolicyDecision::Warn
+        );
+        assert_eq!(
+            service
+                .read_companion_settings()
+                .expect("read imported settings")
+                .expect("settings row")
+                .execution_authority,
+            "trusted-local"
+        );
+
+        std::fs::remove_file(legacy_path).expect("remove legacy settings");
     }
 
     #[test]
