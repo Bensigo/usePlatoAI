@@ -47,6 +47,9 @@ where
         reject_metadata_credential_value(&input.metadata, &input.credential)?;
         validate_provider_metadata(&input.metadata)?;
 
+        let previous_credential = self
+            .secret_store
+            .read_provider_credential(&input.provider_id)?;
         let secret_ref = self
             .secret_store
             .save_provider_credential(&input.provider_id, &input.credential)?;
@@ -60,9 +63,15 @@ where
         };
 
         if let Err(error) = self.local_data.upsert_provider_metadata(&provider) {
-            let _ = self
-                .secret_store
-                .remove_provider_credential(&provider.provider_id);
+            if let Some(previous_credential) = previous_credential {
+                let _ = self
+                    .secret_store
+                    .save_provider_credential(&provider.provider_id, &previous_credential);
+            } else {
+                let _ = self
+                    .secret_store
+                    .remove_provider_credential(&provider.provider_id);
+            }
             return Err(error);
         }
 
@@ -206,6 +215,52 @@ mod tests {
             .expect("read provider metadata")
             .is_none());
         assert_eq!(secret_store.read_credential("openai"), None);
+    }
+
+    #[test]
+    fn preserves_existing_provider_credential_when_metadata_update_fails() {
+        let local_data = LocalDataService::in_memory().expect("create local data service");
+        let secret_store = MemoryProviderSecretStore::default();
+        let service = ProviderCredentialService::new(&local_data, secret_store.clone());
+
+        service
+            .save_provider_credential(ProviderCredentialInput {
+                provider_id: "openai".to_string(),
+                provider_kind: "model-provider".to_string(),
+                display_name: "OpenAI".to_string(),
+                credential: "sk-existing-provider-secret".to_string(),
+                metadata: json!({ "configuredBy": "test" }),
+            })
+            .expect("save existing provider credential");
+        local_data
+            .fail_provider_metadata_writes()
+            .expect("force metadata persistence failure");
+
+        assert!(service
+            .save_provider_credential(ProviderCredentialInput {
+                provider_id: "openai".to_string(),
+                provider_kind: "model-provider".to_string(),
+                display_name: "OpenAI updated".to_string(),
+                credential: "sk-new-provider-secret".to_string(),
+                metadata: json!({ "configuredBy": "test", "engine": "codex" }),
+            })
+            .is_err());
+
+        assert_eq!(
+            secret_store.read_credential("openai"),
+            Some("sk-existing-provider-secret".to_string())
+        );
+        assert!(service
+            .has_provider_credential("openai")
+            .expect("check credential presence"));
+        assert_eq!(
+            local_data
+                .read_provider_metadata("openai")
+                .expect("read provider metadata")
+                .expect("provider metadata")
+                .display_name,
+            "OpenAI"
+        );
     }
 
     #[test]

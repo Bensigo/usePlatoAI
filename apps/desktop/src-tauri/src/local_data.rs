@@ -397,6 +397,27 @@ impl LocalDataService {
     }
 
     #[cfg(test)]
+    pub(crate) fn fail_provider_metadata_writes(&self) -> Result<(), String> {
+        self.connection
+            .execute_batch(
+                "
+                CREATE TRIGGER fail_provider_metadata_writes
+                BEFORE INSERT ON provider_metadata
+                BEGIN
+                    SELECT RAISE(FAIL, 'forced provider metadata failure');
+                END;
+
+                CREATE TRIGGER fail_provider_metadata_updates
+                BEFORE UPDATE ON provider_metadata
+                BEGIN
+                    SELECT RAISE(FAIL, 'forced provider metadata failure');
+                END;
+                ",
+            )
+            .map_err(|error| error.to_string())
+    }
+
+    #[cfg(test)]
     pub(crate) fn insert_legacy_provider_metadata_for_test(
         &self,
         provider: &ProviderMetadata,
