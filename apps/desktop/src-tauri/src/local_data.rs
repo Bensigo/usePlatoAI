@@ -15,6 +15,7 @@ pub struct LocalDataService {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ProviderMetadata {
     pub provider_id: String,
     pub provider_kind: String,
@@ -45,7 +46,7 @@ impl LocalDataService {
     }
 
     #[cfg(test)]
-    fn in_memory() -> Result<Self, String> {
+    pub(crate) fn in_memory() -> Result<Self, String> {
         let connection = Connection::open_in_memory().map_err(|error| error.to_string())?;
         let service = Self { connection };
         service.migrate()?;
@@ -169,7 +170,7 @@ impl LocalDataService {
     }
 
     pub fn upsert_provider_metadata(&self, provider: &ProviderMetadata) -> Result<(), String> {
-        reject_secret_material(&provider.metadata)?;
+        validate_provider_metadata(&provider.metadata)?;
         let metadata_json = encode_json(&provider.metadata)?;
 
         self.connection
@@ -335,6 +336,65 @@ impl LocalDataService {
             .map(|value| value.unwrap_or(false))
             .map_err(|error| error.to_string())
     }
+
+    #[cfg(test)]
+    pub(crate) fn contains_plaintext(&self, text: &str) -> Result<bool, String> {
+        use rusqlite::params_from_iter;
+
+        let pattern = format!("%{text}%");
+
+        for (table_name, columns) in [
+            ("settings", &["value_json"][..]),
+            (
+                "provider_metadata",
+                &[
+                    "provider_id",
+                    "provider_kind",
+                    "display_name",
+                    "auth_status",
+                    "secret_ref",
+                    "metadata_json",
+                ][..],
+            ),
+            (
+                "task_metadata",
+                &["task_id", "title", "status", "metadata_json"][..],
+            ),
+            (
+                "memory_metadata",
+                &["memory_id", "summary", "source_kind", "metadata_json"][..],
+            ),
+            (
+                "capability_metadata",
+                &["capability_id", "capability_kind", "metadata_json"][..],
+            ),
+            (
+                "audit_history",
+                &["category", "action", "metadata_json"][..],
+            ),
+            ("user_preferences", &["key", "value_json"][..]),
+        ] {
+            let predicates = columns
+                .iter()
+                .map(|column| format!("COALESCE({column}, '') LIKE ?"))
+                .collect::<Vec<_>>()
+                .join(" OR ");
+            let query = format!("SELECT EXISTS (SELECT 1 FROM {table_name} WHERE {predicates})");
+            let values = std::iter::repeat_n(pattern.as_str(), columns.len());
+            let found = self
+                .connection
+                .query_row(&query, params_from_iter(values), |row| {
+                    row.get::<_, bool>(0)
+                })
+                .map_err(|error| error.to_string())?;
+
+            if found {
+                return Ok(true);
+            }
+        }
+
+        Ok(false)
+    }
 }
 
 fn encode_json(value: &impl Serialize) -> Result<String, String> {
@@ -343,6 +403,10 @@ fn encode_json(value: &impl Serialize) -> Result<String, String> {
 
 fn decode_json<T: DeserializeOwned>(value: &str) -> Result<T, String> {
     serde_json::from_str(value).map_err(|error| error.to_string())
+}
+
+pub(crate) fn validate_provider_metadata(value: &Value) -> Result<(), String> {
+    reject_secret_material(value)
 }
 
 fn reject_secret_material(value: &Value) -> Result<(), String> {
