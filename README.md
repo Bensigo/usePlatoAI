@@ -30,3 +30,14 @@ pnpm build
 
 Milestone 001 has a manual launch and verification path in
 [`docs/milestones/001-desktop-shell-and-first-run.md`](docs/milestones/001-desktop-shell-and-first-run.md#local-launch-and-verification).
+
+## Local Secrets
+
+User provider credentials must go through the native provider secret-store
+abstraction. On macOS, the default backend is Keychain. Local durable data may
+store provider metadata such as provider id, display name, auth status, and an
+opaque secret reference, but it must not store API keys, tokens, passwords, or
+other credential values.
+
+Use `.env` files only for developer configuration needed to run tooling locally.
+Do not use `.env` as primary user secret storage for Plato provider credentials.
