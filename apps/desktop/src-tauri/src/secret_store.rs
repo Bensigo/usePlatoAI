@@ -10,6 +10,7 @@ pub fn provider_secret_ref(provider_id: &str) -> String {
 }
 
 pub trait ProviderSecretStore {
+    fn read_provider_credential(&self, provider_id: &str) -> Result<Option<String>, String>;
     fn save_provider_credential(
         &self,
         provider_id: &str,
@@ -34,6 +35,14 @@ impl KeychainProviderSecretStore {
 }
 
 impl ProviderSecretStore for KeychainProviderSecretStore {
+    fn read_provider_credential(&self, provider_id: &str) -> Result<Option<String>, String> {
+        match Self::entry(provider_id)?.get_password() {
+            Ok(credential) => Ok(Some(credential)),
+            Err(Error::NoEntry) => Ok(None),
+            Err(error) => Err(secret_store_error(error)),
+        }
+    }
+
     fn save_provider_credential(
         &self,
         provider_id: &str,
@@ -47,11 +56,8 @@ impl ProviderSecretStore for KeychainProviderSecretStore {
     }
 
     fn has_provider_credential(&self, provider_id: &str) -> Result<bool, String> {
-        match Self::entry(provider_id)?.get_password() {
-            Ok(_) => Ok(true),
-            Err(Error::NoEntry) => Ok(false),
-            Err(error) => Err(secret_store_error(error)),
-        }
+        self.read_provider_credential(provider_id)
+            .map(|credential| credential.is_some())
     }
 
     fn remove_provider_credential(&self, provider_id: &str) -> Result<(), String> {
@@ -108,6 +114,10 @@ pub mod test_support {
     }
 
     impl ProviderSecretStore for MemoryProviderSecretStore {
+        fn read_provider_credential(&self, provider_id: &str) -> Result<Option<String>, String> {
+            Ok(self.read_credential(provider_id))
+        }
+
         fn save_provider_credential(
             &self,
             provider_id: &str,
