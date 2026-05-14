@@ -395,6 +395,40 @@ impl LocalDataService {
 
         Ok(false)
     }
+
+    #[cfg(test)]
+    pub(crate) fn insert_legacy_provider_metadata_for_test(
+        &self,
+        provider: &ProviderMetadata,
+    ) -> Result<(), String> {
+        let metadata_json = encode_json(&provider.metadata)?;
+
+        self.connection
+            .execute(
+                "
+                INSERT INTO provider_metadata (
+                    provider_id,
+                    provider_kind,
+                    display_name,
+                    auth_status,
+                    secret_ref,
+                    metadata_json,
+                    updated_at
+                )
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, CURRENT_TIMESTAMP)
+                ",
+                params![
+                    provider.provider_id,
+                    provider.provider_kind,
+                    provider.display_name,
+                    provider.auth_status,
+                    provider.secret_ref,
+                    metadata_json
+                ],
+            )
+            .map(|_| ())
+            .map_err(|error| error.to_string())
+    }
 }
 
 fn encode_json(value: &impl Serialize) -> Result<String, String> {
