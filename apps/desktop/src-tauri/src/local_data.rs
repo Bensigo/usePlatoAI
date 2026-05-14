@@ -2,7 +2,7 @@
 
 use std::{io::ErrorKind, path::Path};
 
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{params, Connection, OptionalExtension, Transaction, TransactionBehavior};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_json::{json, Value};
 
@@ -241,19 +241,28 @@ impl LocalDataService {
     }
 
     pub fn save_companion_settings(&self, settings: &CompanionSettings) -> Result<(), String> {
-        let previous_settings = self.read_companion_settings()?;
+        let next_authority_mode = parse_execution_authority_mode(&settings.execution_authority)?;
+        let settings_json = encode_json(settings)?;
+
+        let transaction =
+            Transaction::new_unchecked(&self.connection, TransactionBehavior::Immediate)
+                .map_err(|error| error.to_string())?;
+
+        let previous_settings = transaction
+            .query_row(
+                "SELECT value_json FROM settings WHERE key = ?1",
+                [COMPANION_SETTINGS_KEY],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()
+            .map_err(|error| error.to_string())?
+            .map(|settings_json| decode_json::<CompanionSettings>(&settings_json))
+            .transpose()?;
         let previous_authority_mode = previous_settings
             .as_ref()
             .map(|settings| parse_execution_authority_mode(&settings.execution_authority))
             .transpose()?
             .unwrap_or(DEFAULT_EXECUTION_AUTHORITY);
-        let next_authority_mode = parse_execution_authority_mode(&settings.execution_authority)?;
-        let settings_json = encode_json(settings)?;
-
-        let transaction = self
-            .connection
-            .unchecked_transaction()
-            .map_err(|error| error.to_string())?;
 
         transaction
             .execute(
