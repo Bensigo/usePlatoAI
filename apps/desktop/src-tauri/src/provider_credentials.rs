@@ -87,6 +87,9 @@ where
 
         provider.auth_status = "needs-secret".to_string();
         provider.secret_ref = None;
+        if validate_provider_metadata(&provider.metadata).is_err() {
+            provider.metadata = Value::Object(Default::default());
+        }
         self.local_data.upsert_provider_metadata(&provider)?;
 
         Ok(Some(provider))
@@ -226,5 +229,38 @@ mod tests {
             .expect("read provider metadata")
             .is_none());
         assert_eq!(secret_store.read_credential("openai"), None);
+    }
+
+    #[test]
+    fn removes_provider_credential_and_repairs_legacy_secret_metadata() {
+        let local_data = LocalDataService::in_memory().expect("create local data service");
+        let secret_store = MemoryProviderSecretStore::default();
+        secret_store
+            .save_provider_credential("openai", "sk-test-provider-secret")
+            .expect("seed provider credential");
+        local_data
+            .insert_legacy_provider_metadata_for_test(&ProviderMetadata {
+                provider_id: "openai".to_string(),
+                provider_kind: "model-provider".to_string(),
+                display_name: "OpenAI".to_string(),
+                auth_status: "configured".to_string(),
+                secret_ref: Some(provider_secret_ref("openai")),
+                metadata: json!({ "value": "sk-test-provider-secret" }),
+            })
+            .expect("seed legacy provider metadata");
+
+        let service = ProviderCredentialService::new(&local_data, secret_store.clone());
+        let metadata_after_removal = service
+            .remove_provider_credential("openai")
+            .expect("remove provider credential")
+            .expect("provider metadata");
+
+        assert_eq!(metadata_after_removal.auth_status, "needs-secret");
+        assert_eq!(metadata_after_removal.secret_ref, None);
+        assert_eq!(metadata_after_removal.metadata, json!({}));
+        assert_eq!(secret_store.read_credential("openai"), None);
+        assert!(!local_data
+            .contains_plaintext("sk-test-provider-secret")
+            .expect("search local data after removal"));
     }
 }
