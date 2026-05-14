@@ -44,6 +44,31 @@ pub struct AuditHistoryEntry {
     pub created_at: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LocalDataCategoryStatus {
+    pub category_id: String,
+    pub label: String,
+    pub storage: String,
+    pub record_count: i64,
+    pub status: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MemoryStatus {
+    pub mode: String,
+    pub record_count: i64,
+    pub intelligence_status: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LocalDataOverview {
+    pub categories: Vec<LocalDataCategoryStatus>,
+    pub memory_status: MemoryStatus,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum ExecutionAuthorityMode {
@@ -529,6 +554,103 @@ impl LocalDataService {
         Ok(entries)
     }
 
+    pub fn read_local_data_overview(&self) -> Result<LocalDataOverview, String> {
+        let settings_count = self.count_table_rows("settings")?;
+        let provider_count = self.count_table_rows("provider_metadata")?;
+        let task_count = self.count_table_rows("task_metadata")?;
+        let memory_count = self.count_table_rows("memory_metadata")?;
+        let capability_count = self.count_table_rows("capability_metadata")?;
+        let audit_count = self.count_table_rows("audit_history")?;
+        let preference_count = self.count_table_rows("user_preferences")?;
+        let settings = self
+            .read_companion_settings()?
+            .unwrap_or_else(default_companion_settings);
+
+        Ok(LocalDataOverview {
+            categories: vec![
+                LocalDataCategoryStatus {
+                    category_id: "settings".to_string(),
+                    label: "Settings".to_string(),
+                    storage: "SQLite settings".to_string(),
+                    record_count: settings_count,
+                    status: status_for_count(settings_count),
+                },
+                LocalDataCategoryStatus {
+                    category_id: "secrets".to_string(),
+                    label: "Secrets".to_string(),
+                    storage: "OS-backed secret store".to_string(),
+                    record_count: provider_count,
+                    status: status_for_count(provider_count),
+                },
+                LocalDataCategoryStatus {
+                    category_id: "memory".to_string(),
+                    label: "Memory".to_string(),
+                    storage: "SQLite memory metadata".to_string(),
+                    record_count: memory_count,
+                    status: status_for_count(memory_count),
+                },
+                LocalDataCategoryStatus {
+                    category_id: "tasks".to_string(),
+                    label: "Tasks".to_string(),
+                    storage: "SQLite task metadata".to_string(),
+                    record_count: task_count,
+                    status: status_for_count(task_count),
+                },
+                LocalDataCategoryStatus {
+                    category_id: "capabilities".to_string(),
+                    label: "Capabilities".to_string(),
+                    storage: "SQLite capability metadata".to_string(),
+                    record_count: capability_count,
+                    status: status_for_count(capability_count),
+                },
+                LocalDataCategoryStatus {
+                    category_id: "provider-metadata".to_string(),
+                    label: "Provider metadata".to_string(),
+                    storage: "SQLite provider metadata".to_string(),
+                    record_count: provider_count,
+                    status: status_for_count(provider_count),
+                },
+                LocalDataCategoryStatus {
+                    category_id: "permissions".to_string(),
+                    label: "Permissions".to_string(),
+                    storage: "SQLite settings policy".to_string(),
+                    record_count: settings_count + preference_count,
+                    status: settings.execution_authority,
+                },
+                LocalDataCategoryStatus {
+                    category_id: "audit-history".to_string(),
+                    label: "Audit/history".to_string(),
+                    storage: "SQLite audit history".to_string(),
+                    record_count: audit_count,
+                    status: status_for_count(audit_count),
+                },
+            ],
+            memory_status: MemoryStatus {
+                mode: settings.memory_mode,
+                record_count: memory_count,
+                intelligence_status: "metadata-only".to_string(),
+            },
+        })
+    }
+
+    fn count_table_rows(&self, table_name: &str) -> Result<i64, String> {
+        let table_name = match table_name {
+            "settings" => "settings",
+            "provider_metadata" => "provider_metadata",
+            "task_metadata" => "task_metadata",
+            "memory_metadata" => "memory_metadata",
+            "capability_metadata" => "capability_metadata",
+            "audit_history" => "audit_history",
+            "user_preferences" => "user_preferences",
+            unknown => return Err(format!("unsupported local data table `{unknown}`")),
+        };
+        let query = format!("SELECT COUNT(*) FROM {table_name}");
+
+        self.connection
+            .query_row(&query, [], |row| row.get(0))
+            .map_err(|error| error.to_string())
+    }
+
     fn record_audit_entry(
         &self,
         category: &str,
@@ -764,6 +886,14 @@ fn settings_audit_metadata(
     })
 }
 
+fn status_for_count(count: i64) -> String {
+    if count > 0 {
+        "active".to_string()
+    } else {
+        "empty".to_string()
+    }
+}
+
 pub(crate) fn validate_provider_metadata(value: &Value) -> Result<(), String> {
     reject_secret_material(value)
 }
@@ -990,6 +1120,60 @@ mod tests {
             .metadata
             .to_string()
             .contains("sk-test-secret-that-must-not-be-recorded"));
+    }
+
+    #[test]
+    fn reports_local_data_categories_and_memory_status() {
+        let service = LocalDataService::in_memory().expect("create in-memory service");
+        let mut settings = test_settings();
+        settings.memory_mode = "paused".to_string();
+
+        service
+            .save_companion_settings(&settings)
+            .expect("save settings");
+        service
+            .upsert_provider_metadata(&ProviderMetadata {
+                provider_id: "openai".to_string(),
+                provider_kind: "model-provider".to_string(),
+                display_name: "OpenAI".to_string(),
+                auth_status: "configured".to_string(),
+                secret_ref: Some("keychain://useplatoai/provider/openai".to_string()),
+                metadata: json!({ "engine": "codex" }),
+            })
+            .expect("save provider metadata");
+
+        let overview = service
+            .read_local_data_overview()
+            .expect("read local data overview");
+
+        assert_eq!(
+            overview
+                .categories
+                .iter()
+                .map(|category| category.category_id.as_str())
+                .collect::<Vec<_>>(),
+            vec![
+                "settings",
+                "secrets",
+                "memory",
+                "tasks",
+                "capabilities",
+                "provider-metadata",
+                "permissions",
+                "audit-history"
+            ]
+        );
+        assert_eq!(overview.memory_status.mode, "paused");
+        assert_eq!(overview.memory_status.intelligence_status, "metadata-only");
+        assert_eq!(
+            overview
+                .categories
+                .iter()
+                .find(|category| category.category_id == "secrets")
+                .expect("secrets category")
+                .record_count,
+            1
+        );
     }
 
     #[test]
