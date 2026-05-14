@@ -19,7 +19,7 @@ body {
   min-width: 300px;
   min-height: 100vh;
   background: transparent;
-  overflow: hidden;
+  overflow: auto;
 }
 
 button,
@@ -215,6 +215,7 @@ h1 {
 }
 
 .control-surface {
+  width: min(100%, 560px);
   display: grid;
   overflow: hidden;
 }
@@ -252,6 +253,8 @@ h1 {
 
 .placeholder-panel {
   min-height: 112px;
+  max-height: min(64vh, 560px);
+  overflow: auto;
   padding: 12px 14px 14px;
 }
 
@@ -395,6 +398,137 @@ h1 {
   font-weight: 800;
 }
 
+.trust-settings {
+  display: grid;
+  gap: 10px;
+}
+
+.trust-section {
+  display: grid;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.trust-section h3 {
+  margin: 0;
+  color: #111827;
+  font-size: 0.83rem;
+  line-height: 1.2;
+  letter-spacing: 0;
+}
+
+.category-grid,
+.compact-facts,
+.audit-list {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+}
+
+.category-row,
+.compact-facts div,
+.audit-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+  color: #374151;
+  font-size: 0.74rem;
+  line-height: 1.35;
+}
+
+.category-row div {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+.category-row strong,
+.audit-list strong {
+  color: #111827;
+}
+
+.category-row span,
+.audit-list span {
+  min-width: 0;
+  color: #64748b;
+}
+
+.category-status,
+.compact-facts dd {
+  flex: 0 0 auto;
+  margin: 0;
+  color: #111827;
+  font-weight: 800;
+  text-align: right;
+}
+
+.compact-facts dt {
+  color: #64748b;
+  font-weight: 700;
+}
+
+.credential-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 6px;
+}
+
+.credential-form input {
+  min-width: 0;
+  min-height: 32px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  padding: 6px 8px;
+}
+
+.credential-form button,
+.segmented-control button {
+  min-height: 32px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #1f2937;
+  font-size: 0.74rem;
+  font-weight: 800;
+}
+
+.credential-form button:hover,
+.segmented-control button:hover {
+  border-color: #64748b;
+}
+
+.segmented-control {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.segmented-control button.active {
+  border-color: #0f766e;
+  background: #0f766e;
+  color: #ffffff;
+}
+
+.audit-list {
+  padding-left: 18px;
+}
+
+.empty-state,
+.trust-message {
+  margin: 0;
+  color: #64748b;
+  font-size: 0.74rem;
+  line-height: 1.35;
+}
+
+.trust-message {
+  color: #0f766e;
+  font-weight: 800;
+}
+
 @media (max-width: 560px) {
   body {
     min-width: 260px;
@@ -409,5 +543,9 @@ h1 {
   .control-surface,
   .onboarding-panel {
     width: min(100%, 260px);
+  }
+
+  .credential-form {
+    grid-template-columns: minmax(0, 1fr);
   }
 }

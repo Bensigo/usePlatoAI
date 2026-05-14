@@ -17,6 +17,24 @@ pub struct CompanionSettings {
     onboarding_complete: bool,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ProviderCredentialStatus {
+    provider_id: String,
+    display_name: String,
+    auth_status: String,
+    has_secret: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct TrustFoundationSnapshot {
+    local_data: local_data::LocalDataOverview,
+    provider_credential: ProviderCredentialStatus,
+    execution_authority: local_data::ExecutionAuthorityPolicy,
+    audit_history: Vec<local_data::AuditHistoryEntry>,
+}
+
 fn local_data_path(app: &AppHandle) -> Result<std::path::PathBuf, String> {
     Ok(app
         .path()
@@ -69,6 +87,44 @@ fn read_recent_audit_history(
 }
 
 #[tauri::command]
+fn read_trust_foundation_snapshot(app: AppHandle) -> Result<TrustFoundationSnapshot, String> {
+    let local_data = local_data_service(&app)?;
+    let secret_store = provider_secret_store()?;
+    let credential_service =
+        provider_credentials::ProviderCredentialService::new(&local_data, secret_store);
+    let provider_metadata = local_data.read_provider_metadata("openai")?;
+    let has_secret = credential_service.has_provider_credential("openai")?;
+    let mut local_data_overview = local_data.read_local_data_overview()?;
+
+    for category in &mut local_data_overview.categories {
+        if category.category_id == "secrets" {
+            category.record_count = if has_secret { 1 } else { 0 };
+            category.status = if has_secret { "active" } else { "empty" }.to_string();
+        }
+    }
+
+    Ok(TrustFoundationSnapshot {
+        local_data: local_data_overview,
+        provider_credential: ProviderCredentialStatus {
+            provider_id: "openai".to_string(),
+            display_name: provider_metadata
+                .as_ref()
+                .map(|provider| provider.display_name.clone())
+                .unwrap_or_else(|| "OpenAI".to_string()),
+            auth_status: provider_metadata
+                .map(|provider| provider.auth_status)
+                .unwrap_or_else(|| "needs-secret".to_string()),
+            has_secret,
+        },
+        execution_authority: local_data
+            .read_or_import_legacy_execution_authority_policy(legacy_companion_settings_path(
+                &app,
+            )?)?,
+        audit_history: local_data.read_recent_audit_history(8)?,
+    })
+}
+
+#[tauri::command]
 fn save_provider_credential(
     app: AppHandle,
     credential: provider_credentials::ProviderCredentialInput,
@@ -112,6 +168,7 @@ pub fn run() {
             save_companion_settings,
             read_execution_authority_policy,
             read_recent_audit_history,
+            read_trust_foundation_snapshot,
             save_provider_credential,
             has_provider_credential,
             remove_provider_credential

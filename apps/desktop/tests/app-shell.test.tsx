@@ -68,6 +68,32 @@ describe("desktop app shell", () => {
     expect(markup).toContain("Launch at login");
   });
 
+  it("renders local data and trust foundation settings", () => {
+    const markup = renderToStaticMarkup(
+      <App initialSettings={completedSettings} />,
+    );
+
+    for (const label of [
+      "Settings",
+      "Secrets",
+      "Memory",
+      "Tasks",
+      "Capabilities",
+      "Provider metadata",
+      "Permissions",
+      "Audit/history",
+    ]) {
+      expect(markup).toContain(label);
+    }
+
+    expect(markup).toContain("Memory status");
+    expect(markup).toContain("metadata-only");
+    expect(markup).toContain("Provider credential");
+    expect(markup).toContain("OpenAI");
+    expect(markup).toContain("Execution authority");
+    expect(markup).toContain("Ask first");
+  });
+
   it("renders a placeholder panel for every menu bar entry", () => {
     for (const entry of controlSurfaceEntries) {
       const markup = renderToStaticMarkup(

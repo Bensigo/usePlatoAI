@@ -25,6 +25,13 @@ import {
   type ProviderPlaceholder,
   type SettingsStore,
 } from "./settings";
+import {
+  createTauriTrustFoundationStore,
+  defaultTrustFoundationSnapshot,
+  snapshotWithExecutionAuthority,
+  type TrustFoundationSnapshot,
+  type TrustFoundationStore,
+} from "./trustFoundation";
 
 function startPresenceDrag(event: MouseEvent<HTMLButtonElement>) {
   if (event.button !== 0) {
@@ -49,9 +56,13 @@ export function DismissedPresence({ onRestore }: { onRestore: () => void }) {
 export function ControlSurfacePanel({
   activeEntry,
   settings,
+  onSettingsChange,
+  trustFoundationStore,
 }: {
   activeEntry: ControlSurfaceId;
   settings?: CompanionSettings;
+  onSettingsChange?: (settings: CompanionSettings) => Promise<void>;
+  trustFoundationStore?: TrustFoundationStore;
 }) {
   const activeControl = controlSurfaceEntries.find(
     (entry) => entry.id === activeEntry,
@@ -65,7 +76,15 @@ export function ControlSurfacePanel({
       <h2>{activeControl.label}</h2>
       <p>{activeControl.description}</p>
       {activeEntry === "settings" && settings ? (
-        <SettingsSummary settings={settings} />
+        onSettingsChange ? (
+          <TrustFoundationSettings
+            settings={settings}
+            onSettingsChange={onSettingsChange}
+            trustFoundationStore={trustFoundationStore}
+          />
+        ) : (
+          <SettingsSummary settings={settings} />
+        )
       ) : (
         <p className="placeholder-note">
           This area is reachable from the macOS menu bar now. The underlying
@@ -73,6 +92,251 @@ export function ControlSurfacePanel({
         </p>
       )}
     </section>
+  );
+}
+
+export function TrustFoundationSettings({
+  settings,
+  onSettingsChange,
+  trustFoundationStore,
+}: {
+  settings: CompanionSettings;
+  onSettingsChange: (settings: CompanionSettings) => Promise<void>;
+  trustFoundationStore?: TrustFoundationStore;
+}) {
+  const durableTrustFoundationStore = useMemo(
+    () => trustFoundationStore ?? createTauriTrustFoundationStore(),
+    [trustFoundationStore],
+  );
+  const [snapshot, setSnapshot] = useState<TrustFoundationSnapshot>(() =>
+    defaultTrustFoundationSnapshot(settings),
+  );
+  const [credential, setCredential] = useState("");
+  const [message, setMessage] = useState("Local data state loaded");
+  const [isSaving, setIsSaving] = useState(false);
+
+  useEffect(() => {
+    let isCurrent = true;
+
+    durableTrustFoundationStore
+      .read()
+      .then((nextSnapshot) => {
+        if (isCurrent) {
+          setSnapshot(nextSnapshot);
+          setMessage("Local data state loaded");
+        }
+      })
+      .catch((error: unknown) => {
+        if (isCurrent) {
+          setMessage(
+            error instanceof Error
+              ? error.message
+              : "Unable to load local data state",
+          );
+        }
+      });
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [durableTrustFoundationStore, settings]);
+
+  async function saveExecutionAuthority(
+    mode: CompanionSettings["executionAuthority"],
+  ) {
+    const nextSettings = { ...settings, executionAuthority: mode };
+    setIsSaving(true);
+    try {
+      await onSettingsChange(nextSettings);
+      const nextSnapshot = await durableTrustFoundationStore.read();
+      setSnapshot(snapshotWithExecutionAuthority(nextSnapshot, mode));
+      setMessage("Execution authority saved");
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Unable to save execution authority",
+      );
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  async function saveCredential(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const trimmedCredential = credential.trim();
+
+    if (!trimmedCredential) {
+      setMessage("Credential cannot be empty");
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      setSnapshot(
+        await durableTrustFoundationStore.saveOpenAiCredential(trimmedCredential),
+      );
+      setCredential("");
+      setMessage("OpenAI credential saved without revealing the value");
+    } catch (error) {
+      setMessage(
+        error instanceof Error ? error.message : "Unable to save credential",
+      );
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  async function removeCredential() {
+    setIsSaving(true);
+    try {
+      setSnapshot(await durableTrustFoundationStore.removeOpenAiCredential());
+      setMessage("OpenAI credential removed");
+    } catch (error) {
+      setMessage(
+        error instanceof Error ? error.message : "Unable to remove credential",
+      );
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  return (
+    <div className="trust-settings">
+      <SettingsSummary settings={settings} />
+
+      <section className="trust-section" aria-labelledby="local-data-title">
+        <h3 id="local-data-title">Local data</h3>
+        <div className="category-grid">
+          {snapshot.localData.categories.map((category) => (
+            <div className="category-row" key={category.categoryId}>
+              <div>
+                <strong>{category.label}</strong>
+                <span>{category.storage}</span>
+              </div>
+              <span className="category-status">
+                {category.recordCount} / {category.status}
+              </span>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="trust-section" aria-labelledby="memory-status-title">
+        <h3 id="memory-status-title">Memory status</h3>
+        <dl className="compact-facts">
+          <div>
+            <dt>Mode</dt>
+            <dd>{snapshot.localData.memoryStatus.mode}</dd>
+          </div>
+          <div>
+            <dt>Records</dt>
+            <dd>{snapshot.localData.memoryStatus.recordCount}</dd>
+          </div>
+          <div>
+            <dt>Intelligence</dt>
+            <dd>{snapshot.localData.memoryStatus.intelligenceStatus}</dd>
+          </div>
+        </dl>
+      </section>
+
+      <section className="trust-section" aria-labelledby="credential-title">
+        <h3 id="credential-title">Provider credential</h3>
+        <dl className="compact-facts">
+          <div>
+            <dt>Provider</dt>
+            <dd>{snapshot.providerCredential.displayName}</dd>
+          </div>
+          <div>
+            <dt>Presence</dt>
+            <dd>{snapshot.providerCredential.hasSecret ? "Saved" : "Missing"}</dd>
+          </div>
+          <div>
+            <dt>Status</dt>
+            <dd>{snapshot.providerCredential.authStatus}</dd>
+          </div>
+        </dl>
+        <form className="credential-form" onSubmit={saveCredential}>
+          <input
+            aria-label="OpenAI credential"
+            type="password"
+            value={credential}
+            placeholder="OpenAI API key"
+            onChange={(event) => setCredential(event.currentTarget.value)}
+          />
+          <button type="submit" disabled={isSaving}>
+            Save
+          </button>
+          <button type="button" disabled={isSaving} onClick={removeCredential}>
+            Remove
+          </button>
+        </form>
+      </section>
+
+      <section className="trust-section" aria-labelledby="authority-title">
+        <h3 id="authority-title">Execution authority</h3>
+        <div
+          className="segmented-control"
+          role="group"
+          aria-label="Execution authority"
+        >
+          <button
+            type="button"
+            className={
+              settings.executionAuthority === "ask-first" ? "active" : undefined
+            }
+            disabled={isSaving}
+            onClick={() => saveExecutionAuthority("ask-first")}
+          >
+            Ask first
+          </button>
+          <button
+            type="button"
+            className={
+              settings.executionAuthority === "trusted-local" ? "active" : undefined
+            }
+            disabled={isSaving}
+            onClick={() => saveExecutionAuthority("trusted-local")}
+          >
+            Trusted local
+          </button>
+        </div>
+        <dl className="compact-facts">
+          <div>
+            <dt>Local files</dt>
+            <dd>{snapshot.executionAuthority.localFileChange}</dd>
+          </div>
+          <div>
+            <dt>App control</dt>
+            <dd>{snapshot.executionAuthority.appControl}</dd>
+          </div>
+          <div>
+            <dt>External actions</dt>
+            <dd>{snapshot.executionAuthority.externalMessage}</dd>
+          </div>
+        </dl>
+      </section>
+
+      <section className="trust-section" aria-labelledby="audit-title">
+        <h3 id="audit-title">Audit/history</h3>
+        {snapshot.auditHistory.length > 0 ? (
+          <ol className="audit-list">
+            {snapshot.auditHistory.slice(0, 4).map((entry) => (
+              <li key={entry.auditId}>
+                <strong>{entry.category}</strong>
+                <span>{entry.action}</span>
+              </li>
+            ))}
+          </ol>
+        ) : (
+          <p className="empty-state">No audit entries recorded yet</p>
+        )}
+      </section>
+
+      <p className="trust-message" aria-live="polite">
+        {message}
+      </p>
+    </div>
   );
 }
 
@@ -271,9 +535,11 @@ export function FirstRunOnboarding({
 export function App({
   initialSettings,
   settingsStore,
+  trustFoundationStore,
 }: {
   initialSettings?: CompanionSettings;
   settingsStore?: SettingsStore;
+  trustFoundationStore?: TrustFoundationStore;
 }) {
   const durableSettingsStore = useMemo(
     () => settingsStore ?? createTauriSettingsStore(),
@@ -428,7 +694,12 @@ export function App({
           ))}
         </nav>
 
-        <ControlSurfacePanel activeEntry={activeEntry} settings={settings} />
+        <ControlSurfacePanel
+          activeEntry={activeEntry}
+          settings={settings}
+          onSettingsChange={completeOnboarding}
+          trustFoundationStore={trustFoundationStore}
+        />
       </section>
     </main>
   );
