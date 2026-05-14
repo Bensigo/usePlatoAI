@@ -44,6 +44,7 @@ where
         if input.credential.is_empty() {
             return Err("provider credential cannot be empty".to_string());
         }
+        reject_metadata_credential_value(&input.metadata, &input.credential)?;
         validate_provider_metadata(&input.metadata)?;
 
         let secret_ref = self
@@ -98,6 +99,35 @@ fn validate_provider_id(provider_id: &str) -> Result<(), String> {
     }
 
     Ok(())
+}
+
+fn reject_metadata_credential_value(value: &Value, credential: &str) -> Result<(), String> {
+    match value {
+        Value::String(metadata_value) => {
+            if metadata_value.contains(credential) {
+                return Err(
+                    "provider metadata must not include the submitted credential value".to_string(),
+                );
+            }
+
+            Ok(())
+        }
+        Value::Array(values) => {
+            for value in values {
+                reject_metadata_credential_value(value, credential)?;
+            }
+
+            Ok(())
+        }
+        Value::Object(entries) => {
+            for value in entries.values() {
+                reject_metadata_credential_value(value, credential)?;
+            }
+
+            Ok(())
+        }
+        _ => Ok(()),
+    }
 }
 
 #[cfg(test)]
@@ -166,6 +196,29 @@ mod tests {
                 display_name: "OpenAI".to_string(),
                 credential: "sk-test-provider-secret".to_string(),
                 metadata: json!({ "access_token": "should-not-live-here" }),
+            })
+            .is_err());
+        assert!(local_data
+            .read_provider_metadata("openai")
+            .expect("read provider metadata")
+            .is_none());
+        assert_eq!(secret_store.read_credential("openai"), None);
+    }
+
+    #[test]
+    fn rejects_provider_credential_metadata_with_submitted_credential_value() {
+        let local_data = LocalDataService::in_memory().expect("create local data service");
+        let secret_store = MemoryProviderSecretStore::default();
+        let service = ProviderCredentialService::new(&local_data, secret_store.clone());
+        let credential = "sk-test-provider-secret";
+
+        assert!(service
+            .save_provider_credential(ProviderCredentialInput {
+                provider_id: "openai".to_string(),
+                provider_kind: "model-provider".to_string(),
+                display_name: "OpenAI".to_string(),
+                credential: credential.to_string(),
+                metadata: json!({ "value": { "nested": ["prefix-sk-test-provider-secret"] } }),
             })
             .is_err());
         assert!(local_data
