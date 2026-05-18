@@ -77,7 +77,7 @@ export function defaultTrustFoundationSnapshot(
       memoryStatus: {
         mode: settings.memoryMode,
         recordCount: 0,
-        intelligenceStatus: "metadata-only",
+        intelligenceStatus: "local-storage-boundary",
       },
     },
     providerCredential: {

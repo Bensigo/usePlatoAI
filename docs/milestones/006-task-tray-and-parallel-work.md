@@ -1,4 +1,4 @@
-# Milestone 005: Task Tray And Parallel Work
+# Milestone 006: Task Tray And Parallel Work
 
 ## Source PRD
 
@@ -52,6 +52,7 @@ This milestone may touch:
 
 - Milestone 002: Local Data And Trust Foundation
 - Milestone 003: Voice And Live2D Presence Loop
+- Milestone 005: Experience Direction And Companion Redesign
 
 ## Notes
 

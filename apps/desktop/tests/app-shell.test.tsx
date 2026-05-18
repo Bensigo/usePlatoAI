@@ -18,6 +18,7 @@ import {
   type AvatarPresenceState,
 } from "../src/avatarSurface";
 import { controlSurfaceEntries } from "../src/controlSurface";
+import { createMemoryStore } from "../src/memory";
 import {
   createMemoryPresenceStateSource,
   normalizePresenceState,
@@ -237,6 +238,41 @@ describe("desktop app shell", () => {
     expect(markup).not.toContain("OpenAI credential");
   });
 
+  it("persists and retrieves local summary and preference memory through the app store boundary", async () => {
+    const memoryStore = createMemoryStore();
+
+    await memoryStore.remember({
+      memoryId: "memory-summary-1",
+      memoryKind: "summary",
+      summary: "User prefers direct implementation notes.",
+      sourceKind: "conversation-summary",
+      metadata: { extractor: "local-test-boundary" },
+    });
+    await memoryStore.remember({
+      memoryId: "memory-preference-1",
+      memoryKind: "preference",
+      summary: "User wants verification notes in implementation PRs.",
+      preferenceKey: "pr.verification_notes",
+      preferenceValue: true,
+      sourceKind: "user-approved-preference",
+      metadata: { extractor: "local-test-boundary" },
+    });
+
+    await expect(memoryStore.read("memory-summary-1")).resolves.toMatchObject({
+      memoryKind: "summary",
+      summary: "User prefers direct implementation notes.",
+    });
+    await expect(
+      memoryStore.readPreference("pr.verification_notes"),
+    ).resolves.toMatchObject({
+      memoryKind: "preference",
+      preferenceValue: true,
+    });
+    await expect(
+      memoryStore.retrieve({ query: "verification", memoryKind: "preference" }),
+    ).resolves.toHaveLength(1);
+  });
+
   it("renders the voice interaction panel for an active session state", () => {
     const markup = renderToStaticMarkup(
       <VoiceInteractionPanel
@@ -274,13 +310,13 @@ describe("desktop app shell", () => {
     expect(listening.sessionState).toBe("listening");
     expect(thinking.sessionState).toBe("thinking");
     expect(speaking.sessionState).toBe("speaking");
-    expect(speaking.companionPrompt).toContain("Local soul guidance:");
+    expect(speaking.companionPrompt).toContain("Trusted policy layer:");
     expect(textThinking.companionPrompt).toBeNull();
     expect(textThinking.activationSource).toBe("text");
     expect(textThinking.sessionState).toBe("thinking");
     expect(textSpeaking.sessionState).toBe("speaking");
     expect(textSpeaking.response).toContain("Fallback now");
-    expect(textSpeaking.companionPrompt).toContain("Local soul guidance:");
+    expect(textSpeaking.companionPrompt).toContain("Trusted policy layer:");
   });
 
   it("clears stale companion prompts outside active response snapshots", () => {
@@ -317,7 +353,7 @@ describe("desktop app shell", () => {
 
     expect(companionPrompt).toContain("Draft the next step.");
     expect(companionPrompt).toContain("Be terse and candid.");
-    expect(companionPrompt).toContain("Immutable policy boundary:");
+    expect(companionPrompt).toContain("Trusted policy layer:");
   });
 
   it("accepts a soul guidance store for the runtime app wiring", () => {
@@ -367,7 +403,7 @@ describe("desktop app shell", () => {
     }
 
     expect(markup).toContain("Memory status");
-    expect(markup).toContain("metadata-only");
+    expect(markup).toContain("local-storage-boundary");
     expect(markup).toContain("Provider credential");
     expect(markup).toContain("OpenAI");
     expect(markup).toContain("Execution authority");
