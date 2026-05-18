@@ -79,6 +79,7 @@ export function nextMockVoiceSnapshot(
       sessionState,
       transcript: "Listening through local mock voice...",
       response: "Waiting for speech.",
+      companionPrompt: null,
     };
   }
 
@@ -88,6 +89,7 @@ export function nextMockVoiceSnapshot(
       sessionState,
       transcript: mockVoiceTranscript,
       response: "Thinking through the mock voice request.",
+      companionPrompt: null,
     };
   }
 
@@ -109,6 +111,7 @@ export function nextMockVoiceSnapshot(
     ...snapshot,
     sessionState,
     response: "Voice session complete.",
+    companionPrompt: null,
   };
 }
 
@@ -123,6 +126,7 @@ export function textFallbackThinkingSnapshot(
     fallbackText,
     transcript: fallbackText,
     response: "Reading text fallback.",
+    companionPrompt: null,
   };
 }
 

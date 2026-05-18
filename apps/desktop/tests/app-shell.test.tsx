@@ -274,11 +274,35 @@ describe("desktop app shell", () => {
     expect(listening.sessionState).toBe("listening");
     expect(thinking.sessionState).toBe("thinking");
     expect(speaking.sessionState).toBe("speaking");
+    expect(speaking.companionPrompt).toContain("Local soul guidance:");
+    expect(textThinking.companionPrompt).toBeNull();
     expect(textThinking.activationSource).toBe("text");
     expect(textThinking.sessionState).toBe("thinking");
     expect(textSpeaking.sessionState).toBe("speaking");
     expect(textSpeaking.response).toContain("Fallback now");
     expect(textSpeaking.companionPrompt).toContain("Local soul guidance:");
+  });
+
+  it("clears stale companion prompts outside active response snapshots", () => {
+    const activeResponse = textFallbackResponseSnapshot({
+      ...defaultVoiceInteractionSnapshot,
+      fallbackText: "Previous request",
+    });
+
+    expect(activeResponse.companionPrompt).toContain("Previous request");
+
+    const listening = nextMockVoiceSnapshot(activeResponse, "listening");
+    const thinking = nextMockVoiceSnapshot(activeResponse, "thinking");
+    const idle = nextMockVoiceSnapshot(activeResponse, "idle");
+    const textThinking = textFallbackThinkingSnapshot(
+      activeResponse,
+      "Next request",
+    );
+
+    expect(listening.companionPrompt).toBeNull();
+    expect(thinking.companionPrompt).toBeNull();
+    expect(idle.companionPrompt).toBeNull();
+    expect(textThinking.companionPrompt).toBeNull();
   });
 
   it("builds runtime companion prompts from local soul guidance", () => {
