@@ -604,6 +604,8 @@ impl LocalDataService {
         &self,
         request: &SensitiveMemoryApprovalRequest,
     ) -> Result<SensitiveMemoryApprovalEvidence, String> {
+        validate_sensitive_memory_approval_metadata(&request.metadata)?;
+
         let approval_evidence = SensitiveMemoryApprovalEvidence {
             approval_id: format!("approval-sensitive-memory-{}", Uuid::new_v4()),
             approval_token: Uuid::new_v4().to_string(),
@@ -1131,6 +1133,15 @@ impl LocalDataService {
                 &["memory_id", "summary", "source_kind", "metadata_json"][..],
             ),
             (
+                "sensitive_memory_approvals",
+                &[
+                    "approval_id",
+                    "approval_token",
+                    "approved_action",
+                    "metadata_json",
+                ][..],
+            ),
+            (
                 "capability_metadata",
                 &["capability_id", "capability_kind", "metadata_json"][..],
             ),
@@ -1506,6 +1517,80 @@ fn validate_memory_input(
 
 pub(crate) fn validate_provider_metadata(value: &Value) -> Result<(), String> {
     reject_secret_material(value)
+}
+
+fn validate_sensitive_memory_approval_metadata(value: &Value) -> Result<(), String> {
+    reject_raw_transcript_material(value)?;
+    reject_sensitive_memory_approval_secrets(value)?;
+
+    let entries = value
+        .as_object()
+        .ok_or_else(|| "sensitive memory approval metadata must be an object".to_string())?;
+
+    for (key, value) in entries {
+        if !["surface", "reason"].contains(&key.as_str()) {
+            return Err(format!(
+                "sensitive memory approval metadata must not include `{key}`"
+            ));
+        }
+
+        match value {
+            Value::String(text) if text.trim().is_empty() => {
+                return Err(format!(
+                    "sensitive memory approval metadata `{key}` must not be empty"
+                ));
+            }
+            Value::String(text) if text.len() > 240 => {
+                return Err(format!(
+                    "sensitive memory approval metadata `{key}` is too long"
+                ));
+            }
+            Value::String(_) | Value::Null => {}
+            _ => {
+                return Err(format!(
+                    "sensitive memory approval metadata `{key}` must be a string"
+                ));
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn reject_sensitive_memory_approval_secrets(value: &Value) -> Result<(), String> {
+    match value {
+        Value::Object(entries) => {
+            for (key, value) in entries {
+                if is_sensitive_field_name(key) {
+                    return Err(format!(
+                        "sensitive memory approval metadata must not include sensitive field `{key}`"
+                    ));
+                }
+
+                reject_sensitive_memory_approval_secrets(value)?;
+            }
+
+            Ok(())
+        }
+        Value::Array(values) => {
+            for value in values {
+                reject_sensitive_memory_approval_secrets(value)?;
+            }
+
+            Ok(())
+        }
+        Value::String(value) => {
+            if contains_sensitive_text(value) {
+                return Err(
+                    "sensitive memory approval metadata must not include sensitive values"
+                        .to_string(),
+                );
+            }
+
+            Ok(())
+        }
+        _ => Ok(()),
+    }
 }
 
 fn reject_raw_transcript_material(value: &Value) -> Result<(), String> {
@@ -1894,6 +1979,7 @@ mod tests {
             "provider_metadata",
             "task_metadata",
             "memory_metadata",
+            "sensitive_memory_approvals",
             "capability_metadata",
             "audit_history",
             "user_preferences",
@@ -2361,6 +2447,62 @@ mod tests {
             entry.action == "memory.upserted"
                 && entry.metadata["sensitiveApprovalId"] == approval_evidence.approval_id
         }));
+    }
+
+    #[test]
+    fn sensitive_memory_approval_rejects_raw_transcript_metadata() {
+        let service = LocalDataService::in_memory().expect("create in-memory service");
+        let raw_transcript = "User: please remember this\nPlato: I can do that.";
+
+        let error = service
+            .create_sensitive_memory_approval(&SensitiveMemoryApprovalRequest {
+                metadata: json!({
+                    "surface": "human-approval-prompt",
+                    "rawTranscript": raw_transcript
+                }),
+            })
+            .expect_err("approval metadata rejects raw transcript material");
+
+        assert!(error.contains("raw transcript material"));
+        assert!(!service
+            .contains_plaintext(raw_transcript)
+            .expect("scan persisted local data"));
+    }
+
+    #[test]
+    fn sensitive_memory_approval_rejects_sensitive_metadata() {
+        let service = LocalDataService::in_memory().expect("create in-memory service");
+        let sensitive_text = "api key = sk_test_1234567890abcdef";
+
+        let error = service
+            .create_sensitive_memory_approval(&SensitiveMemoryApprovalRequest {
+                metadata: json!({
+                    "surface": "human-approval-prompt",
+                    "reason": sensitive_text
+                }),
+            })
+            .expect_err("approval metadata rejects sensitive values");
+
+        assert!(error.contains("sensitive values"));
+        assert!(!service
+            .contains_plaintext(sensitive_text)
+            .expect("scan persisted local data"));
+    }
+
+    #[test]
+    fn sensitive_memory_approval_rejects_unschematized_metadata() {
+        let service = LocalDataService::in_memory().expect("create in-memory service");
+
+        let error = service
+            .create_sensitive_memory_approval(&SensitiveMemoryApprovalRequest {
+                metadata: json!({
+                    "surface": "human-approval-prompt",
+                    "debugPayload": "approval prompt rendered"
+                }),
+            })
+            .expect_err("approval metadata is restricted to approved fields");
+
+        assert!(error.contains("debugPayload"));
     }
 
     #[test]
