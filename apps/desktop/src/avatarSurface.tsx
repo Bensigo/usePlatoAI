@@ -169,6 +169,16 @@ export function isAvatarPresenceState(
   );
 }
 
+export function avatarPresenceStateFrom(
+  value: string | null,
+): AvatarPresenceState | undefined {
+  if (value === "waiting_for_approval") {
+    return "waitingApproval";
+  }
+
+  return isAvatarPresenceState(value) ? value : undefined;
+}
+
 export function getLive2DAvatarSurfaceHook(
   presenceState: AvatarPresenceState,
 ) {

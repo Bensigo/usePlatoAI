@@ -17,6 +17,7 @@ import {
 } from "../src/App";
 import {
   Live2DAvatarSurface,
+  avatarPresenceStateFrom,
   avatarPresenceStates,
   getLive2DAvatarSurfaceHook,
   isAvatarPresenceState,
@@ -246,6 +247,10 @@ describe("desktop app shell", () => {
     expect(isAvatarPresenceState("error")).toBe(true);
     expect(isAvatarPresenceState("unknown")).toBe(false);
     expect(isAvatarPresenceState(null)).toBe(false);
+    expect(avatarPresenceStateFrom("waiting_for_approval")).toBe(
+      "waitingApproval",
+    );
+    expect(avatarPresenceStateFrom("unknown")).toBeUndefined();
   });
 
   it("renders Plato with a direct clickable audio affordance", () => {
