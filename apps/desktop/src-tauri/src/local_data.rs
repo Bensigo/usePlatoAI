@@ -39,6 +39,7 @@ pub struct TaskMetadata {
 pub enum LocalMemoryKind {
     Summary,
     Preference,
+    Correction,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
@@ -1195,6 +1196,7 @@ fn memory_kind_key(kind: LocalMemoryKind) -> &'static str {
     match kind {
         LocalMemoryKind::Summary => "summary",
         LocalMemoryKind::Preference => "preference",
+        LocalMemoryKind::Correction => "correction",
     }
 }
 
@@ -1202,6 +1204,7 @@ fn parse_memory_kind(value: &str) -> Result<LocalMemoryKind, String> {
     match value {
         "summary" => Ok(LocalMemoryKind::Summary),
         "preference" => Ok(LocalMemoryKind::Preference),
+        "correction" => Ok(LocalMemoryKind::Correction),
         unknown => Err(format!("unknown memory kind `{unknown}`")),
     }
 }
@@ -1253,6 +1256,7 @@ fn validate_memory_input(memory: &LocalMemoryInput) -> Result<(), String> {
         return Err("memory summary is required".to_string());
     }
     reject_raw_transcript_text("summary", &memory.summary)?;
+    reject_unapproved_sensitive_memory(memory)?;
     if memory.source_kind.trim().is_empty() {
         return Err("memory source kind is required".to_string());
     }
@@ -1278,6 +1282,14 @@ fn validate_memory_input(memory: &LocalMemoryInput) -> Result<(), String> {
             }
             if memory.preference_value.is_none() {
                 return Err("preference memory requires a preference value".to_string());
+            }
+        }
+        LocalMemoryKind::Correction => {
+            if memory.preference_key.is_some() || memory.preference_value.is_some() {
+                return Err("correction memory must not include preference fields".to_string());
+            }
+            if memory.source_kind != "user-correction" {
+                return Err("correction memory requires user-correction source".to_string());
             }
         }
     }
@@ -1320,6 +1332,77 @@ fn reject_raw_transcript_material(value: &Value) -> Result<(), String> {
         Value::String(value) => reject_raw_transcript_text("value", value),
         _ => Ok(()),
     }
+}
+
+fn reject_unapproved_sensitive_memory(memory: &LocalMemoryInput) -> Result<(), String> {
+    if !memory_contains_sensitive_data(memory) || has_explicit_sensitive_memory_approval(memory) {
+        return Ok(());
+    }
+
+    Err("memory payload contains sensitive data; explicit approval is required".to_string())
+}
+
+fn has_explicit_sensitive_memory_approval(memory: &LocalMemoryInput) -> bool {
+    memory
+        .metadata
+        .as_object()
+        .map(|metadata| {
+            matches!(
+                metadata.get("sensitiveDataApproved"),
+                Some(Value::Bool(true))
+            ) || matches!(
+                metadata.get("approvedSensitiveData"),
+                Some(Value::Bool(true))
+            )
+        })
+        .unwrap_or(false)
+}
+
+fn memory_contains_sensitive_data(memory: &LocalMemoryInput) -> bool {
+    contains_sensitive_text(&memory.summary)
+        || contains_sensitive_value(&memory.metadata)
+        || memory
+            .preference_value
+            .as_ref()
+            .map(contains_sensitive_value)
+            .unwrap_or(false)
+}
+
+fn contains_sensitive_value(value: &Value) -> bool {
+    match value {
+        Value::Object(entries) => entries
+            .iter()
+            .any(|(key, value)| is_sensitive_field_name(key) || contains_sensitive_value(value)),
+        Value::Array(values) => values.iter().any(contains_sensitive_value),
+        Value::String(value) => contains_sensitive_text(value),
+        _ => false,
+    }
+}
+
+fn is_sensitive_field_name(key: &str) -> bool {
+    let normalized_key = normalize_json_key(key);
+
+    [
+        "secret",
+        "credential",
+        "password",
+        "passcode",
+        "apikey",
+        "accesstoken",
+        "refreshtoken",
+        "token",
+        "bearer",
+        "creditcard",
+        "cardnumber",
+        "cvv",
+        "cvc",
+        "ssn",
+        "socialsecurity",
+        "privatemessage",
+        "confidential",
+    ]
+    .iter()
+    .any(|blocked| normalized_key.contains(blocked))
 }
 
 fn is_message_turn_object(entries: &serde_json::Map<String, Value>) -> bool {
@@ -1388,6 +1471,116 @@ fn looks_like_raw_transcript_text(value: &str) -> bool {
         .count();
 
     marker_count >= 2 || (marker_count >= 1 && lower.lines().count() >= 2)
+}
+
+fn contains_sensitive_text(value: &str) -> bool {
+    let lower = value.to_ascii_lowercase();
+
+    lower.contains("bearer ")
+        || contains_assignment_like_secret(&lower)
+        || looks_like_provider_key(value)
+        || looks_like_payment_card(value)
+        || looks_like_us_social_security_number(value)
+}
+
+fn contains_assignment_like_secret(value: &str) -> bool {
+    [
+        "api key",
+        "api_key",
+        "apikey",
+        "access token",
+        "access_token",
+        "refresh token",
+        "refresh_token",
+        "password",
+        "passcode",
+    ]
+    .iter()
+    .any(|label| {
+        value
+            .split(label)
+            .nth(1)
+            .map(|tail| {
+                let tail = tail.trim_start();
+                (tail.starts_with(':') || tail.starts_with('='))
+                    && tail
+                        .trim_start_matches([':', '='])
+                        .trim()
+                        .split_whitespace()
+                        .next()
+                        .map(|candidate| candidate.len() >= 6)
+                        .unwrap_or(false)
+            })
+            .unwrap_or(false)
+    })
+}
+
+fn looks_like_provider_key(value: &str) -> bool {
+    let lower = value.to_ascii_lowercase();
+
+    value
+        .split(|character: char| {
+            !(character.is_ascii_alphanumeric() || character == '_' || character == '-')
+        })
+        .any(|token| {
+            let token_lower = token.to_ascii_lowercase();
+            token.len() >= 16
+                && (token_lower.starts_with("sk_")
+                    || token_lower.starts_with("pk_")
+                    || token_lower.starts_with("rk_")
+                    || token_lower.starts_with("pat_")
+                    || token_lower.starts_with("ghp_")
+                    || token_lower.starts_with("gho_")
+                    || token_lower.starts_with("ghu_")
+                    || token_lower.starts_with("ghs_")
+                    || token_lower.starts_with("github_pat_"))
+        })
+        || lower.contains("github_pat_")
+}
+
+fn looks_like_payment_card(value: &str) -> bool {
+    let digits: String = value
+        .chars()
+        .filter(|character| character.is_ascii_digit())
+        .collect();
+
+    (13..=19).contains(&digits.len()) && luhn_checksum_is_valid(&digits)
+}
+
+fn luhn_checksum_is_valid(digits: &str) -> bool {
+    let mut sum = 0;
+    let mut should_double = false;
+
+    for digit in digits
+        .chars()
+        .rev()
+        .filter_map(|character| character.to_digit(10))
+    {
+        let mut value = digit;
+        if should_double {
+            value *= 2;
+            if value > 9 {
+                value -= 9;
+            }
+        }
+        sum += value;
+        should_double = !should_double;
+    }
+
+    sum > 0 && sum % 10 == 0
+}
+
+fn looks_like_us_social_security_number(value: &str) -> bool {
+    value.split_whitespace().any(|token| {
+        let parts: Vec<&str> = token.split('-').collect();
+        parts.len() == 3
+            && parts[0].len() == 3
+            && parts[1].len() == 2
+            && parts[2].len() == 4
+            && parts
+                .iter()
+                .all(|part| part.chars().all(|character| character.is_ascii_digit()))
+    })
 }
 
 fn reject_secret_material(value: &Value) -> Result<(), String> {
@@ -1862,6 +2055,90 @@ mod tests {
         assert!(!service
             .contains_plaintext(raw_summary)
             .expect("scan persisted local data"));
+    }
+
+    #[test]
+    fn memory_writes_reject_sensitive_data_without_explicit_approval() {
+        let service = LocalDataService::in_memory().expect("create in-memory service");
+        let sensitive_summary = "User API key = sk_test_1234567890abcdef";
+        let memory = LocalMemoryInput {
+            memory_id: "memory-sensitive-api-key".to_string(),
+            memory_kind: LocalMemoryKind::Summary,
+            summary: sensitive_summary.to_string(),
+            preference_key: None,
+            preference_value: None,
+            source_kind: "conversation-summary".to_string(),
+            metadata: json!({ "extractor": "local-test-boundary" }),
+        };
+
+        let error = service
+            .upsert_memory_record(&memory)
+            .expect_err("sensitive memory is rejected without approval");
+
+        assert!(error.contains("explicit approval"));
+        assert_eq!(
+            service
+                .read_memory_record("memory-sensitive-api-key")
+                .expect("read rejected sensitive memory"),
+            None
+        );
+        assert!(!service
+            .contains_plaintext(sensitive_summary)
+            .expect("scan persisted local data"));
+    }
+
+    #[test]
+    fn memory_writes_allow_sensitive_data_with_explicit_approval() {
+        let service = LocalDataService::in_memory().expect("create in-memory service");
+        let sensitive_summary = "User API key = sk_test_1234567890abcdef";
+        let memory = LocalMemoryInput {
+            memory_id: "memory-approved-api-key".to_string(),
+            memory_kind: LocalMemoryKind::Summary,
+            summary: sensitive_summary.to_string(),
+            preference_key: None,
+            preference_value: None,
+            source_kind: "user-approved-sensitive-memory".to_string(),
+            metadata: json!({
+                "extractor": "local-test-boundary",
+                "sensitiveDataApproved": true
+            }),
+        };
+
+        let saved = service
+            .upsert_memory_record(&memory)
+            .expect("approved sensitive memory is persisted");
+
+        assert_eq!(saved.summary, sensitive_summary);
+        assert!(service
+            .contains_plaintext(sensitive_summary)
+            .expect("scan persisted local data"));
+    }
+
+    #[test]
+    fn user_correction_memory_can_be_retrieved_for_later_replay() {
+        let service = LocalDataService::in_memory().expect("create in-memory service");
+        let memory = LocalMemoryInput {
+            memory_id: "correction-status-tone".to_string(),
+            memory_kind: LocalMemoryKind::Correction,
+            summary: "When giving status updates, be blunt about blockers first.".to_string(),
+            preference_key: None,
+            preference_value: None,
+            source_kind: "user-correction".to_string(),
+            metadata: json!({ "appliesTo": "status updates" }),
+        };
+
+        let saved = service
+            .upsert_memory_record(&memory)
+            .expect("save user correction");
+        let retrieved = service
+            .retrieve_memory_records(&LocalMemoryRetrievalQuery {
+                query: Some("blockers first".to_string()),
+                memory_kind: Some(LocalMemoryKind::Correction),
+                limit: Some(5),
+            })
+            .expect("retrieve correction");
+
+        assert_eq!(retrieved, vec![saved]);
     }
 
     #[test]
