@@ -81,6 +81,8 @@ Milestone 005 should establish reusable decisions for:
 
 These rules do not need to be final brand guidelines, but they must be concrete enough that Milestone 006+ feature work does not invent new UI patterns casually.
 
+The current reusable token source and component state rules live in `apps/desktop/src/experienceTokens.ts` and are documented in `docs/architecture/experience-tokens.md`.
+
 ## Quality Gate
 
 Every UI-visible implementation after this direction exists should include visual evidence. For Milestone 005, evidence must cover:

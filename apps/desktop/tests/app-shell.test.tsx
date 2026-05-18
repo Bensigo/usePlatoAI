@@ -63,6 +63,11 @@ import {
   textFallbackResponseSnapshot,
   textFallbackThinkingSnapshot,
 } from "../src/voiceInteraction";
+import {
+  componentStateRules,
+  experienceTokenCss,
+  experienceTokens,
+} from "../src/experienceTokens";
 
 const completedSettings: CompanionSettings = {
   ...defaultCompanionSettings,
@@ -88,6 +93,41 @@ describe("desktop app shell", () => {
     expect(markup).toContain("Mute");
     expect(markup).toContain("Stop speech");
     expect(markup).not.toContain("Plato is hidden");
+  });
+
+  it("injects reusable experience tokens into the visible shell", () => {
+    const markup = renderToStaticMarkup(
+      <App initialSettings={completedSettings} />,
+    );
+
+    expect(markup).toContain("data-plato-experience-tokens=\"true\"");
+    expect(markup).toContain("--plato-color-companion: #0f766e");
+    expect(markup).toContain(experienceTokens.stateColor.listening);
+  });
+
+  it("keeps component state rules explicit for future surfaces", () => {
+    expect(Object.keys(componentStateRules).sort()).toEqual([
+      "active",
+      "disabled",
+      "empty",
+      "error",
+      "hover",
+      "loading",
+      "offline",
+    ]);
+    expect(componentStateRules.error).toContain("repair-oriented");
+  });
+
+  it("consumes experience tokens from shell CSS rather than leaving them unused", () => {
+    const css = readFileSync(
+      resolve(__dirname, "../src/styles.css"),
+      "utf8",
+    );
+
+    expect(experienceTokenCss).toContain("--plato-motion-waiting-approval");
+    expect(css).toContain("var(--plato-color-companion)");
+    expect(css).toContain("var(--plato-state-listening)");
+    expect(css).toContain("var(--plato-elevation-avatar)");
   });
 
   it("maps renderer-independent presence states to Live2D surface hooks", () => {
