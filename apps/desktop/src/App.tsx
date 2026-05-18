@@ -45,6 +45,13 @@ import {
   type TrustFoundationStore,
 } from "./trustFoundation";
 import {
+  createVoiceOutputSession,
+  mockVoiceResponse,
+  setVoiceOutputMuted,
+  startMockSpeech,
+  stopMockSpeech,
+} from "./voiceOutput";
+import {
   companionPresenceForVoiceState,
   defaultVoiceInteractionSnapshot,
   nextMockVoiceSnapshot,
@@ -709,6 +716,7 @@ export function App({
   const [settings, setSettings] = useState<CompanionSettings>(
     () => initialSettings ?? defaultCompanionSettings,
   );
+  const [voiceSession, setVoiceSession] = useState(createVoiceOutputSession);
   const [isSettingsLoaded, setIsSettingsLoaded] = useState(
     () => initialSettings !== undefined,
   );
@@ -784,11 +792,15 @@ export function App({
     scheduleVoiceState(1800, "idle", "text");
   }
 
-  const voicePresenceState = companionPresenceForVoiceState(
+  const voiceInteractionPresenceState = companionPresenceForVoiceState(
     voiceInteraction.sessionState,
   );
   const renderedPresenceState =
-    voiceInteraction.sessionState === "idle" ? presence.state : voicePresenceState;
+    voiceSession.presenceState !== "idle"
+      ? voiceSession.presenceState
+      : voiceInteraction.sessionState === "idle"
+        ? presence.state
+        : voiceInteractionPresenceState;
   const avatarPresenceState = avatarPresenceStateFor(renderedPresenceState);
   const avatarSurfaceHook = getLive2DAvatarSurfaceHook(avatarPresenceState);
 
@@ -915,6 +927,46 @@ export function App({
             <p className="status-label">{avatarSurfaceHook.statusText}</p>
             <p className="wake-name">Wake name: {settings.wakeName}</p>
           </div>
+
+          <section className="voice-output-panel" aria-label="Voice output controls">
+            <div className="voice-status-row">
+              <span>{voiceSession.statusLabel}</span>
+              <strong>{voiceSession.isMuted ? "Muted" : "Audible"}</strong>
+            </div>
+            <p className="voice-fallback">{voiceSession.textFallback}</p>
+            <div className="voice-controls">
+              <button
+                type="button"
+                aria-pressed={voiceSession.isMuted}
+                onClick={() =>
+                  setVoiceSession((session) =>
+                    setVoiceOutputMuted(session, !session.isMuted),
+                  )
+                }
+              >
+                {voiceSession.isMuted ? "Unmute" : "Mute"}
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  setVoiceSession((session) =>
+                    startMockSpeech(session, mockVoiceResponse),
+                  )
+                }
+              >
+                Play mock voice
+              </button>
+              <button
+                type="button"
+                disabled={voiceSession.phase !== "speaking"}
+                onClick={() =>
+                  setVoiceSession((session) => stopMockSpeech(session))
+                }
+              >
+                Stop speech
+              </button>
+            </div>
+          </section>
         </section>
       )}
 

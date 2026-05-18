@@ -31,6 +31,13 @@ import {
   decisionForActionImpact,
 } from "../src/settings";
 import {
+  createVoiceOutputSession,
+  mockVoiceResponse,
+  setVoiceOutputMuted,
+  startMockSpeech,
+  stopMockSpeech,
+} from "../src/voiceOutput";
+import {
   companionPresenceForVoiceState,
   defaultVoiceInteractionSnapshot,
   nextMockVoiceSnapshot,
@@ -58,6 +65,10 @@ describe("desktop app shell", () => {
     expect(markup).toContain("data-live2d-expression=\"neutral\"");
     expect(markup).toContain("Drag Plato presence");
     expect(markup).toContain("Hide Plato presence");
+    expect(markup).toContain("Voice output controls");
+    expect(markup).toContain("Voice ready");
+    expect(markup).toContain("Mute");
+    expect(markup).toContain("Stop speech");
     expect(markup).not.toContain("Plato is hidden");
   });
 
@@ -369,5 +380,47 @@ describe("desktop app shell", () => {
 
     expect(markup).toContain("Loading setup");
     expect(markup).not.toContain("First-run setup");
+  });
+
+  it("routes mocked speech to text fallback while muted", () => {
+    const mutedSession = setVoiceOutputMuted(createVoiceOutputSession(), true);
+    const nextSession = startMockSpeech(mutedSession, mockVoiceResponse);
+
+    expect(nextSession.isMuted).toBe(true);
+    expect(nextSession.phase).toBe("text_fallback");
+    expect(nextSession.presenceState).toBe("idle");
+    expect(nextSession.spokenText).toBeNull();
+    expect(nextSession.textFallback).toBe(mockVoiceResponse);
+    expect(nextSession.statusLabel).toBe("Voice muted - text fallback visible");
+  });
+
+  it("mutes in-progress mocked speech and returns presence to idle", () => {
+    const speakingSession = startMockSpeech(
+      createVoiceOutputSession(),
+      mockVoiceResponse,
+    );
+    const mutedSession = setVoiceOutputMuted(speakingSession, true);
+
+    expect(mutedSession.isMuted).toBe(true);
+    expect(mutedSession.phase).toBe("text_fallback");
+    expect(mutedSession.presenceState).toBe("idle");
+    expect(mutedSession.spokenText).toBeNull();
+    expect(mutedSession.textFallback).toBe(mockVoiceResponse);
+  });
+
+  it("stops mocked speech and returns presence to idle", () => {
+    const speakingSession = startMockSpeech(
+      createVoiceOutputSession(),
+      mockVoiceResponse,
+    );
+    const stoppedSession = stopMockSpeech(speakingSession);
+
+    expect(speakingSession.phase).toBe("speaking");
+    expect(speakingSession.presenceState).toBe("speaking");
+    expect(stoppedSession.phase).toBe("idle");
+    expect(stoppedSession.presenceState).toBe("idle");
+    expect(stoppedSession.spokenText).toBeNull();
+    expect(stoppedSession.textFallback).toBe(mockVoiceResponse);
+    expect(stoppedSession.statusLabel).toBe("Speech stopped");
   });
 });
