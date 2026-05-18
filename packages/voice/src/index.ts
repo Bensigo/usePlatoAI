@@ -29,6 +29,14 @@ export type VoiceAdapterResultBase = {
   error?: VoiceAdapterError;
 };
 
+export type VoiceOperationContext = {
+  signal?: AbortSignal;
+};
+
+export type VoiceStopInput = {
+  reason?: string;
+};
+
 export type SpeechToTextInput = {
   audio: Uint8Array;
   language?: string;
@@ -61,19 +69,29 @@ export type WakeWordResult = VoiceAdapterResultBase & {
 
 export type SpeechToTextAdapter = {
   providerId: string;
-  transcribe: (input: SpeechToTextInput) => Promise<SpeechToTextResult>;
+  transcribe: (
+    input: SpeechToTextInput,
+    context?: VoiceOperationContext,
+  ) => Promise<SpeechToTextResult>;
+  stop: (input?: VoiceStopInput) => Promise<VoiceAdapterResultBase>;
 };
 
 export type TextToSpeechAdapter = {
   providerId: string;
-  speak: (input: TextToSpeechInput) => Promise<TextToSpeechResult>;
-  stop?: () => Promise<VoiceAdapterResultBase>;
+  speak: (
+    input: TextToSpeechInput,
+    context?: VoiceOperationContext,
+  ) => Promise<TextToSpeechResult>;
+  stop: (input?: VoiceStopInput) => Promise<VoiceAdapterResultBase>;
 };
 
 export type WakeWordAdapter = {
   providerId: string;
-  detect: (input: WakeWordInput) => Promise<WakeWordResult>;
-  stop?: () => Promise<VoiceAdapterResultBase>;
+  detect: (
+    input: WakeWordInput,
+    context?: VoiceOperationContext,
+  ) => Promise<WakeWordResult>;
+  stop: (input?: VoiceStopInput) => Promise<VoiceAdapterResultBase>;
 };
 
 type MockAdapterOptions = {
@@ -120,6 +138,36 @@ function failedResult(
   };
 }
 
+function stoppedResult(
+  providerId: string,
+  startedAt: string,
+): VoiceAdapterResultBase {
+  return {
+    status: "stopped",
+    providerId,
+    startedAt,
+    completedAt: startedAt,
+  };
+}
+
+function abortedResult(
+  providerId: string,
+  startedAt: string,
+): VoiceAdapterResultBase {
+  return {
+    ...stoppedResult(providerId, startedAt),
+    error: {
+      code: "operation_aborted",
+      message: "Voice operation was interrupted.",
+      retryable: true,
+    },
+  };
+}
+
+function isAborted(context?: VoiceOperationContext) {
+  return context?.signal?.aborted === true;
+}
+
 export function createMockSpeechToTextAdapter(
   options: MockSpeechToTextOptions = {},
 ): SpeechToTextAdapter {
@@ -128,8 +176,12 @@ export function createMockSpeechToTextAdapter(
 
   return {
     providerId,
-    async transcribe() {
+    async transcribe(_input, context) {
       const startedAt = now();
+
+      if (isAborted(context)) {
+        return abortedResult(providerId, startedAt);
+      }
 
       if (options.failure) {
         return failedResult(providerId, options.failure, startedAt);
@@ -143,6 +195,9 @@ export function createMockSpeechToTextAdapter(
         completedAt: startedAt,
       };
     },
+    async stop() {
+      return stoppedResult(providerId, now());
+    },
   };
 }
 
@@ -154,8 +209,12 @@ export function createMockTextToSpeechAdapter(
 
   return {
     providerId,
-    async speak(input) {
+    async speak(input, context) {
       const startedAt = now();
+
+      if (isAborted(context)) {
+        return abortedResult(providerId, startedAt);
+      }
 
       if (options.failure) {
         return failedResult(providerId, options.failure, startedAt);
@@ -171,14 +230,7 @@ export function createMockTextToSpeechAdapter(
       };
     },
     async stop() {
-      const startedAt = now();
-
-      return {
-        status: "stopped",
-        providerId,
-        startedAt,
-        completedAt: startedAt,
-      };
+      return stoppedResult(providerId, now());
     },
   };
 }
@@ -191,8 +243,12 @@ export function createMockWakeWordAdapter(
 
   return {
     providerId,
-    async detect(input) {
+    async detect(input, context) {
       const startedAt = now();
+
+      if (isAborted(context)) {
+        return abortedResult(providerId, startedAt);
+      }
 
       if (options.failure) {
         return failedResult(providerId, options.failure, startedAt);
@@ -209,14 +265,7 @@ export function createMockWakeWordAdapter(
       };
     },
     async stop() {
-      const startedAt = now();
-
-      return {
-        status: "stopped",
-        providerId,
-        startedAt,
-        completedAt: startedAt,
-      };
+      return stoppedResult(providerId, now());
     },
   };
 }
