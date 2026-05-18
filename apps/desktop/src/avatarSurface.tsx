@@ -15,6 +15,7 @@ export type Live2DAvatarSurfaceHook = {
   state: AvatarPresenceState;
   label: string;
   statusText: string;
+  assetSrc: string;
   motionGroup:
     | "appear"
     | "idle"
@@ -49,6 +50,7 @@ export const live2dAvatarSurfaceHooks: Record<
     state: "appearing",
     label: "Appearing",
     statusText: "Coming online",
+    assetSrc: "/avatar/plato/appearing.png",
     motionGroup: "appear",
     expression: "bright",
     parameterHints: {
@@ -62,6 +64,7 @@ export const live2dAvatarSurfaceHooks: Record<
     state: "idle",
     label: "Idle",
     statusText: "Idle presence",
+    assetSrc: "/avatar/plato/idle.png",
     motionGroup: "idle",
     expression: "neutral",
     parameterHints: {
@@ -75,6 +78,7 @@ export const live2dAvatarSurfaceHooks: Record<
     state: "listening",
     label: "Listening",
     statusText: "Listening now",
+    assetSrc: "/avatar/plato/listening.png",
     motionGroup: "tap_body",
     expression: "attentive",
     parameterHints: {
@@ -88,6 +92,7 @@ export const live2dAvatarSurfaceHooks: Record<
     state: "thinking",
     label: "Thinking",
     statusText: "Thinking through it",
+    assetSrc: "/avatar/plato/thinking.png",
     motionGroup: "thinking",
     expression: "focused",
     parameterHints: {
@@ -101,6 +106,7 @@ export const live2dAvatarSurfaceHooks: Record<
     state: "speaking",
     label: "Speaking",
     statusText: "Speaking",
+    assetSrc: "/avatar/plato/speaking.png",
     motionGroup: "speak",
     expression: "talking",
     parameterHints: {
@@ -114,6 +120,7 @@ export const live2dAvatarSurfaceHooks: Record<
     state: "waitingApproval",
     label: "Waiting for approval",
     statusText: "Waiting for approval",
+    assetSrc: "/avatar/plato/waitingApproval.png",
     motionGroup: "approval",
     expression: "concerned",
     parameterHints: {
@@ -127,6 +134,7 @@ export const live2dAvatarSurfaceHooks: Record<
     state: "muted",
     label: "Muted",
     statusText: "Muted",
+    assetSrc: "/avatar/plato/muted.png",
     motionGroup: "quiet",
     expression: "soft",
     parameterHints: {
@@ -140,6 +148,7 @@ export const live2dAvatarSurfaceHooks: Record<
     state: "error",
     label: "Error",
     statusText: "Needs repair",
+    assetSrc: "/avatar/plato/error.png",
     motionGroup: "error",
     expression: "strained",
     parameterHints: {
@@ -182,13 +191,12 @@ export function Live2DAvatarSurface({
       aria-label={`Plato avatar surface: ${hook.statusText}`}
     >
       <div className="live2d-avatar-stage" aria-hidden="true">
-        <div className="live2d-avatar-hair" />
-        <div className="live2d-avatar-head">
-          <span className="live2d-avatar-eye live2d-avatar-eye-left" />
-          <span className="live2d-avatar-eye live2d-avatar-eye-right" />
-          <span className="live2d-avatar-mouth" />
-        </div>
-        <div className="live2d-avatar-body" />
+        <img
+          className="plato-avatar-asset"
+          src={hook.assetSrc}
+          alt=""
+          draggable={false}
+        />
       </div>
       <figcaption className="live2d-avatar-caption sr-only">
         <span>{hook.label}</span>

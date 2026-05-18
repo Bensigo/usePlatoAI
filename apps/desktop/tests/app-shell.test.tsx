@@ -206,9 +206,11 @@ describe("desktop app shell", () => {
       );
 
       expect(hook.statusText).toBe(mapping.statusText);
+      expect(hook.assetSrc).toBe(`/avatar/plato/${mapping.state}.png`);
       expect(hook.motionGroup).toBe(mapping.motionGroup);
       expect(hook.expression).toBe(mapping.expression);
       expect(markup).toContain(`data-presence-state="${mapping.state}"`);
+      expect(markup).toContain(`src="/avatar/plato/${mapping.state}.png"`);
       expect(markup).toContain(
         `data-live2d-motion-group="${mapping.motionGroup}"`,
       );
@@ -216,6 +218,8 @@ describe("desktop app shell", () => {
         `data-live2d-expression="${mapping.expression}"`,
       );
       expect(markup).toContain(mapping.statusText);
+      expect(markup).not.toContain("live2d-avatar-head");
+      expect(markup).not.toContain("live2d-avatar-body");
     }
   });
 

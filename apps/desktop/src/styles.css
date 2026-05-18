@@ -183,92 +183,74 @@ button {
 }
 
 .live2d-avatar-surface {
-  width: 154px;
+  width: 172px;
   display: grid;
   justify-items: center;
   margin: 0;
+  --avatar-state-color: var(--plato-state-idle);
   filter: var(--plato-elevation-avatar);
 }
 
 .live2d-avatar-stage {
   position: relative;
-  width: 154px;
-  height: 208px;
+  width: 172px;
+  height: 186px;
   background: transparent;
   transform-origin: 50% 100%;
   animation: avatar-idle-breathe var(--plato-motion-idle) infinite;
 }
 
-.live2d-avatar-hair {
+.plato-avatar-asset {
   position: absolute;
-  left: 27px;
-  top: 18px;
-  width: 100px;
-  height: 92px;
-  border-radius: 50% 50% 46% 46%;
-  background: #1f2937;
-  box-shadow:
-    -12px 18px 0 #111827,
-    12px 18px 0 #111827;
-}
-
-.live2d-avatar-head {
-  position: absolute;
-  left: 50%;
-  top: 44px;
-  width: 82px;
-  height: 76px;
-  transform: translateX(-50%);
-  border-radius: 48% 48% 44% 44%;
-  background: #ffe2d3;
-  box-shadow:
-    inset 0 -8px 12px rgb(217 119 6 / 13%),
-    0 4px 0 rgb(255 255 255 / 24%);
-}
-
-.live2d-avatar-eye,
-.live2d-avatar-mouth {
-  position: absolute;
+  inset: 0;
   display: block;
-  background: #111827;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: center bottom;
+  user-select: none;
+  -webkit-user-drag: none;
 }
 
-.live2d-avatar-eye {
-  top: 32px;
-  width: 10px;
-  height: 15px;
-  border-radius: 50%;
-}
-
-.live2d-avatar-eye-left {
-  left: 21px;
-}
-
-.live2d-avatar-eye-right {
-  right: 21px;
-}
-
-.live2d-avatar-mouth {
-  left: 50%;
-  bottom: 15px;
-  width: 16px;
-  height: 3px;
-  transform: translateX(-50%);
-  border-radius: var(--plato-radius-pill);
-}
-
-.live2d-avatar-body {
+.live2d-avatar-stage::after {
   position: absolute;
-  left: 50%;
+  left: 15%;
+  right: 15%;
   bottom: 0;
-  width: 92px;
-  height: 92px;
-  transform: translateX(-50%);
-  border-radius: var(--plato-radius-avatar-body);
-  background: var(--plato-state-idle);
-  box-shadow:
-    inset 0 14px 0 rgb(255 255 255 / 12%),
-    inset 0 -18px 0 rgb(15 23 42 / 14%);
+  height: 12px;
+  border-radius: 999px;
+  background: rgb(15 23 42 / 14%);
+  filter: blur(8px);
+  content: "";
+  z-index: -1;
+}
+
+.live2d-avatar-surface[data-presence-state="appearing"] {
+  --avatar-state-color: var(--plato-color-companion);
+}
+
+.live2d-avatar-surface[data-presence-state="listening"] {
+  --avatar-state-color: var(--plato-state-listening);
+}
+
+.live2d-avatar-surface[data-presence-state="thinking"] {
+  --avatar-state-color: var(--plato-state-thinking);
+}
+
+.live2d-avatar-surface[data-presence-state="speaking"] {
+  --avatar-state-color: var(--plato-state-speaking);
+}
+
+.live2d-avatar-surface[data-presence-state="waitingApproval"] {
+  --avatar-state-color: var(--plato-state-waiting-approval);
+}
+
+.live2d-avatar-surface[data-presence-state="muted"] {
+  --avatar-state-color: var(--plato-state-muted);
+}
+
+.live2d-avatar-surface[data-presence-state="error"] {
+  --avatar-state-color: var(--plato-state-error);
 }
 
 .live2d-avatar-caption {
@@ -293,56 +275,16 @@ button {
   line-height: 1.2;
 }
 
-.live2d-avatar-surface[data-presence-state="appearing"] .live2d-avatar-stage {
-  animation-duration: var(--plato-motion-speaking);
-  transform: translateY(-4px);
-}
-
-.live2d-avatar-surface[data-presence-state="appearing"] .live2d-avatar-body {
-  background: var(--plato-color-companion);
-}
-
-.live2d-avatar-surface[data-presence-state="appearing"] .live2d-avatar-eye {
-  height: 18px;
-}
-
 .live2d-avatar-surface[data-presence-state="listening"] .live2d-avatar-stage {
   animation-duration: var(--plato-motion-listening);
-}
-
-.live2d-avatar-surface[data-presence-state="listening"] .live2d-avatar-body {
-  background: var(--plato-state-listening);
-}
-
-.live2d-avatar-surface[data-presence-state="listening"] .live2d-avatar-eye {
-  height: 18px;
 }
 
 .live2d-avatar-surface[data-presence-state="thinking"] .live2d-avatar-stage {
   transform: rotate(-2deg);
 }
 
-.live2d-avatar-surface[data-presence-state="thinking"] .live2d-avatar-body {
-  background: var(--plato-state-thinking);
-}
-
-.live2d-avatar-surface[data-presence-state="thinking"] .live2d-avatar-eye {
-  height: 8px;
-  border-radius: var(--plato-radius-pill);
-}
-
 .live2d-avatar-surface[data-presence-state="speaking"] .live2d-avatar-stage {
   animation-duration: var(--plato-motion-speaking);
-}
-
-.live2d-avatar-surface[data-presence-state="speaking"] .live2d-avatar-body {
-  background: var(--plato-state-speaking);
-}
-
-.live2d-avatar-surface[data-presence-state="speaking"] .live2d-avatar-mouth {
-  width: 18px;
-  height: 13px;
-  border-radius: 50%;
 }
 
 .live2d-avatar-surface[data-presence-state="waitingApproval"]
@@ -350,33 +292,9 @@ button {
   animation-duration: var(--plato-motion-waiting-approval);
 }
 
-.live2d-avatar-surface[data-presence-state="waitingApproval"]
-  .live2d-avatar-body {
-  background: var(--plato-state-waiting-approval);
-}
-
-.live2d-avatar-surface[data-presence-state="waitingApproval"]
-  .live2d-avatar-mouth {
-  width: 12px;
-  height: 10px;
-  border-radius: 50%;
-  background: transparent;
-  border: 2px solid #111827;
-  border-top: 0;
-}
-
 .live2d-avatar-surface[data-presence-state="muted"] .live2d-avatar-stage {
   animation-duration: var(--plato-motion-waiting-approval);
   opacity: 0.86;
-}
-
-.live2d-avatar-surface[data-presence-state="muted"] .live2d-avatar-body {
-  background: var(--plato-state-muted);
-}
-
-.live2d-avatar-surface[data-presence-state="muted"] .live2d-avatar-mouth {
-  width: 18px;
-  height: 3px;
 }
 
 .live2d-avatar-surface[data-presence-state="error"] .live2d-avatar-stage {
@@ -384,13 +302,9 @@ button {
   transform: rotate(2deg);
 }
 
-.live2d-avatar-surface[data-presence-state="error"] .live2d-avatar-body {
-  background: var(--plato-state-error);
-}
-
-.live2d-avatar-surface[data-presence-state="error"] .live2d-avatar-eye {
-  height: 8px;
-  border-radius: var(--plato-radius-pill);
+.live2d-avatar-surface[data-presence-state="appearing"] .live2d-avatar-stage {
+  animation-duration: var(--plato-motion-speaking);
+  transform: translateY(-4px);
 }
 
 .presence-copy {
@@ -1131,14 +1045,12 @@ h1 {
   }
 
   .live2d-avatar-surface {
-    width: 132px;
+    width: 144px;
   }
 
   .live2d-avatar-stage {
-    width: 132px;
-    height: 178px;
-    transform: scale(0.86);
-    transform-origin: 50% 100%;
+    width: 144px;
+    height: 156px;
   }
 
   .credential-form {
