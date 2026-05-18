@@ -759,7 +759,7 @@ export function App({
           }
 
           if (source === "text") {
-            return { ...current, sessionState };
+            return { ...current, sessionState, companionPrompt: null };
           }
 
           return nextMockVoiceSnapshot(current, sessionState, soulGuidance);
@@ -784,6 +784,7 @@ export function App({
       ...current,
       sessionState: "idle",
       response: "Voice session stopped.",
+      companionPrompt: null,
     }));
   }
 
