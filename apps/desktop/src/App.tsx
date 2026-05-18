@@ -5,6 +5,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
   type FormEvent,
   type MouseEvent,
 } from "react";
@@ -15,6 +16,16 @@ import {
   isControlSurfaceId,
   type ControlSurfaceId,
 } from "./controlSurface";
+import {
+  Live2DAvatarSurface,
+  getLive2DAvatarSurfaceHook,
+  isAvatarPresenceState,
+  type AvatarPresenceState,
+} from "./avatarSurface";
+import {
+  createMemoryPresenceStateSource,
+  type PresenceStateSource,
+} from "./presenceState";
 import {
   createTauriSettingsStore,
   defaultCompanionSettings,
@@ -37,10 +48,8 @@ import {
   companionPresenceForVoiceState,
   defaultVoiceInteractionSnapshot,
   nextMockVoiceSnapshot,
-  presenceLabelForState,
   textFallbackResponseSnapshot,
   textFallbackThinkingSnapshot,
-  type CompanionPresenceState,
   type VoiceInteractionSnapshot,
   type VoiceSessionState,
 } from "./voiceInteraction";
@@ -52,6 +61,18 @@ function startPresenceDrag(event: MouseEvent<HTMLButtonElement>) {
 
   event.preventDefault();
   void getCurrentWindow().startDragging();
+}
+
+function usePresenceState(source: PresenceStateSource) {
+  return useSyncExternalStore(
+    source.subscribe,
+    source.getSnapshot,
+    source.getSnapshot,
+  );
+}
+
+function avatarPresenceStateFor(state: string): AvatarPresenceState {
+  return isAvatarPresenceState(state) ? state : "idle";
 }
 
 export function DismissedPresence({ onRestore }: { onRestore: () => void }) {
@@ -661,18 +682,29 @@ export function FirstRunOnboarding({
 
 export function App({
   initialSettings,
+  initialPresenceState = "idle",
   settingsStore,
   trustFoundationStore,
+  presenceStateSource,
 }: {
   initialSettings?: CompanionSettings;
+  initialPresenceState?: AvatarPresenceState;
   settingsStore?: SettingsStore;
   trustFoundationStore?: TrustFoundationStore;
+  presenceStateSource?: PresenceStateSource;
 }) {
   const durableSettingsStore = useMemo(
     () => settingsStore ?? createTauriSettingsStore(),
     [settingsStore],
   );
+  const companionPresenceStateSource = useMemo(
+    () =>
+      presenceStateSource ?? createMemoryPresenceStateSource(initialPresenceState),
+    [initialPresenceState, presenceStateSource],
+  );
+  const presence = usePresenceState(companionPresenceStateSource);
   const [activeEntry, setActiveEntry] = useState<ControlSurfaceId>("voice");
+  const [isControlSurfaceVisible, setIsControlSurfaceVisible] = useState(false);
   const [isDismissed, setIsDismissed] = useState(false);
   const [settings, setSettings] = useState<CompanionSettings>(
     () => initialSettings ?? defaultCompanionSettings,
@@ -752,6 +784,14 @@ export function App({
     scheduleVoiceState(1800, "idle", "text");
   }
 
+  const voicePresenceState = companionPresenceForVoiceState(
+    voiceInteraction.sessionState,
+  );
+  const renderedPresenceState =
+    voiceInteraction.sessionState === "idle" ? presence.state : voicePresenceState;
+  const avatarPresenceState = avatarPresenceStateFor(renderedPresenceState);
+  const avatarSurfaceHook = getLive2DAvatarSurfaceHook(avatarPresenceState);
+
   useEffect(() => {
     if (initialSettings) {
       return;
@@ -794,6 +834,7 @@ export function App({
         listen<ControlSurfaceId>("plato-control-surface://open", (event) => {
           if (isControlSurfaceId(event.payload)) {
             setActiveEntry(event.payload);
+            setIsControlSurfaceVisible(true);
           }
         }),
       )
@@ -838,17 +879,13 @@ export function App({
     );
   }
 
-  const presenceState: CompanionPresenceState = companionPresenceForVoiceState(
-    voiceInteraction.sessionState,
-  );
-
   return (
     <main className="presence-shell" aria-labelledby="presence-title">
       {isDismissed ? (
         <DismissedPresence onRestore={() => setIsDismissed(false)} />
       ) : (
         <section
-          className={`presence-card presence-${presenceState}`}
+          className={`presence-card presence-${renderedPresenceState}`}
           aria-label="Floating Plato presence"
         >
           <div className="presence-controls">
@@ -870,23 +907,22 @@ export function App({
             </button>
           </div>
 
-          <div className="avatar-placeholder" aria-hidden="true">
-            <div className="avatar-face">
-              <span className="avatar-eye" />
-              <span className="avatar-eye" />
-            </div>
-          </div>
+          <Live2DAvatarSurface presenceState={avatarPresenceState} />
 
-          <div className="presence-copy">
+          <div className="presence-copy sr-only">
             <p className="product-name">usePlatoAI</p>
             <h1 id="presence-title">{settings.companionName}</h1>
-            <p className="status-label">{presenceLabelForState(presenceState)}</p>
+            <p className="status-label">{avatarSurfaceHook.statusText}</p>
             <p className="wake-name">Wake name: {settings.wakeName}</p>
           </div>
         </section>
       )}
 
-      <section className="control-surface" aria-label="Menu bar control surface">
+      <section
+        className="control-surface"
+        aria-label="Menu bar control surface"
+        hidden={!isControlSurfaceVisible}
+      >
         <nav className="control-nav" aria-label="Control surface entries">
           {controlSurfaceEntries.map((entry) => (
             <button
