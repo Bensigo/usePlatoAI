@@ -4,8 +4,8 @@ use std::{io::ErrorKind, path::Path};
 
 use rusqlite::{params, Connection, OptionalExtension, Transaction, TransactionBehavior};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use serde_json::{json, Value};
+use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use crate::CompanionSettings;
@@ -66,6 +66,7 @@ pub struct SensitiveMemoryApprovalEvidence {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SensitiveMemoryApprovalRequest {
+    pub memory: LocalMemoryInput,
     pub metadata: Value,
 }
 
@@ -609,12 +610,14 @@ impl LocalDataService {
         &self,
         request: &SensitiveMemoryApprovalRequest,
     ) -> Result<SensitiveMemoryApprovalEvidence, String> {
+        validate_memory_input(&request.memory, true)?;
         validate_sensitive_memory_approval_metadata(&request.metadata)?;
 
         let approval_evidence = SensitiveMemoryApprovalEvidence {
             approval_id: format!("approval-sensitive-memory-{}", Uuid::new_v4()),
             approval_token: Uuid::new_v4().to_string(),
         };
+        let approved_payload_hash = sensitive_memory_approval_payload_hash(&request.memory)?;
         let metadata_json = encode_json(&request.metadata)?;
 
         self.connection
@@ -624,14 +627,20 @@ impl LocalDataService {
                     approval_id,
                     approval_token,
                     approved_action,
+                    approved_memory_id,
+                    approved_source_kind,
+                    approved_payload_hash,
                     metadata_json
                 )
-                VALUES (?1, ?2, ?3, ?4)
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
                 ",
                 params![
                     approval_evidence.approval_id.as_str(),
                     approval_evidence.approval_token.as_str(),
                     "memory.write_sensitive",
+                    request.memory.memory_id.as_str(),
+                    request.memory.source_kind.as_str(),
+                    approved_payload_hash,
                     metadata_json
                 ],
             )
@@ -643,6 +652,7 @@ impl LocalDataService {
             json!({
                 "approvalId": approval_evidence.approval_id.as_str(),
                 "approvedAction": "memory.write_sensitive",
+                "memoryId": request.memory.memory_id.as_str(),
             }),
         )?;
 
@@ -2054,6 +2064,18 @@ mod tests {
         std::env::temp_dir().join(unique_name)
     }
 
+    fn approved_sensitive_memory(memory_id: &str) -> LocalMemoryInput {
+        LocalMemoryInput {
+            memory_id: memory_id.to_string(),
+            memory_kind: LocalMemoryKind::Summary,
+            summary: "User API key = sk_test_1234567890abcdef".to_string(),
+            preference_key: None,
+            preference_value: None,
+            source_kind: "user-approved-sensitive-memory".to_string(),
+            metadata: json!({ "extractor": "local-test-boundary" }),
+        }
+    }
+
     #[test]
     fn creates_local_data_schema_boundaries() {
         let service = LocalDataService::in_memory().expect("create in-memory service");
@@ -2488,26 +2510,16 @@ mod tests {
     fn trusted_approval_path_allows_sensitive_data() {
         let service = LocalDataService::in_memory().expect("create in-memory service");
         let sensitive_summary = "User API key = sk_test_1234567890abcdef";
+        let memory = approved_sensitive_memory("memory-approved-api-key");
         let approval_evidence = service
             .create_sensitive_memory_approval(&SensitiveMemoryApprovalRequest {
+                memory: memory.clone(),
                 metadata: json!({
                     "surface": "human-approval-prompt",
                     "reason": "User approved remembering sensitive data."
                 }),
             })
             .expect("create trusted approval evidence");
-        let memory = LocalMemoryInput {
-            memory_id: "memory-approved-api-key".to_string(),
-            memory_kind: LocalMemoryKind::Summary,
-            summary: sensitive_summary.to_string(),
-            preference_key: None,
-            preference_value: None,
-            source_kind: "user-approved-sensitive-memory".to_string(),
-            metadata: json!({ "extractor": "local-test-boundary" }),
-        };
-        service
-            .insert_sensitive_memory_approval_for_test(&approval_evidence, &memory)
-            .expect("insert trusted approval evidence");
 
         let saved = service
             .upsert_approved_sensitive_memory_record(&memory, &approval_evidence)
@@ -2543,6 +2555,7 @@ mod tests {
 
         let error = service
             .create_sensitive_memory_approval(&SensitiveMemoryApprovalRequest {
+                memory: approved_sensitive_memory("memory-raw-transcript-approval"),
                 metadata: json!({
                     "surface": "human-approval-prompt",
                     "rawTranscript": raw_transcript
@@ -2563,6 +2576,7 @@ mod tests {
 
         let error = service
             .create_sensitive_memory_approval(&SensitiveMemoryApprovalRequest {
+                memory: approved_sensitive_memory("memory-sensitive-metadata-approval"),
                 metadata: json!({
                     "surface": "human-approval-prompt",
                     "reason": sensitive_text
@@ -2582,6 +2596,7 @@ mod tests {
 
         let error = service
             .create_sensitive_memory_approval(&SensitiveMemoryApprovalRequest {
+                memory: approved_sensitive_memory("memory-unschematized-metadata-approval"),
                 metadata: json!({
                     "surface": "human-approval-prompt",
                     "reason": "User approved remembering sensitive data.",
@@ -2611,7 +2626,10 @@ mod tests {
             }),
         ] {
             let error = service
-                .create_sensitive_memory_approval(&SensitiveMemoryApprovalRequest { metadata })
+                .create_sensitive_memory_approval(&SensitiveMemoryApprovalRequest {
+                    memory: approved_sensitive_memory("memory-incomplete-provenance-approval"),
+                    metadata,
+                })
                 .expect_err("approval provenance requires non-empty surface and reason");
 
             assert!(error.contains("surface") || error.contains("reason"));
