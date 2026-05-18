@@ -1527,30 +1527,30 @@ fn validate_sensitive_memory_approval_metadata(value: &Value) -> Result<(), Stri
         .as_object()
         .ok_or_else(|| "sensitive memory approval metadata must be an object".to_string())?;
 
-    for (key, value) in entries {
+    for required_key in ["surface", "reason"] {
+        let Some(Value::String(text)) = entries.get(required_key) else {
+            return Err(format!(
+                "sensitive memory approval metadata `{required_key}` must be a non-empty string"
+            ));
+        };
+
+        if text.trim().is_empty() {
+            return Err(format!(
+                "sensitive memory approval metadata `{required_key}` must not be empty"
+            ));
+        }
+        if text.len() > 240 {
+            return Err(format!(
+                "sensitive memory approval metadata `{required_key}` is too long"
+            ));
+        }
+    }
+
+    for key in entries.keys() {
         if !["surface", "reason"].contains(&key.as_str()) {
             return Err(format!(
                 "sensitive memory approval metadata must not include `{key}`"
             ));
-        }
-
-        match value {
-            Value::String(text) if text.trim().is_empty() => {
-                return Err(format!(
-                    "sensitive memory approval metadata `{key}` must not be empty"
-                ));
-            }
-            Value::String(text) if text.len() > 240 => {
-                return Err(format!(
-                    "sensitive memory approval metadata `{key}` is too long"
-                ));
-            }
-            Value::String(_) | Value::Null => {}
-            _ => {
-                return Err(format!(
-                    "sensitive memory approval metadata `{key}` must be a string"
-                ));
-            }
         }
     }
 
@@ -2497,12 +2497,38 @@ mod tests {
             .create_sensitive_memory_approval(&SensitiveMemoryApprovalRequest {
                 metadata: json!({
                     "surface": "human-approval-prompt",
+                    "reason": "User approved remembering sensitive data.",
                     "debugPayload": "approval prompt rendered"
                 }),
             })
             .expect_err("approval metadata is restricted to approved fields");
 
         assert!(error.contains("debugPayload"));
+    }
+
+    #[test]
+    fn sensitive_memory_approval_requires_complete_provenance() {
+        let service = LocalDataService::in_memory().expect("create in-memory service");
+
+        for metadata in [
+            json!({}),
+            json!({ "surface": "human-approval-prompt" }),
+            json!({ "reason": "User approved remembering sensitive data." }),
+            json!({
+                "surface": null,
+                "reason": "User approved remembering sensitive data."
+            }),
+            json!({
+                "surface": "human-approval-prompt",
+                "reason": null
+            }),
+        ] {
+            let error = service
+                .create_sensitive_memory_approval(&SensitiveMemoryApprovalRequest { metadata })
+                .expect_err("approval provenance requires non-empty surface and reason");
+
+            assert!(error.contains("surface") || error.contains("reason"));
+        }
     }
 
     #[test]
