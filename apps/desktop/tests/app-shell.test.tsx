@@ -9,6 +9,11 @@ import {
 } from "../src/App";
 import { controlSurfaceEntries } from "../src/controlSurface";
 import {
+  createMemoryPresenceStateSource,
+  normalizePresenceState,
+  presenceStateSnapshot,
+} from "../src/presenceState";
+import {
   type CompanionSettings,
   createMemorySettingsStore,
   defaultCompanionSettings,
@@ -34,6 +39,39 @@ describe("desktop app shell", () => {
     expect(markup).toContain("Drag Plato presence");
     expect(markup).toContain("Hide Plato presence");
     expect(markup).not.toContain("Plato is hidden");
+  });
+
+  it("renders presence state through the shared source boundary", () => {
+    const presenceStateSource = createMemoryPresenceStateSource("listening");
+    const markup = renderToStaticMarkup(
+      <App
+        initialSettings={completedSettings}
+        presenceStateSource={presenceStateSource}
+      />,
+    );
+
+    expect(markup).toContain("Listening");
+    expect(markup).toContain('data-presence-state="listening"');
+    expect(markup).toContain('data-renderer-hint="attentive"');
+  });
+
+  it("falls back to idle presence for invalid state input", () => {
+    expect(normalizePresenceState("renderer-owned-state")).toBe("idle");
+    expect(presenceStateSnapshot("renderer-owned-state")).toEqual({
+      state: "idle",
+      label: "Idle presence",
+      rendererHint: "resting",
+    });
+  });
+
+  it("maps milestone presence states to renderer-independent labels", () => {
+    expect(presenceStateSnapshot("idle").label).toBe("Idle presence");
+    expect(presenceStateSnapshot("listening").label).toBe("Listening");
+    expect(presenceStateSnapshot("thinking").label).toBe("Thinking");
+    expect(presenceStateSnapshot("speaking").label).toBe("Speaking");
+    expect(presenceStateSnapshot("waiting-for-approval").label).toBe(
+      "Waiting for approval",
+    );
   });
 
   it("renders a restore path for the dismissed presence state", () => {

@@ -4,6 +4,7 @@ import {
   useEffect,
   useMemo,
   useState,
+  useSyncExternalStore,
   type FormEvent,
   type MouseEvent,
 } from "react";
@@ -14,6 +15,11 @@ import {
   isControlSurfaceId,
   type ControlSurfaceId,
 } from "./controlSurface";
+import {
+  createMemoryPresenceStateSource,
+  type PresenceStateSource,
+  type PresenceStateSnapshot,
+} from "./presenceState";
 import {
   createTauriSettingsStore,
   defaultCompanionSettings,
@@ -40,6 +46,34 @@ function startPresenceDrag(event: MouseEvent<HTMLButtonElement>) {
 
   event.preventDefault();
   void getCurrentWindow().startDragging();
+}
+
+function usePresenceState(source: PresenceStateSource) {
+  return useSyncExternalStore(
+    source.subscribe,
+    source.getSnapshot,
+    source.getSnapshot,
+  );
+}
+
+export function CompanionPresenceAvatar({
+  presence,
+}: {
+  presence: PresenceStateSnapshot;
+}) {
+  return (
+    <div
+      className="avatar-placeholder"
+      data-presence-state={presence.state}
+      data-renderer-hint={presence.rendererHint}
+      aria-hidden="true"
+    >
+      <div className="avatar-face">
+        <span className="avatar-eye" />
+        <span className="avatar-eye" />
+      </div>
+    </div>
+  );
 }
 
 export function DismissedPresence({ onRestore }: { onRestore: () => void }) {
@@ -536,15 +570,22 @@ export function App({
   initialSettings,
   settingsStore,
   trustFoundationStore,
+  presenceStateSource,
 }: {
   initialSettings?: CompanionSettings;
   settingsStore?: SettingsStore;
   trustFoundationStore?: TrustFoundationStore;
+  presenceStateSource?: PresenceStateSource;
 }) {
   const durableSettingsStore = useMemo(
     () => settingsStore ?? createTauriSettingsStore(),
     [settingsStore],
   );
+  const companionPresenceStateSource = useMemo(
+    () => presenceStateSource ?? createMemoryPresenceStateSource(),
+    [presenceStateSource],
+  );
+  const presence = usePresenceState(companionPresenceStateSource);
   const [activeEntry, setActiveEntry] = useState<ControlSurfaceId>("settings");
   const [isDismissed, setIsDismissed] = useState(false);
   const [settings, setSettings] = useState<CompanionSettings>(
@@ -663,17 +704,12 @@ export function App({
             </button>
           </div>
 
-          <div className="avatar-placeholder" aria-hidden="true">
-            <div className="avatar-face">
-              <span className="avatar-eye" />
-              <span className="avatar-eye" />
-            </div>
-          </div>
+          <CompanionPresenceAvatar presence={presence} />
 
           <div className="presence-copy">
             <p className="product-name">usePlatoAI</p>
             <h1 id="presence-title">{settings.companionName}</h1>
-            <p className="status-label">Idle presence</p>
+            <p className="status-label">{presence.label}</p>
             <p className="wake-name">Wake name: {settings.wakeName}</p>
           </div>
         </section>
