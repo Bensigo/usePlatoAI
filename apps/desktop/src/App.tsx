@@ -4,6 +4,7 @@ import {
   useEffect,
   useMemo,
   useState,
+  useSyncExternalStore,
   type FormEvent,
   type MouseEvent,
 } from "react";
@@ -17,8 +18,13 @@ import {
 import {
   Live2DAvatarSurface,
   getLive2DAvatarSurfaceHook,
+  isAvatarPresenceState,
   type AvatarPresenceState,
 } from "./avatarSurface";
+import {
+  createMemoryPresenceStateSource,
+  type PresenceStateSource,
+} from "./presenceState";
 import {
   createTauriSettingsStore,
   defaultCompanionSettings,
@@ -45,6 +51,18 @@ function startPresenceDrag(event: MouseEvent<HTMLButtonElement>) {
 
   event.preventDefault();
   void getCurrentWindow().startDragging();
+}
+
+function usePresenceState(source: PresenceStateSource) {
+  return useSyncExternalStore(
+    source.subscribe,
+    source.getSnapshot,
+    source.getSnapshot,
+  );
+}
+
+function avatarPresenceStateFor(state: string): AvatarPresenceState {
+  return isAvatarPresenceState(state) ? state : "idle";
 }
 
 export function DismissedPresence({ onRestore }: { onRestore: () => void }) {
@@ -542,27 +560,35 @@ export function App({
   initialPresenceState = "idle",
   settingsStore,
   trustFoundationStore,
+  presenceStateSource,
 }: {
   initialSettings?: CompanionSettings;
   initialPresenceState?: AvatarPresenceState;
   settingsStore?: SettingsStore;
   trustFoundationStore?: TrustFoundationStore;
+  presenceStateSource?: PresenceStateSource;
 }) {
   const durableSettingsStore = useMemo(
     () => settingsStore ?? createTauriSettingsStore(),
     [settingsStore],
   );
+  const companionPresenceStateSource = useMemo(
+    () =>
+      presenceStateSource ?? createMemoryPresenceStateSource(initialPresenceState),
+    [initialPresenceState, presenceStateSource],
+  );
+  const presence = usePresenceState(companionPresenceStateSource);
   const [activeEntry, setActiveEntry] = useState<ControlSurfaceId>("settings");
   const [isControlSurfaceVisible, setIsControlSurfaceVisible] = useState(false);
   const [isDismissed, setIsDismissed] = useState(false);
   const [settings, setSettings] = useState<CompanionSettings>(
     () => initialSettings ?? defaultCompanionSettings,
   );
-  const [presenceState] = useState<AvatarPresenceState>(initialPresenceState);
   const [isSettingsLoaded, setIsSettingsLoaded] = useState(
     () => initialSettings !== undefined,
   );
-  const avatarSurfaceHook = getLive2DAvatarSurfaceHook(presenceState);
+  const avatarPresenceState = avatarPresenceStateFor(presence.state);
+  const avatarSurfaceHook = getLive2DAvatarSurfaceHook(avatarPresenceState);
 
   useEffect(() => {
     if (initialSettings) {
@@ -674,7 +700,7 @@ export function App({
             </button>
           </div>
 
-          <Live2DAvatarSurface presenceState={presenceState} />
+          <Live2DAvatarSurface presenceState={avatarPresenceState} />
 
           <div className="presence-copy sr-only">
             <p className="product-name">usePlatoAI</p>

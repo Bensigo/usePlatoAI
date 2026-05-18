@@ -18,6 +18,11 @@ import {
 } from "../src/avatarSurface";
 import { controlSurfaceEntries } from "../src/controlSurface";
 import {
+  createMemoryPresenceStateSource,
+  normalizePresenceState,
+  presenceStateSnapshot,
+} from "../src/presenceState";
+import {
   type CompanionSettings,
   createMemorySettingsStore,
   defaultCompanionSettings,
@@ -125,6 +130,41 @@ describe("desktop app shell", () => {
     expect(isAvatarPresenceState("waiting_for_approval")).toBe(true);
     expect(isAvatarPresenceState("unknown")).toBe(false);
     expect(isAvatarPresenceState(null)).toBe(false);
+  });
+
+  it("renders presence state through the shared source boundary", () => {
+    const presenceStateSource = createMemoryPresenceStateSource("listening");
+    const markup = renderToStaticMarkup(
+      <App
+        initialSettings={completedSettings}
+        presenceStateSource={presenceStateSource}
+      />,
+    );
+
+    expect(markup).toContain("Listening");
+    expect(markup).toContain('data-presence-state="listening"');
+    expect(markup).toContain('data-live2d-motion-group="tap_body"');
+    expect(markup).toContain('data-live2d-expression="attentive"');
+  });
+
+  it("falls back to idle presence for invalid state input", () => {
+    expect(normalizePresenceState("renderer-owned-state")).toBe("idle");
+    expect(presenceStateSnapshot("renderer-owned-state")).toEqual({
+      state: "idle",
+      label: "Idle presence",
+      rendererHint: "resting",
+    });
+  });
+
+  it("maps milestone presence states to renderer-independent labels", () => {
+    expect(presenceStateSnapshot("idle").label).toBe("Idle presence");
+    expect(presenceStateSnapshot("listening").label).toBe("Listening");
+    expect(presenceStateSnapshot("thinking").label).toBe("Thinking");
+    expect(presenceStateSnapshot("speaking").label).toBe("Speaking");
+    expect(presenceStateSnapshot("waiting_for_approval").label).toBe(
+      "Waiting for approval",
+    );
+    expect(presenceStateSnapshot("task_running").label).toBe("Task running");
   });
 
   it("renders a restore path for the dismissed presence state", () => {
