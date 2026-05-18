@@ -113,18 +113,6 @@ export async function rememberApprovedSensitiveMemory(
   return store.rememberApprovedSensitive(memory, approvalEvidence);
 }
 
-export async function approveAndRememberSensitiveMemory(
-  store: MemoryStore,
-  memory: LocalMemoryInput,
-  approvalMetadata: unknown,
-): Promise<LocalMemoryRecord> {
-  const approvalEvidence = await store.approveSensitiveMemoryWrite({
-    metadata: approvalMetadata,
-  });
-
-  return rememberApprovedSensitiveMemory(store, memory, approvalEvidence);
-}
-
 export async function saveUserCorrectionMemory(
   store: MemoryStore,
   correction: UserCorrectionInput,
