@@ -46,6 +46,12 @@ importers:
         specifier: ^4.1.6
         version: 4.1.6(vite@8.0.12)
 
+  packages/voice:
+    devDependencies:
+      vitest:
+        specifier: ^4.1.6
+        version: 4.1.6(vite@8.0.12)
+
 packages:
 
   '@emnapi/core@1.10.0':
