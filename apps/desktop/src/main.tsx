@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 
 import { App } from "./App";
 import { isAvatarPresenceState } from "./avatarSurface";
+import { defaultCompanionSettings } from "./settings";
 
 const root = document.getElementById("root");
 
@@ -10,15 +11,25 @@ if (!root) {
   throw new Error("Root element #root was not found");
 }
 
-const urlPresenceState = new URLSearchParams(window.location.search).get(
-  "presenceState",
-);
+const searchParams = new URLSearchParams(window.location.search);
+const urlPresenceState = searchParams.get("presenceState");
 const initialPresenceState = isAvatarPresenceState(urlPresenceState)
   ? urlPresenceState
   : undefined;
+const initialSettings =
+  !("__TAURI_INTERNALS__" in window) &&
+  searchParams.get("onboardingComplete") === "true"
+    ? {
+        ...defaultCompanionSettings,
+        onboardingComplete: true,
+      }
+    : undefined;
 
 createRoot(root).render(
   <StrictMode>
-    <App initialPresenceState={initialPresenceState} />
+    <App
+      initialPresenceState={initialPresenceState}
+      initialSettings={initialSettings}
+    />
   </StrictMode>,
 );

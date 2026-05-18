@@ -19,7 +19,7 @@ body {
   min-width: 300px;
   min-height: 100vh;
   background: transparent;
-  overflow: auto;
+  overflow: hidden;
 }
 
 button,
@@ -35,11 +35,9 @@ button {
 
 .presence-shell {
   min-height: 100vh;
-  display: grid;
-  align-content: center;
-  justify-items: center;
-  gap: 10px;
-  padding: 12px;
+  position: relative;
+  padding: 0;
+  pointer-events: none;
 }
 
 .presence-card,
@@ -61,21 +59,45 @@ button {
 }
 
 .presence-card {
-  gap: 10px;
-  padding: 10px 14px 14px;
+  position: fixed;
+  right: max(18px, env(safe-area-inset-right));
+  bottom: max(18px, env(safe-area-inset-bottom));
+  width: auto;
+  gap: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+  pointer-events: auto;
 }
 
 .restore-card {
+  position: fixed;
+  right: max(18px, env(safe-area-inset-right));
+  bottom: max(18px, env(safe-area-inset-bottom));
   gap: 10px;
   padding: 14px;
+  pointer-events: auto;
 }
 
 .presence-controls {
-  width: 100%;
-  display: flex;
+  position: absolute;
+  top: -12px;
+  right: 4px;
+  z-index: 2;
+  width: auto;
+  display: grid;
+  grid-template-columns: auto auto;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 140ms ease;
+}
+
+.presence-card:hover .presence-controls,
+.presence-card:focus-within .presence-controls {
+  opacity: 1;
 }
 
 .drag-handle,
@@ -148,45 +170,47 @@ button {
 }
 
 .live2d-avatar-surface {
-  width: 136px;
+  width: 154px;
   display: grid;
   justify-items: center;
-  gap: 7px;
   margin: 0;
+  filter: drop-shadow(0 18px 22px rgb(15 23 42 / 22%));
 }
 
 .live2d-avatar-stage {
   position: relative;
-  width: 112px;
-  height: 132px;
-  border-radius: 42% 42% 36% 36%;
-  background:
-    radial-gradient(circle at 34% 26%, rgb(255 255 255 / 86%) 0 8%, transparent 9%),
-    linear-gradient(155deg, #f4b6cf 0%, #7fd1c2 54%, #334155 100%);
-  box-shadow:
-    inset 0 -13px 24px rgb(15 23 42 / 20%),
-    0 14px 30px rgb(15 23 42 / 17%);
-  overflow: hidden;
+  width: 154px;
+  height: 208px;
+  background: transparent;
+  transform-origin: 50% 100%;
+  animation: avatar-idle-breathe 3.8s ease-in-out infinite;
 }
 
 .live2d-avatar-hair {
   position: absolute;
-  inset: 12px 16px auto;
-  height: 38px;
-  border-radius: 999px 999px 18px 18px;
-  background: rgb(17 24 39 / 82%);
+  left: 27px;
+  top: 18px;
+  width: 100px;
+  height: 92px;
+  border-radius: 50% 50% 46% 46%;
+  background: #1f2937;
+  box-shadow:
+    -12px 18px 0 #111827,
+    12px 18px 0 #111827;
 }
 
 .live2d-avatar-head {
   position: absolute;
   left: 50%;
-  top: 34px;
-  width: 66px;
-  height: 58px;
+  top: 44px;
+  width: 82px;
+  height: 76px;
   transform: translateX(-50%);
   border-radius: 48% 48% 44% 44%;
   background: #ffe2d3;
-  box-shadow: inset 0 -7px 12px rgb(217 119 6 / 12%);
+  box-shadow:
+    inset 0 -8px 12px rgb(217 119 6 / 13%),
+    0 4px 0 rgb(255 255 255 / 24%);
 }
 
 .live2d-avatar-eye,
@@ -197,23 +221,23 @@ button {
 }
 
 .live2d-avatar-eye {
-  top: 24px;
-  width: 9px;
-  height: 14px;
+  top: 32px;
+  width: 10px;
+  height: 15px;
   border-radius: 50%;
 }
 
 .live2d-avatar-eye-left {
-  left: 17px;
+  left: 21px;
 }
 
 .live2d-avatar-eye-right {
-  right: 17px;
+  right: 21px;
 }
 
 .live2d-avatar-mouth {
   left: 50%;
-  bottom: 11px;
+  bottom: 15px;
   width: 16px;
   height: 3px;
   transform: translateX(-50%);
@@ -224,11 +248,14 @@ button {
   position: absolute;
   left: 50%;
   bottom: 0;
-  width: 74px;
-  height: 43px;
+  width: 92px;
+  height: 92px;
   transform: translateX(-50%);
-  border-radius: 36px 36px 0 0;
+  border-radius: 44px 44px 16px 16px;
   background: #0f766e;
+  box-shadow:
+    inset 0 14px 0 rgb(255 255 255 / 12%),
+    inset 0 -18px 0 rgb(15 23 42 / 14%);
 }
 
 .live2d-avatar-caption {
@@ -253,9 +280,11 @@ button {
 }
 
 .live2d-avatar-surface[data-presence-state="listening"] .live2d-avatar-stage {
-  background:
-    radial-gradient(circle at 34% 26%, rgb(255 255 255 / 86%) 0 8%, transparent 9%),
-    linear-gradient(155deg, #88d4ff 0%, #34d399 56%, #1d4ed8 100%);
+  animation-duration: 2.4s;
+}
+
+.live2d-avatar-surface[data-presence-state="listening"] .live2d-avatar-body {
+  background: #2563eb;
 }
 
 .live2d-avatar-surface[data-presence-state="listening"] .live2d-avatar-eye {
@@ -263,9 +292,11 @@ button {
 }
 
 .live2d-avatar-surface[data-presence-state="thinking"] .live2d-avatar-stage {
-  background:
-    radial-gradient(circle at 34% 26%, rgb(255 255 255 / 86%) 0 8%, transparent 9%),
-    linear-gradient(155deg, #d8b4fe 0%, #94a3b8 57%, #312e81 100%);
+  transform: rotate(-2deg);
+}
+
+.live2d-avatar-surface[data-presence-state="thinking"] .live2d-avatar-body {
+  background: #475569;
 }
 
 .live2d-avatar-surface[data-presence-state="thinking"] .live2d-avatar-eye {
@@ -274,9 +305,11 @@ button {
 }
 
 .live2d-avatar-surface[data-presence-state="speaking"] .live2d-avatar-stage {
-  background:
-    radial-gradient(circle at 34% 26%, rgb(255 255 255 / 86%) 0 8%, transparent 9%),
-    linear-gradient(155deg, #fdba74 0%, #f472b6 54%, #7c2d12 100%);
+  animation-duration: 1.6s;
+}
+
+.live2d-avatar-surface[data-presence-state="speaking"] .live2d-avatar-body {
+  background: #db2777;
 }
 
 .live2d-avatar-surface[data-presence-state="speaking"] .live2d-avatar-mouth {
@@ -287,9 +320,12 @@ button {
 
 .live2d-avatar-surface[data-presence-state="waiting_for_approval"]
   .live2d-avatar-stage {
-  background:
-    radial-gradient(circle at 34% 26%, rgb(255 255 255 / 86%) 0 8%, transparent 9%),
-    linear-gradient(155deg, #fde68a 0%, #f59e0b 52%, #475569 100%);
+  animation-duration: 4.8s;
+}
+
+.live2d-avatar-surface[data-presence-state="waiting_for_approval"]
+  .live2d-avatar-body {
+  background: #d97706;
 }
 
 .live2d-avatar-surface[data-presence-state="waiting_for_approval"]
@@ -343,6 +379,10 @@ h1 {
   width: min(100%, 560px);
   display: grid;
   overflow: hidden;
+}
+
+.control-surface[hidden] {
+  display: none;
 }
 
 .control-nav {
@@ -659,18 +699,47 @@ h1 {
     min-width: 260px;
   }
 
-  .presence-shell {
-    padding: 10px;
+  .presence-card,
+  .restore-card {
+    right: max(12px, env(safe-area-inset-right));
+    bottom: max(12px, env(safe-area-inset-bottom));
   }
 
-  .presence-card,
-  .restore-card,
-  .control-surface,
-  .onboarding-panel {
-    width: min(100%, 260px);
+  .live2d-avatar-surface {
+    width: 132px;
+  }
+
+  .live2d-avatar-stage {
+    width: 132px;
+    height: 178px;
+    transform: scale(0.86);
+    transform-origin: 50% 100%;
   }
 
   .credential-form {
     grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@keyframes avatar-idle-breathe {
+  0%,
+  100% {
+    translate: 0 0;
+  }
+
+  50% {
+    translate: 0 -3px;
   }
 }

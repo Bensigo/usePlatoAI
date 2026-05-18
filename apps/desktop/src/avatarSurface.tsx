@@ -126,7 +126,7 @@ export function Live2DAvatarSurface({
         </div>
         <div className="live2d-avatar-body" />
       </div>
-      <figcaption className="live2d-avatar-caption">
+      <figcaption className="live2d-avatar-caption sr-only">
         <span>{hook.label}</span>
         <small>
           Live2D: {hook.motionGroup} / {hook.expression}

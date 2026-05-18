@@ -674,7 +674,7 @@ export function App({
 
           <Live2DAvatarSurface presenceState={presenceState} />
 
-          <div className="presence-copy">
+          <div className="presence-copy sr-only">
             <p className="product-name">usePlatoAI</p>
             <h1 id="presence-title">{settings.companionName}</h1>
             <p className="status-label">{avatarSurfaceHook.statusText}</p>
@@ -683,7 +683,11 @@ export function App({
         </section>
       )}
 
-      <section className="control-surface" aria-label="Menu bar control surface">
+      <section
+        className="control-surface"
+        aria-label="Menu bar control surface"
+        hidden
+      >
         <nav className="control-nav" aria-label="Control surface entries">
           {controlSurfaceEntries.map((entry) => (
             <button
