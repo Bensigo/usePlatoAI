@@ -32,6 +32,13 @@ import {
   type TrustFoundationSnapshot,
   type TrustFoundationStore,
 } from "./trustFoundation";
+import {
+  createVoiceOutputSession,
+  mockVoiceResponse,
+  setVoiceOutputMuted,
+  startMockSpeech,
+  stopMockSpeech,
+} from "./voiceOutput";
 
 function startPresenceDrag(event: MouseEvent<HTMLButtonElement>) {
   if (event.button !== 0) {
@@ -550,6 +557,7 @@ export function App({
   const [settings, setSettings] = useState<CompanionSettings>(
     () => initialSettings ?? defaultCompanionSettings,
   );
+  const [voiceSession, setVoiceSession] = useState(createVoiceOutputSession);
   const [isSettingsLoaded, setIsSettingsLoaded] = useState(
     () => initialSettings !== undefined,
   );
@@ -673,9 +681,53 @@ export function App({
           <div className="presence-copy">
             <p className="product-name">usePlatoAI</p>
             <h1 id="presence-title">{settings.companionName}</h1>
-            <p className="status-label">Idle presence</p>
+            <p className="status-label">
+              {voiceSession.presenceState === "speaking"
+                ? "Speaking presence"
+                : "Idle presence"}
+            </p>
             <p className="wake-name">Wake name: {settings.wakeName}</p>
           </div>
+
+          <section className="voice-output-panel" aria-label="Voice output controls">
+            <div className="voice-status-row">
+              <span>{voiceSession.statusLabel}</span>
+              <strong>{voiceSession.isMuted ? "Muted" : "Audible"}</strong>
+            </div>
+            <p className="voice-fallback">{voiceSession.textFallback}</p>
+            <div className="voice-controls">
+              <button
+                type="button"
+                aria-pressed={voiceSession.isMuted}
+                onClick={() =>
+                  setVoiceSession((session) =>
+                    setVoiceOutputMuted(session, !session.isMuted),
+                  )
+                }
+              >
+                {voiceSession.isMuted ? "Unmute" : "Mute"}
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  setVoiceSession((session) =>
+                    startMockSpeech(session, mockVoiceResponse),
+                  )
+                }
+              >
+                Play mock voice
+              </button>
+              <button
+                type="button"
+                disabled={voiceSession.phase !== "speaking"}
+                onClick={() =>
+                  setVoiceSession((session) => stopMockSpeech(session))
+                }
+              >
+                Stop speech
+              </button>
+            </div>
+          </section>
         </section>
       )}
 
