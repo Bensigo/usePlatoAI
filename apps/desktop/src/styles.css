@@ -147,34 +147,159 @@ button {
   font-weight: 700;
 }
 
-.avatar-placeholder {
-  width: 104px;
-  height: 104px;
+.live2d-avatar-surface {
+  width: 136px;
   display: grid;
-  place-items: center;
-  border-radius: 50%;
+  justify-items: center;
+  gap: 7px;
+  margin: 0;
+}
+
+.live2d-avatar-stage {
+  position: relative;
+  width: 112px;
+  height: 132px;
+  border-radius: 42% 42% 36% 36%;
   background:
-    radial-gradient(circle at 34% 30%, #ffffff 0 9%, transparent 10%),
-    linear-gradient(145deg, #f2c3d5, #7fd1c2 52%, #334155);
+    radial-gradient(circle at 34% 26%, rgb(255 255 255 / 86%) 0 8%, transparent 9%),
+    linear-gradient(155deg, #f4b6cf 0%, #7fd1c2 54%, #334155 100%);
   box-shadow:
-    inset 0 -10px 22px rgb(15 23 42 / 18%),
-    0 12px 28px rgb(15 23 42 / 16%);
+    inset 0 -13px 24px rgb(15 23 42 / 20%),
+    0 14px 30px rgb(15 23 42 / 17%);
+  overflow: hidden;
 }
 
-.avatar-face {
-  width: 50px;
-  height: 30px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-top: 14px;
+.live2d-avatar-hair {
+  position: absolute;
+  inset: 12px 16px auto;
+  height: 38px;
+  border-radius: 999px 999px 18px 18px;
+  background: rgb(17 24 39 / 82%);
 }
 
-.avatar-eye {
-  width: 11px;
-  height: 16px;
-  border-radius: 50%;
+.live2d-avatar-head {
+  position: absolute;
+  left: 50%;
+  top: 34px;
+  width: 66px;
+  height: 58px;
+  transform: translateX(-50%);
+  border-radius: 48% 48% 44% 44%;
+  background: #ffe2d3;
+  box-shadow: inset 0 -7px 12px rgb(217 119 6 / 12%);
+}
+
+.live2d-avatar-eye,
+.live2d-avatar-mouth {
+  position: absolute;
+  display: block;
   background: #111827;
+}
+
+.live2d-avatar-eye {
+  top: 24px;
+  width: 9px;
+  height: 14px;
+  border-radius: 50%;
+}
+
+.live2d-avatar-eye-left {
+  left: 17px;
+}
+
+.live2d-avatar-eye-right {
+  right: 17px;
+}
+
+.live2d-avatar-mouth {
+  left: 50%;
+  bottom: 11px;
+  width: 16px;
+  height: 3px;
+  transform: translateX(-50%);
+  border-radius: 999px;
+}
+
+.live2d-avatar-body {
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  width: 74px;
+  height: 43px;
+  transform: translateX(-50%);
+  border-radius: 36px 36px 0 0;
+  background: #0f766e;
+}
+
+.live2d-avatar-caption {
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  min-width: 0;
+  color: #334155;
+  text-align: center;
+}
+
+.live2d-avatar-caption span {
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.live2d-avatar-caption small {
+  max-width: 136px;
+  color: #64748b;
+  font-size: 0.62rem;
+  line-height: 1.2;
+}
+
+.live2d-avatar-surface[data-presence-state="listening"] .live2d-avatar-stage {
+  background:
+    radial-gradient(circle at 34% 26%, rgb(255 255 255 / 86%) 0 8%, transparent 9%),
+    linear-gradient(155deg, #88d4ff 0%, #34d399 56%, #1d4ed8 100%);
+}
+
+.live2d-avatar-surface[data-presence-state="listening"] .live2d-avatar-eye {
+  height: 18px;
+}
+
+.live2d-avatar-surface[data-presence-state="thinking"] .live2d-avatar-stage {
+  background:
+    radial-gradient(circle at 34% 26%, rgb(255 255 255 / 86%) 0 8%, transparent 9%),
+    linear-gradient(155deg, #d8b4fe 0%, #94a3b8 57%, #312e81 100%);
+}
+
+.live2d-avatar-surface[data-presence-state="thinking"] .live2d-avatar-eye {
+  height: 8px;
+  border-radius: 999px;
+}
+
+.live2d-avatar-surface[data-presence-state="speaking"] .live2d-avatar-stage {
+  background:
+    radial-gradient(circle at 34% 26%, rgb(255 255 255 / 86%) 0 8%, transparent 9%),
+    linear-gradient(155deg, #fdba74 0%, #f472b6 54%, #7c2d12 100%);
+}
+
+.live2d-avatar-surface[data-presence-state="speaking"] .live2d-avatar-mouth {
+  width: 18px;
+  height: 13px;
+  border-radius: 50%;
+}
+
+.live2d-avatar-surface[data-presence-state="waiting_for_approval"]
+  .live2d-avatar-stage {
+  background:
+    radial-gradient(circle at 34% 26%, rgb(255 255 255 / 86%) 0 8%, transparent 9%),
+    linear-gradient(155deg, #fde68a 0%, #f59e0b 52%, #475569 100%);
+}
+
+.live2d-avatar-surface[data-presence-state="waiting_for_approval"]
+  .live2d-avatar-mouth {
+  width: 12px;
+  height: 10px;
+  border-radius: 50%;
+  background: transparent;
+  border: 2px solid #111827;
+  border-top: 0;
 }
 
 .presence-copy {

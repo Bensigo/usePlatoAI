@@ -15,6 +15,11 @@ import {
   type ControlSurfaceId,
 } from "./controlSurface";
 import {
+  Live2DAvatarSurface,
+  getLive2DAvatarSurfaceHook,
+  type AvatarPresenceState,
+} from "./avatarSurface";
+import {
   createTauriSettingsStore,
   defaultCompanionSettings,
   providerPlaceholderLabel,
@@ -534,10 +539,12 @@ export function FirstRunOnboarding({
 
 export function App({
   initialSettings,
+  initialPresenceState = "idle",
   settingsStore,
   trustFoundationStore,
 }: {
   initialSettings?: CompanionSettings;
+  initialPresenceState?: AvatarPresenceState;
   settingsStore?: SettingsStore;
   trustFoundationStore?: TrustFoundationStore;
 }) {
@@ -550,9 +557,11 @@ export function App({
   const [settings, setSettings] = useState<CompanionSettings>(
     () => initialSettings ?? defaultCompanionSettings,
   );
+  const [presenceState] = useState<AvatarPresenceState>(initialPresenceState);
   const [isSettingsLoaded, setIsSettingsLoaded] = useState(
     () => initialSettings !== undefined,
   );
+  const avatarSurfaceHook = getLive2DAvatarSurfaceHook(presenceState);
 
   useEffect(() => {
     if (initialSettings) {
@@ -663,17 +672,12 @@ export function App({
             </button>
           </div>
 
-          <div className="avatar-placeholder" aria-hidden="true">
-            <div className="avatar-face">
-              <span className="avatar-eye" />
-              <span className="avatar-eye" />
-            </div>
-          </div>
+          <Live2DAvatarSurface presenceState={presenceState} />
 
           <div className="presence-copy">
             <p className="product-name">usePlatoAI</p>
             <h1 id="presence-title">{settings.companionName}</h1>
-            <p className="status-label">Idle presence</p>
+            <p className="status-label">{avatarSurfaceHook.statusText}</p>
             <p className="wake-name">Wake name: {settings.wakeName}</p>
           </div>
         </section>

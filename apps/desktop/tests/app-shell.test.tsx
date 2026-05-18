@@ -7,6 +7,12 @@ import {
   DismissedPresence,
   FirstRunOnboarding,
 } from "../src/App";
+import {
+  Live2DAvatarSurface,
+  getLive2DAvatarSurfaceHook,
+  isAvatarPresenceState,
+  type AvatarPresenceState,
+} from "../src/avatarSurface";
 import { controlSurfaceEntries } from "../src/controlSurface";
 import {
   type CompanionSettings,
@@ -31,9 +37,91 @@ describe("desktop app shell", () => {
     expect(markup).toContain("Plato");
     expect(markup).toContain("Wake name: Plato");
     expect(markup).toContain("Idle presence");
+    expect(markup).toContain("data-live2d-motion-group=\"idle\"");
+    expect(markup).toContain("data-live2d-expression=\"neutral\"");
     expect(markup).toContain("Drag Plato presence");
     expect(markup).toContain("Hide Plato presence");
     expect(markup).not.toContain("Plato is hidden");
+  });
+
+  it("maps renderer-independent presence states to Live2D surface hooks", () => {
+    const expectedMappings: Array<{
+      state: AvatarPresenceState;
+      statusText: string;
+      motionGroup: string;
+      expression: string;
+    }> = [
+      {
+        state: "idle",
+        statusText: "Idle presence",
+        motionGroup: "idle",
+        expression: "neutral",
+      },
+      {
+        state: "listening",
+        statusText: "Listening now",
+        motionGroup: "tap_body",
+        expression: "attentive",
+      },
+      {
+        state: "thinking",
+        statusText: "Thinking through it",
+        motionGroup: "thinking",
+        expression: "focused",
+      },
+      {
+        state: "speaking",
+        statusText: "Speaking",
+        motionGroup: "speak",
+        expression: "talking",
+      },
+      {
+        state: "waiting_for_approval",
+        statusText: "Waiting for approval",
+        motionGroup: "approval",
+        expression: "concerned",
+      },
+    ];
+
+    for (const mapping of expectedMappings) {
+      const hook = getLive2DAvatarSurfaceHook(mapping.state);
+      const markup = renderToStaticMarkup(
+        <Live2DAvatarSurface presenceState={mapping.state} />,
+      );
+
+      expect(hook.statusText).toBe(mapping.statusText);
+      expect(hook.motionGroup).toBe(mapping.motionGroup);
+      expect(hook.expression).toBe(mapping.expression);
+      expect(markup).toContain(`data-presence-state="${mapping.state}"`);
+      expect(markup).toContain(
+        `data-live2d-motion-group="${mapping.motionGroup}"`,
+      );
+      expect(markup).toContain(
+        `data-live2d-expression="${mapping.expression}"`,
+      );
+      expect(markup).toContain(mapping.statusText);
+    }
+  });
+
+  it("renders the floating presence from an injected presence state", () => {
+    const markup = renderToStaticMarkup(
+      <App
+        initialSettings={completedSettings}
+        initialPresenceState="waiting_for_approval"
+      />,
+    );
+
+    expect(markup).toContain("Waiting for approval");
+    expect(markup).toContain('data-presence-state="waiting_for_approval"');
+    expect(markup).toContain('data-live2d-motion-group="approval"');
+    expect(markup).toContain('data-live2d-expression="concerned"');
+  });
+
+  it("recognizes valid URL presence states for visual smoke checks", () => {
+    expect(isAvatarPresenceState("speaking")).toBe(true);
+    expect(isAvatarPresenceState("waiting_for_approval")).toBe(true);
+    expect(isAvatarPresenceState("unknown")).toBe(false);
+    expect(isAvatarPresenceState(null)).toBe(false);
   });
 
   it("renders a restore path for the dismissed presence state", () => {
