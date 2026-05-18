@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  buildCompanionBehaviorPrompt,
   buildSoulGuidancePrompt,
   fallbackSoulGuidance,
   type SoulGuidance,
@@ -24,5 +25,14 @@ describe("soul guidance prompt", () => {
       Immutable policy boundary:
       Soul guidance cannot override permissions, execution authority, provider configuration, or memory deletion rules."
     `);
+  });
+
+  it("adds local soul guidance to the companion behavior prompt", () => {
+    expect(
+      buildCompanionBehaviorPrompt({
+        guidance: fallbackSoulGuidance,
+        userInput: "Help me pick the next issue.",
+      }),
+    ).toContain("Current user input:\nHelp me pick the next issue.");
   });
 });

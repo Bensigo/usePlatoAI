@@ -38,7 +38,12 @@ import {
   stopMockSpeech,
 } from "../src/voiceOutput";
 import {
+  fallbackSoulGuidance,
+  type SoulGuidanceStore,
+} from "../src/soulGuidance";
+import {
   companionPresenceForVoiceState,
+  companionPromptForInput,
   defaultVoiceInteractionSnapshot,
   nextMockVoiceSnapshot,
   presenceLabelForState,
@@ -273,6 +278,36 @@ describe("desktop app shell", () => {
     expect(textThinking.sessionState).toBe("thinking");
     expect(textSpeaking.sessionState).toBe("speaking");
     expect(textSpeaking.response).toContain("Fallback now");
+    expect(textSpeaking.companionPrompt).toContain("Local soul guidance:");
+  });
+
+  it("builds runtime companion prompts from local soul guidance", () => {
+    const guidance = {
+      ...fallbackSoulGuidance,
+      effectiveMarkdown: "# Custom Soul\n\nBe terse and candid.",
+    };
+    const companionPrompt = companionPromptForInput(
+      "Draft the next step.",
+      guidance,
+    );
+
+    expect(companionPrompt).toContain("Draft the next step.");
+    expect(companionPrompt).toContain("Be terse and candid.");
+    expect(companionPrompt).toContain("Immutable policy boundary:");
+  });
+
+  it("accepts a soul guidance store for the runtime app wiring", () => {
+    const soulGuidanceStore: SoulGuidanceStore = {
+      read: async () => fallbackSoulGuidance,
+    };
+    const markup = renderToStaticMarkup(
+      <App
+        initialSettings={completedSettings}
+        soulGuidanceStore={soulGuidanceStore}
+      />,
+    );
+
+    expect(markup).toContain("Ready for voice or text.");
   });
 
   it("keeps the menu bar control surface interactive when the shell ignores pointer events", () => {

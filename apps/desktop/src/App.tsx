@@ -45,6 +45,12 @@ import {
   type TrustFoundationStore,
 } from "./trustFoundation";
 import {
+  createTauriSoulGuidanceStore,
+  fallbackSoulGuidance,
+  type SoulGuidance,
+  type SoulGuidanceStore,
+} from "./soulGuidance";
+import {
   createVoiceOutputSession,
   mockVoiceResponse,
   setVoiceOutputMuted,
@@ -692,12 +698,14 @@ export function App({
   initialPresenceState = "idle",
   settingsStore,
   trustFoundationStore,
+  soulGuidanceStore,
   presenceStateSource,
 }: {
   initialSettings?: CompanionSettings;
   initialPresenceState?: AvatarPresenceState;
   settingsStore?: SettingsStore;
   trustFoundationStore?: TrustFoundationStore;
+  soulGuidanceStore?: SoulGuidanceStore;
   presenceStateSource?: PresenceStateSource;
 }) {
   const durableSettingsStore = useMemo(
@@ -708,6 +716,10 @@ export function App({
     () =>
       presenceStateSource ?? createMemoryPresenceStateSource(initialPresenceState),
     [initialPresenceState, presenceStateSource],
+  );
+  const durableSoulGuidanceStore = useMemo(
+    () => soulGuidanceStore ?? createTauriSoulGuidanceStore(),
+    [soulGuidanceStore],
   );
   const presence = usePresenceState(companionPresenceStateSource);
   const [activeEntry, setActiveEntry] = useState<ControlSurfaceId>("voice");
@@ -722,6 +734,8 @@ export function App({
   );
   const [voiceInteraction, setVoiceInteraction] =
     useState<VoiceInteractionSnapshot>(defaultVoiceInteractionSnapshot);
+  const [soulGuidance, setSoulGuidance] =
+    useState<SoulGuidance>(fallbackSoulGuidance);
   const voiceTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
 
   function clearVoiceTimers() {
@@ -741,14 +755,14 @@ export function App({
       setTimeout(() => {
         setVoiceInteraction((current) => {
           if (source === "text" && sessionState === "speaking") {
-            return textFallbackResponseSnapshot(current);
+            return textFallbackResponseSnapshot(current, soulGuidance);
           }
 
           if (source === "text") {
             return { ...current, sessionState };
           }
 
-          return nextMockVoiceSnapshot(current, sessionState);
+          return nextMockVoiceSnapshot(current, sessionState, soulGuidance);
         });
       }, delay),
     );
@@ -757,7 +771,7 @@ export function App({
   function startVoiceInteraction() {
     clearVoiceTimers();
     setVoiceInteraction((current) =>
-      nextMockVoiceSnapshot(current, "listening"),
+      nextMockVoiceSnapshot(current, "listening", soulGuidance),
     );
     scheduleVoiceState(900, "thinking", "voice");
     scheduleVoiceState(1800, "speaking", "voice");
@@ -833,6 +847,27 @@ export function App({
       isCurrent = false;
     };
   }, [initialSettings, durableSettingsStore]);
+
+  useEffect(() => {
+    let isCurrent = true;
+
+    durableSoulGuidanceStore
+      .read()
+      .then((nextGuidance) => {
+        if (isCurrent) {
+          setSoulGuidance(nextGuidance);
+        }
+      })
+      .catch(() => {
+        if (isCurrent) {
+          setSoulGuidance(fallbackSoulGuidance);
+        }
+      });
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [durableSoulGuidanceStore]);
 
   useEffect(() => {
     if (typeof window === "undefined" || !("__TAURI_INTERNALS__" in window)) {

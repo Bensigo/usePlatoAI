@@ -16,6 +16,16 @@ export const fallbackSoulGuidance: SoulGuidance = {
   unsafeDirectives: [],
 };
 
+export type SoulGuidanceStore = {
+  read: () => Promise<SoulGuidance>;
+};
+
+export function createTauriSoulGuidanceStore(): SoulGuidanceStore {
+  return {
+    read: readSoulGuidance,
+  };
+}
+
 export async function readSoulGuidance(): Promise<SoulGuidance> {
   if (!isTauriRuntime()) {
     return fallbackSoulGuidance;
@@ -32,6 +42,21 @@ export function buildSoulGuidancePrompt(guidance: SoulGuidance): string {
     "",
     "Immutable policy boundary:",
     guidance.policyBoundary,
+  ].join("\n");
+}
+
+export function buildCompanionBehaviorPrompt({
+  guidance,
+  userInput,
+}: {
+  guidance: SoulGuidance;
+  userInput: string;
+}): string {
+  return [
+    buildSoulGuidancePrompt(guidance),
+    "",
+    "Current user input:",
+    userInput,
   ].join("\n");
 }
 
