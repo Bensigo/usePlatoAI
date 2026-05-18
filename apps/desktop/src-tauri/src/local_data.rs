@@ -1220,10 +1220,14 @@ fn validate_memory_input(memory: &LocalMemoryInput) -> Result<(), String> {
     if memory.summary.trim().is_empty() {
         return Err("memory summary is required".to_string());
     }
+    reject_raw_transcript_text("summary", &memory.summary)?;
     if memory.source_kind.trim().is_empty() {
         return Err("memory source kind is required".to_string());
     }
     reject_raw_transcript_material(&memory.metadata)?;
+    if let Some(preference_value) = &memory.preference_value {
+        reject_raw_transcript_material(preference_value)?;
+    }
 
     match memory.memory_kind {
         LocalMemoryKind::Summary => {
@@ -1257,23 +1261,9 @@ fn reject_raw_transcript_material(value: &Value) -> Result<(), String> {
     match value {
         Value::Object(entries) => {
             for (key, value) in entries {
-                let normalized_key = key
-                    .chars()
-                    .filter(|character| character.is_ascii_alphanumeric())
-                    .collect::<String>()
-                    .to_ascii_lowercase();
-                if [
-                    "transcript",
-                    "rawtranscript",
-                    "conversationlog",
-                    "fullconversation",
-                    "rawmessages",
-                    "messagelog",
-                ]
-                .contains(&normalized_key.as_str())
-                {
+                if is_raw_transcript_field_name(key) {
                     return Err(format!(
-                        "memory metadata must not include raw transcript material in `{key}`"
+                        "memory payload must not include raw transcript material in `{key}`"
                     ));
                 }
 
@@ -1289,8 +1279,57 @@ fn reject_raw_transcript_material(value: &Value) -> Result<(), String> {
 
             Ok(())
         }
+        Value::String(value) => reject_raw_transcript_text("value", value),
         _ => Ok(()),
     }
+}
+
+fn is_raw_transcript_field_name(key: &str) -> bool {
+    let normalized_key = key
+        .chars()
+        .filter(|character| character.is_ascii_alphanumeric())
+        .collect::<String>()
+        .to_ascii_lowercase();
+
+    [
+        "transcript",
+        "rawtranscript",
+        "conversation",
+        "conversationlog",
+        "fullconversation",
+        "messages",
+        "rawmessages",
+        "messagelog",
+        "turns",
+        "content",
+    ]
+    .contains(&normalized_key.as_str())
+}
+
+fn reject_raw_transcript_text(field_name: &str, value: &str) -> Result<(), String> {
+    if looks_like_raw_transcript_text(value) {
+        return Err(format!(
+            "memory payload must not include raw transcript material in `{field_name}`"
+        ));
+    }
+
+    Ok(())
+}
+
+fn looks_like_raw_transcript_text(value: &str) -> bool {
+    let lower = value.trim().to_ascii_lowercase();
+
+    if lower.is_empty() {
+        return false;
+    }
+
+    let speaker_markers = ["user:", "assistant:", "system:", "plato:"];
+    let marker_count = speaker_markers
+        .iter()
+        .filter(|marker| lower.starts_with(**marker) || lower.contains(&format!("\n{marker}")))
+        .count();
+
+    marker_count >= 2 || (marker_count >= 1 && lower.lines().count() >= 2)
 }
 
 fn reject_secret_material(value: &Value) -> Result<(), String> {
@@ -1571,6 +1610,101 @@ mod tests {
         );
         assert!(!service
             .contains_plaintext(raw_transcript)
+            .expect("scan persisted local data"));
+    }
+
+    #[test]
+    fn memory_writes_reject_message_shaped_metadata() {
+        let service = LocalDataService::in_memory().expect("create in-memory service");
+        let raw_turn = "Assistant: exact response that should not be stored";
+        let memory = LocalMemoryInput {
+            memory_id: "memory-messages".to_string(),
+            memory_kind: LocalMemoryKind::Summary,
+            summary: "User prefers short implementation updates.".to_string(),
+            preference_key: None,
+            preference_value: None,
+            source_kind: "conversation-summary".to_string(),
+            metadata: json!({
+                "messages": [
+                    { "role": "user", "content": "Keep this transcript out" },
+                    { "role": "assistant", "content": raw_turn }
+                ]
+            }),
+        };
+
+        let error = service
+            .upsert_memory_record(&memory)
+            .expect_err("message-shaped metadata is rejected");
+
+        assert!(error.contains("raw transcript"));
+        assert_eq!(
+            service
+                .read_memory_record("memory-messages")
+                .expect("read rejected memory"),
+            None
+        );
+        assert!(!service
+            .contains_plaintext(raw_turn)
+            .expect("scan persisted local data"));
+    }
+
+    #[test]
+    fn memory_writes_reject_raw_transcripts_in_preference_value() {
+        let service = LocalDataService::in_memory().expect("create in-memory service");
+        let raw_transcript = "User: store my preference\nAssistant: I will remember that";
+        let memory = LocalMemoryInput {
+            memory_id: "memory-preference-transcript".to_string(),
+            memory_kind: LocalMemoryKind::Preference,
+            summary: "User prefers concise status updates.".to_string(),
+            preference_key: Some("communication.status_updates".to_string()),
+            preference_value: Some(json!({ "value": raw_transcript })),
+            source_kind: "user-approved-preference".to_string(),
+            metadata: json!({ "extractor": "local-test-boundary" }),
+        };
+
+        let error = service
+            .upsert_memory_record(&memory)
+            .expect_err("raw transcripts in preference values are rejected");
+
+        assert!(error.contains("raw transcript"));
+        assert_eq!(
+            service
+                .read_memory_record("memory-preference-transcript")
+                .expect("read rejected memory"),
+            None
+        );
+        assert!(!service
+            .contains_plaintext(raw_transcript)
+            .expect("scan persisted local data"));
+    }
+
+    #[test]
+    fn memory_writes_reject_raw_transcript_summaries() {
+        let service = LocalDataService::in_memory().expect("create in-memory service");
+        let raw_summary = "User: keep this exact line\nAssistant: this is a raw reply";
+        let memory = LocalMemoryInput {
+            memory_id: "memory-summary-transcript".to_string(),
+            memory_kind: LocalMemoryKind::Summary,
+            summary: raw_summary.to_string(),
+            preference_key: None,
+            preference_value: None,
+            source_kind: "conversation-summary".to_string(),
+            metadata: json!({ "extractor": "local-test-boundary" }),
+        };
+
+        let error = service
+            .upsert_memory_record(&memory)
+            .expect_err("raw transcript summaries are rejected");
+
+        assert!(error.contains("raw transcript"));
+        assert_eq!(
+            service
+                .read_memory_record("memory-summary-transcript")
+                .expect("read rejected memory"),
+            None
+        );
+        assert!(!service
+            .contains_plaintext(raw_summary)
             .expect("scan persisted local data"));
     }
 
