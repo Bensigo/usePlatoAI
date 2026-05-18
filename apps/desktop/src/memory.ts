@@ -20,6 +20,10 @@ export type SensitiveMemoryApprovalEvidence = {
   approvalToken: string;
 };
 
+export type SensitiveMemoryApprovalRequest = {
+  metadata: unknown;
+};
+
 export type LocalMemoryRetrievalQuery = {
   query?: string | null;
   memoryKind?: LocalMemoryKind | null;
@@ -28,6 +32,9 @@ export type LocalMemoryRetrievalQuery = {
 
 export type MemoryStore = {
   remember: (memory: LocalMemoryInput) => Promise<LocalMemoryRecord>;
+  approveSensitiveMemoryWrite: (
+    request: SensitiveMemoryApprovalRequest,
+  ) => Promise<SensitiveMemoryApprovalEvidence>;
   rememberApprovedSensitive: (
     memory: LocalMemoryInput,
     approvalEvidence: SensitiveMemoryApprovalEvidence,
@@ -106,6 +113,18 @@ export async function rememberApprovedSensitiveMemory(
   return store.rememberApprovedSensitive(memory, approvalEvidence);
 }
 
+export async function approveAndRememberSensitiveMemory(
+  store: MemoryStore,
+  memory: LocalMemoryInput,
+  approvalMetadata: unknown,
+): Promise<LocalMemoryRecord> {
+  const approvalEvidence = await store.approveSensitiveMemoryWrite({
+    metadata: approvalMetadata,
+  });
+
+  return rememberApprovedSensitiveMemory(store, memory, approvalEvidence);
+}
+
 export async function saveUserCorrectionMemory(
   store: MemoryStore,
   correction: UserCorrectionInput,
@@ -148,6 +167,8 @@ export function createMemoryStore(
   initialEnabled = true,
 ): MemoryStore {
   const records = new Map(initialRecords.map((record) => [record.memoryId, record]));
+  const approvals = new Map<string, SensitiveMemoryApprovalEvidence>();
+  let approvalSequence = 0;
   let isMemoryEnabled = initialEnabled;
 
   async function rememberMemory(
@@ -183,10 +204,27 @@ export function createMemoryStore(
     async remember(memory) {
       return rememberMemory(memory, { allowSensitiveData: false });
     },
+    async approveSensitiveMemoryWrite() {
+      approvalSequence += 1;
+      const approvalEvidence = {
+        approvalId: `approval-sensitive-memory-${approvalSequence}`,
+        approvalToken: `trusted-token-${approvalSequence}`,
+      };
+      approvals.set(approvalEvidence.approvalId, approvalEvidence);
+      return approvalEvidence;
+    },
     async rememberApprovedSensitive(memory, approvalEvidence) {
       if (!approvalEvidence.approvalId.trim() || !approvalEvidence.approvalToken.trim()) {
         throw new Error("trusted approval evidence is required");
       }
+      const storedApproval = approvals.get(approvalEvidence.approvalId);
+      if (!storedApproval) {
+        throw new Error("trusted sensitive memory approval was not found");
+      }
+      if (storedApproval.approvalToken !== approvalEvidence.approvalToken) {
+        throw new Error("trusted sensitive memory approval token is invalid");
+      }
+      approvals.delete(approvalEvidence.approvalId);
 
       return rememberMemory(memory, { allowSensitiveData: true });
     },
@@ -239,6 +277,16 @@ export function createTauriMemoryStore(): MemoryStore {
 
       const { invoke } = await import("@tauri-apps/api/core");
       return invoke<LocalMemoryRecord>("remember_local_memory", { memory });
+    },
+    async approveSensitiveMemoryWrite(request) {
+      if (!isTauriRuntime()) {
+        return fallbackStore.approveSensitiveMemoryWrite(request);
+      }
+
+      const { invoke } = await import("@tauri-apps/api/core");
+      return invoke<SensitiveMemoryApprovalEvidence>("approve_sensitive_memory_write", {
+        request,
+      });
     },
     async rememberApprovedSensitive(memory, approvalEvidence) {
       if (!isTauriRuntime()) {
