@@ -3,6 +3,7 @@ import "./styles.css";
 import {
   useEffect,
   useMemo,
+  useRef,
   useState,
   useSyncExternalStore,
   type FormEvent,
@@ -43,6 +44,15 @@ import {
   type TrustFoundationSnapshot,
   type TrustFoundationStore,
 } from "./trustFoundation";
+import {
+  companionPresenceForVoiceState,
+  defaultVoiceInteractionSnapshot,
+  nextMockVoiceSnapshot,
+  textFallbackResponseSnapshot,
+  textFallbackThinkingSnapshot,
+  type VoiceInteractionSnapshot,
+  type VoiceSessionState,
+} from "./voiceInteraction";
 
 function startPresenceDrag(event: MouseEvent<HTMLButtonElement>) {
   if (event.button !== 0) {
@@ -81,11 +91,23 @@ export function ControlSurfacePanel({
   settings,
   onSettingsChange,
   trustFoundationStore,
+  voiceInteraction,
+  onStartVoiceInteraction,
+  onStopVoiceInteraction,
+  onMuteChange,
+  onTextFallbackChange,
+  onSubmitTextFallback,
 }: {
   activeEntry: ControlSurfaceId;
   settings?: CompanionSettings;
   onSettingsChange?: (settings: CompanionSettings) => Promise<void>;
   trustFoundationStore?: TrustFoundationStore;
+  voiceInteraction?: VoiceInteractionSnapshot;
+  onStartVoiceInteraction?: () => void;
+  onStopVoiceInteraction?: () => void;
+  onMuteChange?: (isMuted: boolean) => void;
+  onTextFallbackChange?: (value: string) => void;
+  onSubmitTextFallback?: () => void;
 }) {
   const activeControl = controlSurfaceEntries.find(
     (entry) => entry.id === activeEntry,
@@ -98,7 +120,16 @@ export function ControlSurfacePanel({
       </p>
       <h2>{activeControl.label}</h2>
       <p>{activeControl.description}</p>
-      {activeEntry === "settings" && settings ? (
+      {activeEntry === "voice" && voiceInteraction ? (
+        <VoiceInteractionPanel
+          voiceInteraction={voiceInteraction}
+          onStartVoiceInteraction={onStartVoiceInteraction}
+          onStopVoiceInteraction={onStopVoiceInteraction}
+          onMuteChange={onMuteChange}
+          onTextFallbackChange={onTextFallbackChange}
+          onSubmitTextFallback={onSubmitTextFallback}
+        />
+      ) : activeEntry === "settings" && settings ? (
         onSettingsChange ? (
           <TrustFoundationSettings
             settings={settings}
@@ -115,6 +146,100 @@ export function ControlSurfacePanel({
         </p>
       )}
     </section>
+  );
+}
+
+export function VoiceInteractionPanel({
+  voiceInteraction,
+  onStartVoiceInteraction,
+  onStopVoiceInteraction,
+  onMuteChange,
+  onTextFallbackChange,
+  onSubmitTextFallback,
+}: {
+  voiceInteraction: VoiceInteractionSnapshot;
+  onStartVoiceInteraction?: () => void;
+  onStopVoiceInteraction?: () => void;
+  onMuteChange?: (isMuted: boolean) => void;
+  onTextFallbackChange?: (value: string) => void;
+  onSubmitTextFallback?: () => void;
+}) {
+  const isActive = voiceInteraction.sessionState !== "idle";
+
+  function submitTextFallback(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    onSubmitTextFallback?.();
+  }
+
+  return (
+    <div className="voice-panel">
+      <dl className="voice-status" aria-label="Voice session status">
+        <div>
+          <dt>Session</dt>
+          <dd>{voiceInteraction.sessionState}</dd>
+        </div>
+        <div>
+          <dt>Input</dt>
+          <dd>{voiceInteraction.activationSource}</dd>
+        </div>
+        <div>
+          <dt>Output</dt>
+          <dd>{voiceInteraction.isMuted ? "Muted" : "Audible"}</dd>
+        </div>
+      </dl>
+
+      <div className="voice-actions" role="group" aria-label="Voice controls">
+        <button
+          className="primary-button"
+          type="button"
+          disabled={isActive}
+          onClick={onStartVoiceInteraction}
+        >
+          Start listening
+        </button>
+        <button
+          type="button"
+          disabled={!isActive}
+          onClick={onStopVoiceInteraction}
+        >
+          Stop
+        </button>
+        <label className="mute-toggle">
+          <input
+            type="checkbox"
+            checked={voiceInteraction.isMuted}
+            onChange={(event) => onMuteChange?.(event.currentTarget.checked)}
+          />
+          <span>Mute voice output</span>
+        </label>
+      </div>
+
+      <section className="voice-transcript" aria-label="Voice transcript">
+        <strong>Transcript</strong>
+        <p>{voiceInteraction.transcript || "No voice input yet."}</p>
+      </section>
+
+      <form className="text-fallback-form" onSubmit={submitTextFallback}>
+        <label>
+          <span>Text fallback</span>
+          <textarea
+            value={voiceInteraction.fallbackText}
+            rows={3}
+            placeholder="Type when voice is unavailable or muted"
+            onChange={(event) =>
+              onTextFallbackChange?.(event.currentTarget.value)
+            }
+          />
+        </label>
+        <button type="submit" disabled={isActive}>
+          Send text
+        </button>
+      </form>
+
+      <p className="voice-response" aria-live="polite">
+        {voiceInteraction.response}
+      </p>
+    </div>
   );
 }
 
@@ -578,7 +703,7 @@ export function App({
     [initialPresenceState, presenceStateSource],
   );
   const presence = usePresenceState(companionPresenceStateSource);
-  const [activeEntry, setActiveEntry] = useState<ControlSurfaceId>("settings");
+  const [activeEntry, setActiveEntry] = useState<ControlSurfaceId>("voice");
   const [isControlSurfaceVisible, setIsControlSurfaceVisible] = useState(false);
   const [isDismissed, setIsDismissed] = useState(false);
   const [settings, setSettings] = useState<CompanionSettings>(
@@ -587,7 +712,84 @@ export function App({
   const [isSettingsLoaded, setIsSettingsLoaded] = useState(
     () => initialSettings !== undefined,
   );
-  const avatarPresenceState = avatarPresenceStateFor(presence.state);
+  const [voiceInteraction, setVoiceInteraction] =
+    useState<VoiceInteractionSnapshot>(defaultVoiceInteractionSnapshot);
+  const voiceTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
+
+  function clearVoiceTimers() {
+    for (const timer of voiceTimers.current) {
+      clearTimeout(timer);
+    }
+
+    voiceTimers.current = [];
+  }
+
+  function scheduleVoiceState(
+    delay: number,
+    sessionState: VoiceSessionState,
+    source: "voice" | "text",
+  ) {
+    voiceTimers.current.push(
+      setTimeout(() => {
+        setVoiceInteraction((current) => {
+          if (source === "text" && sessionState === "speaking") {
+            return textFallbackResponseSnapshot(current);
+          }
+
+          if (source === "text") {
+            return { ...current, sessionState };
+          }
+
+          return nextMockVoiceSnapshot(current, sessionState);
+        });
+      }, delay),
+    );
+  }
+
+  function startVoiceInteraction() {
+    clearVoiceTimers();
+    setVoiceInteraction((current) =>
+      nextMockVoiceSnapshot(current, "listening"),
+    );
+    scheduleVoiceState(900, "thinking", "voice");
+    scheduleVoiceState(1800, "speaking", "voice");
+    scheduleVoiceState(3000, "idle", "voice");
+  }
+
+  function stopVoiceInteraction() {
+    clearVoiceTimers();
+    setVoiceInteraction((current) => ({
+      ...current,
+      sessionState: "idle",
+      response: "Voice session stopped.",
+    }));
+  }
+
+  function submitTextFallback() {
+    const fallbackText = voiceInteraction.fallbackText.trim();
+
+    if (!fallbackText) {
+      setVoiceInteraction((current) => ({
+        ...current,
+        response: "Text fallback cannot be empty.",
+      }));
+      return;
+    }
+
+    clearVoiceTimers();
+    setVoiceInteraction((current) =>
+      textFallbackThinkingSnapshot(current, fallbackText),
+    );
+    scheduleVoiceState(700, "speaking", "text");
+    scheduleVoiceState(1800, "idle", "text");
+  }
+
+  const voicePresenceState = companionPresenceForVoiceState(
+    voiceInteraction.sessionState,
+  );
+  const renderedPresenceState =
+    voiceInteraction.sessionState === "idle" ? presence.state : voicePresenceState;
+  const avatarPresenceState = avatarPresenceStateFor(renderedPresenceState);
   const avatarSurfaceHook = getLive2DAvatarSurfaceHook(avatarPresenceState);
 
   useEffect(() => {
@@ -648,6 +850,8 @@ export function App({
     };
   }, []);
 
+  useEffect(() => () => clearVoiceTimers(), []);
+
   async function completeOnboarding(updatedSettings: CompanionSettings) {
     await durableSettingsStore.save(updatedSettings);
     setSettings(updatedSettings);
@@ -680,7 +884,10 @@ export function App({
       {isDismissed ? (
         <DismissedPresence onRestore={() => setIsDismissed(false)} />
       ) : (
-        <section className="presence-card" aria-label="Floating Plato presence">
+        <section
+          className={`presence-card presence-${renderedPresenceState}`}
+          aria-label="Floating Plato presence"
+        >
           <div className="presence-controls">
             <button
               className="drag-handle"
@@ -735,6 +942,16 @@ export function App({
           settings={settings}
           onSettingsChange={completeOnboarding}
           trustFoundationStore={trustFoundationStore}
+          voiceInteraction={voiceInteraction}
+          onStartVoiceInteraction={startVoiceInteraction}
+          onStopVoiceInteraction={stopVoiceInteraction}
+          onMuteChange={(isMuted) =>
+            setVoiceInteraction((current) => ({ ...current, isMuted }))
+          }
+          onTextFallbackChange={(fallbackText) =>
+            setVoiceInteraction((current) => ({ ...current, fallbackText }))
+          }
+          onSubmitTextFallback={submitTextFallback}
         />
       </section>
     </main>

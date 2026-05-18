@@ -444,6 +444,131 @@ h1 {
   border-top: 1px solid #e5e7eb;
 }
 
+.voice-panel {
+  display: grid;
+  gap: 10px;
+}
+
+.voice-status {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  margin: 0;
+}
+
+.voice-status div {
+  min-width: 0;
+  border: 1px solid #dbe2ea;
+  border-radius: 6px;
+  padding: 7px;
+  background: #f8fafc;
+}
+
+.voice-status dt,
+.voice-transcript strong,
+.text-fallback-form span {
+  color: #64748b;
+  font-size: 0.7rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.voice-status dd {
+  margin: 2px 0 0;
+  color: #111827;
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.voice-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 7px;
+  align-items: center;
+}
+
+.voice-actions button,
+.text-fallback-form button {
+  min-height: 34px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #1f2937;
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.voice-actions .primary-button {
+  border-color: #0f766e;
+  background: #0f766e;
+  color: #ffffff;
+}
+
+.voice-actions button:disabled,
+.text-fallback-form button:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
+.mute-toggle {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #1f2937;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.mute-toggle input {
+  width: 16px;
+  height: 16px;
+}
+
+.voice-transcript {
+  display: grid;
+  gap: 4px;
+  border-top: 1px solid #e5e7eb;
+  padding-top: 8px;
+}
+
+.voice-transcript p,
+.voice-response {
+  margin: 0;
+  color: #374151;
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.text-fallback-form {
+  display: grid;
+  gap: 7px;
+}
+
+.text-fallback-form label {
+  display: grid;
+  gap: 5px;
+}
+
+.text-fallback-form textarea {
+  width: 100%;
+  min-width: 0;
+  resize: vertical;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  padding: 7px 8px;
+  color: #111827;
+  background: #ffffff;
+  line-height: 1.4;
+}
+
+.voice-response {
+  border-top: 1px solid #e5e7eb;
+  padding-top: 8px;
+  color: #0f766e;
+  font-weight: 800;
+}
+
 .wake-name {
   margin: 2px 0 0;
   color: #4b5563;
@@ -719,6 +844,11 @@ h1 {
   }
 
   .credential-form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .voice-status,
+  .voice-actions {
     grid-template-columns: minmax(0, 1fr);
   }
 }

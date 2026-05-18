@@ -9,6 +9,7 @@ import {
   ControlSurfacePanel,
   DismissedPresence,
   FirstRunOnboarding,
+  VoiceInteractionPanel,
 } from "../src/App";
 import {
   Live2DAvatarSurface,
@@ -29,6 +30,14 @@ import {
   defaultExecutionAuthorityPolicy,
   decisionForActionImpact,
 } from "../src/settings";
+import {
+  companionPresenceForVoiceState,
+  defaultVoiceInteractionSnapshot,
+  nextMockVoiceSnapshot,
+  presenceLabelForState,
+  textFallbackResponseSnapshot,
+  textFallbackThinkingSnapshot,
+} from "../src/voiceInteraction";
 
 const completedSettings: CompanionSettings = {
   ...defaultCompanionSettings,
@@ -183,6 +192,7 @@ describe("desktop app shell", () => {
     );
 
     expect(controlSurfaceEntries.map((entry) => entry.id)).toEqual([
+      "voice",
       "settings",
       "tasks",
       "memory",
@@ -196,7 +206,62 @@ describe("desktop app shell", () => {
     }
 
     expect(markup).toContain(controlSurfaceEntries[0].description);
-    expect(markup).toContain("Launch at login");
+    expect(markup).toContain("Start listening");
+  });
+
+  it("renders explicit voice controls and text fallback without credentials", () => {
+    const markup = renderToStaticMarkup(
+      <App initialSettings={completedSettings} />,
+    );
+
+    expect(markup).toContain("Start listening");
+    expect(markup).toContain("Mute voice output");
+    expect(markup).toContain("Text fallback");
+    expect(markup).toContain("Ready for voice or text.");
+    expect(markup).not.toContain("OpenAI credential");
+  });
+
+  it("renders the voice interaction panel for an active session state", () => {
+    const markup = renderToStaticMarkup(
+      <VoiceInteractionPanel
+        voiceInteraction={{
+          ...defaultVoiceInteractionSnapshot,
+          sessionState: "listening",
+          transcript: "Listening through local mock voice...",
+        }}
+      />,
+    );
+
+    expect(markup).toContain("listening");
+    expect(markup).toContain("Listening through local mock voice...");
+    expect(markup).toContain("Send text");
+  });
+
+  it("maps voice session state into companion presence labels", () => {
+    expect(companionPresenceForVoiceState("listening")).toBe("listening");
+    expect(presenceLabelForState("listening")).toBe("Listening");
+    expect(presenceLabelForState("thinking")).toBe("Thinking");
+    expect(presenceLabelForState("speaking")).toBe("Speaking");
+    expect(presenceLabelForState("idle")).toBe("Idle presence");
+  });
+
+  it("progresses mock voice and text fallback snapshots", () => {
+    const listening = nextMockVoiceSnapshot(
+      defaultVoiceInteractionSnapshot,
+      "listening",
+    );
+    const thinking = nextMockVoiceSnapshot(listening, "thinking");
+    const speaking = nextMockVoiceSnapshot(thinking, "speaking");
+    const textThinking = textFallbackThinkingSnapshot(speaking, "Fallback now");
+    const textSpeaking = textFallbackResponseSnapshot(textThinking);
+
+    expect(listening.sessionState).toBe("listening");
+    expect(thinking.sessionState).toBe("thinking");
+    expect(speaking.sessionState).toBe("speaking");
+    expect(textThinking.activationSource).toBe("text");
+    expect(textThinking.sessionState).toBe("thinking");
+    expect(textSpeaking.sessionState).toBe("speaking");
+    expect(textSpeaking.response).toContain("Fallback now");
   });
 
   it("keeps the menu bar control surface interactive when the shell ignores pointer events", () => {
@@ -211,7 +276,11 @@ describe("desktop app shell", () => {
 
   it("renders local data and trust foundation settings", () => {
     const markup = renderToStaticMarkup(
-      <App initialSettings={completedSettings} />,
+      <ControlSurfacePanel
+        activeEntry="settings"
+        settings={completedSettings}
+        onSettingsChange={async () => undefined}
+      />,
     );
 
     for (const label of [
