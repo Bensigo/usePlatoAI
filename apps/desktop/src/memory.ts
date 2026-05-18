@@ -1,4 +1,4 @@
-export type LocalMemoryKind = "summary" | "preference";
+export type LocalMemoryKind = "summary" | "preference" | "correction";
 
 export type LocalMemoryInput = {
   memoryId: string;
@@ -15,6 +15,23 @@ export type LocalMemoryRecord = LocalMemoryInput & {
   updatedAt: string;
 };
 
+export type SensitiveMemoryApprovalEvidence = {
+  approvalId: string;
+  approvalToken: string;
+};
+
+export type SensitiveMemoryApprovalRequest = {
+  memory: LocalMemoryInput;
+  metadata: unknown;
+};
+
+export type SensitiveMemoryApprovalRecord = SensitiveMemoryApprovalEvidence & {
+  approvedMemoryId: string;
+  approvedSourceKind: string;
+  approvedPayloadHash: string;
+  usedAt?: string | null;
+};
+
 export type LocalMemoryRetrievalQuery = {
   query?: string | null;
   memoryKind?: LocalMemoryKind | null;
@@ -23,6 +40,13 @@ export type LocalMemoryRetrievalQuery = {
 
 export type MemoryStore = {
   remember: (memory: LocalMemoryInput) => Promise<LocalMemoryRecord>;
+  approveSensitiveMemoryWrite: (
+    request: SensitiveMemoryApprovalRequest,
+  ) => Promise<SensitiveMemoryApprovalEvidence>;
+  rememberApprovedSensitive: (
+    memory: LocalMemoryInput,
+    approvalEvidence: SensitiveMemoryApprovalEvidence,
+  ) => Promise<LocalMemoryRecord>;
   read: (memoryId: string) => Promise<LocalMemoryRecord | null>;
   readPreference: (preferenceKey: string) => Promise<LocalMemoryRecord | null>;
   retrieve: (query: LocalMemoryRetrievalQuery) => Promise<LocalMemoryRecord[]>;
@@ -30,29 +54,187 @@ export type MemoryStore = {
   setMemoryEnabled: (isEnabled: boolean) => void;
 };
 
+export type UserCorrectionInput = {
+  correctionId: string;
+  correction: string;
+  appliesTo?: string | null;
+  metadata?: Record<string, unknown>;
+};
+
+const sensitiveJsonKeyFragments = [
+  "secret",
+  "credential",
+  "password",
+  "passcode",
+  "api_key",
+  "apikey",
+  "access_token",
+  "refreshtoken",
+  "refresh_token",
+  "token",
+  "bearer",
+  "creditcard",
+  "credit_card",
+  "cardnumber",
+  "card_number",
+  "cvv",
+  "cvc",
+  "ssn",
+  "socialsecurity",
+  "private_message",
+  "privatemessage",
+  "confidential",
+];
+
+const sensitiveTextPatterns = [
+  /\b(?:sk|pk|rk|pat|ghp|gho|ghu|ghs|github_pat)_[A-Za-z0-9_=-]{12,}\b/i,
+  /\b(?:api[_ -]?key|access[_ -]?token|refresh[_ -]?token|password|passcode)\s*[:=]\s*\S{6,}/i,
+  /\bbearer\s+[A-Za-z0-9._~+/=-]{16,}\b/i,
+  /\b(?:\d[ -]?){13,19}\b/,
+  /\b\d{3}-\d{2}-\d{4}\b/,
+];
+
+const sensitiveApprovalMetadataKeys = ["surface", "reason"];
+
+export function containsSensitiveMemoryData(memory: LocalMemoryInput): boolean {
+  return (
+    containsSensitiveText(memory.summary) ||
+    containsSensitiveValue(memory.metadata) ||
+    containsSensitiveValue(memory.preferenceValue ?? null)
+  );
+}
+
+export async function rememberExtractedMemory(
+  store: MemoryStore,
+  memory: LocalMemoryInput,
+): Promise<LocalMemoryRecord | null> {
+  if (containsSensitiveMemoryData(memory)) {
+    return null;
+  }
+
+  return store.remember(memory);
+}
+
+export async function rememberApprovedSensitiveMemory(
+  store: MemoryStore,
+  memory: LocalMemoryInput,
+  approvalEvidence: SensitiveMemoryApprovalEvidence,
+): Promise<LocalMemoryRecord> {
+  return store.rememberApprovedSensitive(memory, approvalEvidence);
+}
+
+export async function createSensitiveMemoryApprovalRecord(
+  memory: LocalMemoryInput,
+  approvalEvidence: SensitiveMemoryApprovalEvidence,
+): Promise<SensitiveMemoryApprovalRecord> {
+  return {
+    ...approvalEvidence,
+    approvedMemoryId: memory.memoryId,
+    approvedSourceKind: memory.sourceKind,
+    approvedPayloadHash: await sensitiveMemoryApprovalPayloadHash(memory),
+    usedAt: null,
+  };
+}
+
+export async function saveUserCorrectionMemory(
+  store: MemoryStore,
+  correction: UserCorrectionInput,
+): Promise<LocalMemoryRecord> {
+  return store.remember({
+    memoryId: correction.correctionId,
+    memoryKind: "correction",
+    summary: correction.correction,
+    sourceKind: "user-correction",
+    metadata: {
+      ...(correction.metadata ?? {}),
+      appliesTo: correction.appliesTo ?? null,
+    },
+  });
+}
+
+export async function retrieveUserCorrections(
+  store: MemoryStore,
+  query: string,
+  limit = 5,
+): Promise<LocalMemoryRecord[]> {
+  const matchingCorrections = await store.retrieve({
+    query,
+    memoryKind: "correction",
+    limit,
+  });
+
+  if (matchingCorrections.length > 0) {
+    return matchingCorrections;
+  }
+
+  return store.retrieve({
+    memoryKind: "correction",
+    limit,
+  });
+}
+
 export function createMemoryStore(
   initialRecords: LocalMemoryRecord[] = [],
   initialEnabled = true,
+  initialSensitiveMemoryApprovals: SensitiveMemoryApprovalRecord[] = [],
 ): MemoryStore {
   const records = new Map(initialRecords.map((record) => [record.memoryId, record]));
+  const sensitiveMemoryApprovals = new Map(
+    initialSensitiveMemoryApprovals.map((approval) => [
+      approval.approvalId,
+      { ...approval },
+    ]),
+  );
   let isMemoryEnabled = initialEnabled;
+
+  async function rememberMemory(
+    memory: LocalMemoryInput,
+    options: { allowSensitiveData: boolean },
+  ) {
+    const now = new Date(0).toISOString();
+    const existing = records.get(memory.memoryId);
+
+    if (!existing && !isMemoryEnabled) {
+      throw new Error("memory is disabled; new memory writes are paused");
+    }
+
+    if (containsSensitiveMemoryData(memory) && !options.allowSensitiveData) {
+      throw new Error(
+        "memory payload contains sensitive data; trusted approval is required",
+      );
+    }
+
+    const record: LocalMemoryRecord = {
+      ...memory,
+      createdAt: existing?.createdAt ?? now,
+      updatedAt: now,
+    };
+    records.set(record.memoryId, record);
+    return record;
+  }
 
   return {
     async remember(memory) {
-      const now = new Date(0).toISOString();
-      const existing = records.get(memory.memoryId);
-
-      if (!existing && !isMemoryEnabled) {
-        throw new Error("memory is disabled; new memory writes are paused");
+      return rememberMemory(memory, { allowSensitiveData: false });
+    },
+    async approveSensitiveMemoryWrite(request) {
+      validateSensitiveMemoryApprovalMetadata(request.metadata);
+      throw new Error(
+        "sensitive memory approval evidence must be issued by a trusted human approval boundary",
+      );
+    },
+    async rememberApprovedSensitive(memory, approvalEvidence) {
+      const approval = await consumeSensitiveMemoryApproval(
+        sensitiveMemoryApprovals,
+        approvalEvidence,
+        memory,
+      );
+      try {
+        return await rememberMemory(memory, { allowSensitiveData: true });
+      } catch (error) {
+        approval.usedAt = null;
+        throw error;
       }
-
-      const record: LocalMemoryRecord = {
-        ...memory,
-        createdAt: existing?.createdAt ?? now,
-        updatedAt: now,
-      };
-      records.set(record.memoryId, record);
-      return record;
     },
     async read(memoryId) {
       return records.get(memoryId) ?? null;
@@ -104,6 +286,27 @@ export function createTauriMemoryStore(): MemoryStore {
       const { invoke } = await import("@tauri-apps/api/core");
       return invoke<LocalMemoryRecord>("remember_local_memory", { memory });
     },
+    async approveSensitiveMemoryWrite(request) {
+      if (!isTauriRuntime()) {
+        return fallbackStore.approveSensitiveMemoryWrite(request);
+      }
+
+      const { invoke } = await import("@tauri-apps/api/core");
+      return invoke<SensitiveMemoryApprovalEvidence>("approve_sensitive_memory_write", {
+        request,
+      });
+    },
+    async rememberApprovedSensitive(memory, approvalEvidence) {
+      if (!isTauriRuntime()) {
+        return fallbackStore.rememberApprovedSensitive(memory, approvalEvidence);
+      }
+
+      const { invoke } = await import("@tauri-apps/api/core");
+      return invoke<LocalMemoryRecord>("remember_approved_sensitive_local_memory", {
+        memory,
+        approvalEvidence,
+      });
+    },
     async read(memoryId) {
       if (!isTauriRuntime()) {
         return fallbackStore.read(memoryId);
@@ -146,4 +349,245 @@ export function createTauriMemoryStore(): MemoryStore {
 
 function isTauriRuntime() {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+}
+
+async function consumeSensitiveMemoryApproval(
+  approvals: Map<string, SensitiveMemoryApprovalRecord>,
+  approvalEvidence: SensitiveMemoryApprovalEvidence,
+  memory: LocalMemoryInput,
+): Promise<SensitiveMemoryApprovalRecord> {
+  if (!approvalEvidence.approvalId.trim()) {
+    throw new Error("sensitive memory approval id is required");
+  }
+  if (!approvalEvidence.approvalToken.trim()) {
+    throw new Error("sensitive memory approval token is required");
+  }
+
+  const approval = approvals.get(approvalEvidence.approvalId);
+  if (!approval) {
+    throw new Error("trusted sensitive memory approval was not found");
+  }
+  if (approval.approvalToken !== approvalEvidence.approvalToken) {
+    throw new Error("trusted sensitive memory approval token is invalid");
+  }
+  if (approval.usedAt) {
+    throw new Error("trusted sensitive memory approval has already been used");
+  }
+  if (approval.approvedMemoryId !== memory.memoryId) {
+    throw new Error(
+      "trusted sensitive memory approval is not valid for this memory id",
+    );
+  }
+  if (approval.approvedSourceKind !== memory.sourceKind) {
+    throw new Error(
+      "trusted sensitive memory approval is not valid for this memory source",
+    );
+  }
+
+  const actualPayloadHash = await sensitiveMemoryApprovalPayloadHash(memory);
+  if (approval.approvedPayloadHash !== actualPayloadHash) {
+    throw new Error(
+      "trusted sensitive memory approval is not valid for this memory payload",
+    );
+  }
+  if (approval.usedAt) {
+    throw new Error("trusted sensitive memory approval has already been used");
+  }
+
+  approval.usedAt = new Date(0).toISOString();
+  return approval;
+}
+
+async function sensitiveMemoryApprovalPayloadHash(
+  memory: LocalMemoryInput,
+): Promise<string> {
+  const canonicalPayload = canonicalJson({
+    memoryId: memory.memoryId,
+    memoryKind: memory.memoryKind,
+    summary: memory.summary,
+    preferenceKey: memory.preferenceKey ?? null,
+    preferenceValue: memory.preferenceValue ?? null,
+    sourceKind: memory.sourceKind,
+    metadata: memory.metadata,
+  });
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(canonicalPayload),
+  );
+
+  return [...new Uint8Array(digest)]
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+function canonicalJson(value: unknown): string {
+  return JSON.stringify(toCanonicalJsonValue(value));
+}
+
+function toCanonicalJsonValue(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(toCanonicalJsonValue);
+  }
+
+  if (isRecord(value)) {
+    return Object.fromEntries(
+      Object.keys(value)
+        .sort()
+        .map((key) => [key, toCanonicalJsonValue(value[key])]),
+    );
+  }
+
+  return value ?? null;
+}
+
+function validateSensitiveMemoryApprovalMetadata(value: unknown) {
+  rejectRawTranscriptMaterial(value);
+  if (containsSensitiveValue(value)) {
+    throw new Error(
+      "sensitive memory approval metadata must not include sensitive values",
+    );
+  }
+
+  if (!isRecord(value)) {
+    throw new Error("sensitive memory approval metadata must be an object");
+  }
+
+  for (const key of sensitiveApprovalMetadataKeys) {
+    const nestedValue = value[key];
+    if (typeof nestedValue !== "string" || !nestedValue.trim()) {
+      throw new Error(
+        `sensitive memory approval metadata \`${key}\` must not be empty`,
+      );
+    }
+    if (nestedValue.length > 240) {
+      throw new Error(
+        `sensitive memory approval metadata \`${key}\` is too long`,
+      );
+    }
+  }
+
+  for (const key of Object.keys(value)) {
+    if (!sensitiveApprovalMetadataKeys.includes(key)) {
+      throw new Error(
+        `sensitive memory approval metadata must not include \`${key}\``,
+      );
+    }
+  }
+}
+
+function rejectRawTranscriptMaterial(value: unknown) {
+  if (Array.isArray(value)) {
+    for (const nestedValue of value) {
+      rejectRawTranscriptMaterial(nestedValue);
+    }
+    return;
+  }
+
+  if (isRecord(value)) {
+    if (isMessageTurnObject(value)) {
+      throw new Error(
+        "memory payload must not include raw transcript message objects",
+      );
+    }
+
+    for (const [key, nestedValue] of Object.entries(value)) {
+      if (isRawTranscriptFieldName(key)) {
+        throw new Error(
+          `memory payload must not include raw transcript material in \`${key}\``,
+        );
+      }
+      rejectRawTranscriptMaterial(nestedValue);
+    }
+    return;
+  }
+
+  if (typeof value === "string" && looksLikeRawTranscriptText(value)) {
+    throw new Error(
+      "memory payload must not include raw transcript material in `value`",
+    );
+  }
+}
+
+function containsSensitiveValue(value: unknown): boolean {
+  if (typeof value === "string") {
+    return containsSensitiveText(value);
+  }
+
+  if (Array.isArray(value)) {
+    return value.some(containsSensitiveValue);
+  }
+
+  if (isRecord(value)) {
+    return Object.entries(value).some(([key, nestedValue]) => {
+      return (
+        containsSensitiveJsonKey(key) || containsSensitiveValue(nestedValue)
+      );
+    });
+  }
+
+  return false;
+}
+
+function containsSensitiveJsonKey(key: string): boolean {
+  const normalizedKey = key.replace(/[^a-z0-9]/gi, "").toLocaleLowerCase();
+  return sensitiveJsonKeyFragments.some((fragment) =>
+    normalizedKey.includes(fragment.replace(/[^a-z0-9]/gi, "")),
+  );
+}
+
+function containsSensitiveText(value: string) {
+  return sensitiveTextPatterns.some((pattern) => pattern.test(value));
+}
+
+function isMessageTurnObject(value: Record<string, unknown>) {
+  const keys = Object.keys(value);
+  return (
+    keys.some(isMessageParticipantFieldName) &&
+    keys.some(isMessageTextFieldName)
+  );
+}
+
+function isMessageParticipantFieldName(key: string) {
+  return ["role", "speaker"].includes(normalizeJsonKey(key));
+}
+
+function isMessageTextFieldName(key: string) {
+  return ["text", "message", "body", "utterance"].includes(
+    normalizeJsonKey(key),
+  );
+}
+
+function isRawTranscriptFieldName(key: string) {
+  return [
+    "transcript",
+    "rawtranscript",
+    "conversation",
+    "conversationlog",
+    "fullconversation",
+    "messages",
+    "rawmessages",
+    "messagelog",
+    "turns",
+    "content",
+  ].includes(normalizeJsonKey(key));
+}
+
+function normalizeJsonKey(key: string) {
+  return key.replace(/[^a-z0-9]/gi, "").toLocaleLowerCase();
+}
+
+function looksLikeRawTranscriptText(value: string) {
+  const lowerValue = value.trim().toLocaleLowerCase();
+  if (!lowerValue) {
+    return false;
+  }
+
+  return (
+    /\b(user|assistant|plato|system)\s*:/.test(lowerValue) ||
+    /\n\s*(user|assistant|plato|system)\s*:/.test(lowerValue)
+  );
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

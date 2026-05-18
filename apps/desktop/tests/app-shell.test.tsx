@@ -12,6 +12,7 @@ import {
   MemoryBrowserPanel,
   SoulEditorPanel,
   VoiceInteractionPanel,
+  isActiveCorrectionPromptTransition,
 } from "../src/App";
 import {
   Live2DAvatarSurface,
@@ -20,7 +21,14 @@ import {
   type AvatarPresenceState,
 } from "../src/avatarSurface";
 import { controlSurfaceEntries } from "../src/controlSurface";
-import { createMemoryStore } from "../src/memory";
+import {
+  createMemoryStore,
+  createSensitiveMemoryApprovalRecord,
+  rememberApprovedSensitiveMemory,
+  rememberExtractedMemory,
+  retrieveUserCorrections,
+  saveUserCorrectionMemory,
+} from "../src/memory";
 import {
   createMemoryPresenceStateSource,
   normalizePresenceState,
@@ -47,6 +55,7 @@ import {
 } from "../src/soulGuidance";
 import {
   companionPresenceForVoiceState,
+  companionPromptForInputWithCorrections,
   companionPromptForInput,
   defaultVoiceInteractionSnapshot,
   nextMockVoiceSnapshot,
@@ -314,6 +323,122 @@ describe("desktop app shell", () => {
     });
   });
 
+  it("requires trusted approval before saving sensitive memory", async () => {
+    const sensitiveSummary = "User API key = sk_test_1234567890abcdef";
+    const approvedSensitiveMemory = {
+      memoryId: "memory-sensitive-approved",
+      memoryKind: "summary" as const,
+      summary: sensitiveSummary,
+      sourceKind: "user-approved-sensitive-memory",
+      metadata: { extractor: "local-test-boundary" },
+    };
+    const approvalEvidence = {
+      approvalId: "approval-sensitive-memory-1",
+      approvalToken: "trusted-token-from-approval-flow",
+    };
+    const memoryStore = createMemoryStore(
+      [],
+      true,
+      [
+        await createSensitiveMemoryApprovalRecord(
+          approvedSensitiveMemory,
+          approvalEvidence,
+        ),
+      ],
+    );
+
+    await expect(
+      rememberExtractedMemory(memoryStore, {
+        memoryId: "memory-sensitive-1",
+        memoryKind: "summary",
+        summary: sensitiveSummary,
+        sourceKind: "conversation-summary",
+        metadata: { extractor: "local-test-boundary" },
+      }),
+    ).resolves.toBeNull();
+    await expect(memoryStore.read("memory-sensitive-1")).resolves.toBeNull();
+
+    await expect(
+      memoryStore.remember({
+        memoryId: "memory-sensitive-direct",
+        memoryKind: "summary",
+        summary: sensitiveSummary,
+        sourceKind: "conversation-summary",
+        metadata: { extractor: "local-test-boundary" },
+      }),
+    ).rejects.toThrow("trusted approval is required");
+
+    await expect(
+      rememberExtractedMemory(memoryStore, {
+        memoryId: "memory-sensitive-self-approved",
+        memoryKind: "summary",
+        summary: sensitiveSummary,
+        sourceKind: "conversation-summary",
+        metadata: {
+          extractor: "local-test-boundary",
+          sensitiveDataApproved: true,
+        },
+      }),
+    ).resolves.toBeNull();
+    await expect(
+      memoryStore.read("memory-sensitive-self-approved"),
+    ).resolves.toBeNull();
+
+    await expect(
+      memoryStore.remember({
+        memoryId: "memory-sensitive-self-approved-direct",
+        memoryKind: "summary",
+        summary: sensitiveSummary,
+        sourceKind: "conversation-summary",
+        metadata: {
+          extractor: "local-test-boundary",
+          approvedSensitiveData: true,
+        },
+      }),
+    ).rejects.toThrow("trusted approval is required");
+
+    await expect(
+      rememberApprovedSensitiveMemory(
+        memoryStore,
+        approvedSensitiveMemory,
+        approvalEvidence,
+      ),
+    ).resolves.toMatchObject({
+      memoryId: "memory-sensitive-approved",
+      summary: sensitiveSummary,
+    });
+
+    await expect(
+      rememberApprovedSensitiveMemory(memoryStore, {
+        memoryId: "memory-sensitive-approved-replay",
+        memoryKind: "summary",
+        summary: sensitiveSummary,
+        sourceKind: "user-approved-sensitive-memory",
+        metadata: { extractor: "local-test-boundary" },
+      }, approvalEvidence),
+    ).rejects.toThrow("already been used");
+  });
+
+  it("saves user corrections as replayable memory", async () => {
+    const memoryStore = createMemoryStore();
+
+    await saveUserCorrectionMemory(memoryStore, {
+      correctionId: "correction-status-tone",
+      correction: "When giving status updates, be blunt about blockers first.",
+      appliesTo: "status updates",
+    });
+
+    await expect(
+      retrieveUserCorrections(memoryStore, "blockers first"),
+    ).resolves.toMatchObject([
+      {
+        memoryKind: "correction",
+        sourceKind: "user-correction",
+        summary: "When giving status updates, be blunt about blockers first.",
+      },
+    ]);
+  });
+
   it("renders the voice interaction panel for an active session state", () => {
     const markup = renderToStaticMarkup(
       <VoiceInteractionPanel
@@ -355,9 +480,27 @@ describe("desktop app shell", () => {
     expect(textThinking.companionPrompt).toBeNull();
     expect(textThinking.activationSource).toBe("text");
     expect(textThinking.sessionState).toBe("thinking");
+    expect(textThinking.submittedFallbackText).toBe("Fallback now");
     expect(textSpeaking.sessionState).toBe("speaking");
     expect(textSpeaking.response).toContain("Fallback now");
     expect(textSpeaking.companionPrompt).toContain("Trusted policy layer:");
+  });
+
+  it("keeps submitted text fallback responses independent from the editable draft", () => {
+    const textThinking = textFallbackThinkingSnapshot(
+      defaultVoiceInteractionSnapshot,
+      "Submitted request",
+    );
+    const editedDraft = {
+      ...textThinking,
+      fallbackText: "Next draft before response resolves",
+    };
+    const textSpeaking = textFallbackResponseSnapshot(editedDraft);
+
+    expect(textSpeaking.response).toContain("Submitted request");
+    expect(textSpeaking.response).not.toContain("Next draft");
+    expect(textSpeaking.companionPrompt).toContain("Submitted request");
+    expect(textSpeaking.companionPrompt).not.toContain("Next draft");
   });
 
   it("clears stale companion prompts outside active response snapshots", () => {
@@ -395,6 +538,81 @@ describe("desktop app shell", () => {
     expect(companionPrompt).toContain("Draft the next step.");
     expect(companionPrompt).toContain("Be terse and candid.");
     expect(companionPrompt).toContain("Trusted policy layer:");
+  });
+
+  it("applies saved correction memories to later companion prompts", async () => {
+    const memoryStore = createMemoryStore();
+
+    await saveUserCorrectionMemory(memoryStore, {
+      correctionId: "correction-answer-style",
+      correction:
+        "When answering planning questions, state the blocker before the plan.",
+      appliesTo: "planning questions",
+    });
+
+    const companionPrompt = await companionPromptForInputWithCorrections(
+      "Plan the next implementation step.",
+      memoryStore,
+      fallbackSoulGuidance,
+    );
+
+    expect(companionPrompt).toContain(
+      "When answering planning questions, state the blocker before the plan.",
+    );
+  });
+
+  it("rejects stale async correction prompt results after the active response changes", () => {
+    const speaking = textFallbackResponseSnapshot({
+      ...defaultVoiceInteractionSnapshot,
+      activationSource: "text",
+      fallbackText: "Original request",
+    });
+
+    expect(
+      isActiveCorrectionPromptTransition({
+        snapshot: speaking,
+        source: "text",
+        promptInput: "Original request",
+        requestId: 2,
+        activeRequestId: 2,
+      }),
+    ).toBe(true);
+    expect(
+      isActiveCorrectionPromptTransition({
+        snapshot: { ...speaking, sessionState: "idle" },
+        source: "text",
+        promptInput: "Original request",
+        requestId: 2,
+        activeRequestId: 2,
+      }),
+    ).toBe(false);
+    expect(
+      isActiveCorrectionPromptTransition({
+        snapshot: speaking,
+        source: "text",
+        promptInput: "Original request",
+        requestId: 1,
+        activeRequestId: 2,
+      }),
+    ).toBe(false);
+    expect(
+      isActiveCorrectionPromptTransition({
+        snapshot: { ...speaking, fallbackText: "New request" },
+        source: "text",
+        promptInput: "Original request",
+        requestId: 2,
+        activeRequestId: 2,
+      }),
+    ).toBe(true);
+    expect(
+      isActiveCorrectionPromptTransition({
+        snapshot: { ...speaking, submittedFallbackText: "New request" },
+        source: "text",
+        promptInput: "Original request",
+        requestId: 2,
+        activeRequestId: 2,
+      }),
+    ).toBe(false);
   });
 
   it("accepts a soul guidance store for the runtime app wiring", () => {

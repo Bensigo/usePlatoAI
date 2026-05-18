@@ -5,6 +5,7 @@ use std::{io::ErrorKind, path::Path};
 use rusqlite::{params, Connection, OptionalExtension, Transaction, TransactionBehavior};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_json::{json, Value};
+use sha2::{Digest, Sha256};
 
 use crate::CompanionSettings;
 
@@ -39,6 +40,7 @@ pub struct TaskMetadata {
 pub enum LocalMemoryKind {
     Summary,
     Preference,
+    Correction,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
@@ -50,6 +52,20 @@ pub struct LocalMemoryInput {
     pub preference_key: Option<String>,
     pub preference_value: Option<Value>,
     pub source_kind: String,
+    pub metadata: Value,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SensitiveMemoryApprovalEvidence {
+    pub approval_id: String,
+    pub approval_token: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SensitiveMemoryApprovalRequest {
+    pub memory: LocalMemoryInput,
     pub metadata: Value,
 }
 
@@ -251,6 +267,18 @@ impl LocalDataService {
                     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
                 );
 
+                CREATE TABLE IF NOT EXISTS sensitive_memory_approvals (
+                    approval_id TEXT PRIMARY KEY,
+                    approval_token TEXT NOT NULL,
+                    approved_action TEXT NOT NULL,
+                    approved_memory_id TEXT NOT NULL DEFAULT '',
+                    approved_source_kind TEXT NOT NULL DEFAULT '',
+                    approved_payload_hash TEXT NOT NULL DEFAULT '',
+                    metadata_json TEXT NOT NULL DEFAULT '{}',
+                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    used_at TEXT
+                );
+
                 CREATE TABLE IF NOT EXISTS capability_metadata (
                     capability_id TEXT PRIMARY KEY,
                     capability_kind TEXT NOT NULL,
@@ -276,7 +304,8 @@ impl LocalDataService {
             )
             .map_err(|error| error.to_string())?;
 
-        self.migrate_memory_metadata_columns()
+        self.migrate_memory_metadata_columns()?;
+        self.migrate_sensitive_memory_approval_columns()
     }
 
     pub fn read_companion_settings(&self) -> Result<Option<CompanionSettings>, String> {
@@ -565,7 +594,36 @@ impl LocalDataService {
         &self,
         memory: &LocalMemoryInput,
     ) -> Result<LocalMemoryRecord, String> {
-        validate_memory_input(memory)?;
+        self.upsert_memory_record_with_sensitive_approval(memory, None)
+    }
+
+    pub fn upsert_approved_sensitive_memory_record(
+        &self,
+        memory: &LocalMemoryInput,
+        approval_evidence: &SensitiveMemoryApprovalEvidence,
+    ) -> Result<LocalMemoryRecord, String> {
+        self.upsert_memory_record_with_sensitive_approval(memory, Some(approval_evidence))
+    }
+
+    pub fn create_sensitive_memory_approval(
+        &self,
+        request: &SensitiveMemoryApprovalRequest,
+    ) -> Result<SensitiveMemoryApprovalEvidence, String> {
+        validate_memory_input(&request.memory, true)?;
+        validate_sensitive_memory_approval_metadata(&request.metadata)?;
+
+        Err(
+            "sensitive memory approval evidence must be issued by a trusted human approval boundary"
+                .to_string(),
+        )
+    }
+
+    fn upsert_memory_record_with_sensitive_approval(
+        &self,
+        memory: &LocalMemoryInput,
+        approval_evidence: Option<&SensitiveMemoryApprovalEvidence>,
+    ) -> Result<LocalMemoryRecord, String> {
+        validate_memory_input(memory, approval_evidence.is_some())?;
         let existing_memory = self.read_memory_record(&memory.memory_id)?;
         let memory_mode = self
             .read_companion_settings()?
@@ -583,8 +641,15 @@ impl LocalDataService {
             .map(encode_json)
             .transpose()?;
         let metadata_json = encode_json(&memory.metadata)?;
+        let transaction =
+            Transaction::new_unchecked(&self.connection, TransactionBehavior::Immediate)
+                .map_err(|error| error.to_string())?;
 
-        self.connection
+        if let Some(evidence) = approval_evidence {
+            consume_sensitive_memory_approval(&transaction, evidence, memory)?;
+        }
+
+        transaction
             .execute(
                 "
                 INSERT INTO memory_metadata (
@@ -620,15 +685,48 @@ impl LocalDataService {
             )
             .map_err(|error| error.to_string())?;
 
-        self.record_audit_entry(
-            "memory",
-            "memory.upserted",
-            json!({
+        if let Some(evidence) = approval_evidence {
+            let approval_metadata = encode_json(&json!({
                 "memoryId": memory.memory_id,
-                "memoryKind": memory_kind,
-                "sourceKind": memory.source_kind,
-            }),
-        )?;
+                "approvalId": evidence.approval_id.as_str(),
+                "approvedAction": "memory.write_sensitive",
+            }))?;
+            transaction
+                .execute(
+                    "
+                    INSERT INTO audit_history (category, action, metadata_json)
+                    VALUES (?1, ?2, ?3)
+                    ",
+                    params![
+                        "memory",
+                        "memory.sensitive_approval_used",
+                        approval_metadata
+                    ],
+                )
+                .map_err(|error| error.to_string())?;
+        }
+
+        let mut upsert_audit_metadata = json!({
+            "memoryId": memory.memory_id,
+            "memoryKind": memory_kind,
+            "sourceKind": memory.source_kind,
+        });
+        if let Some(evidence) = approval_evidence {
+            upsert_audit_metadata["sensitiveApprovalId"] =
+                Value::String(evidence.approval_id.clone());
+        }
+        let upsert_audit_metadata = encode_json(&upsert_audit_metadata)?;
+        transaction
+            .execute(
+                "
+                INSERT INTO audit_history (category, action, metadata_json)
+                VALUES (?1, ?2, ?3)
+                ",
+                params!["memory", "memory.upserted", upsert_audit_metadata],
+            )
+            .map_err(|error| error.to_string())?;
+
+        transaction.commit().map_err(|error| error.to_string())?;
 
         self.read_memory_record(&memory.memory_id)?
             .ok_or_else(|| format!("memory record `{}` was not persisted", memory.memory_id))
@@ -954,6 +1052,27 @@ impl LocalDataService {
         Ok(())
     }
 
+    fn migrate_sensitive_memory_approval_columns(&self) -> Result<(), String> {
+        for (column_name, column_definition) in [
+            ("approved_memory_id", "TEXT NOT NULL DEFAULT ''"),
+            ("approved_source_kind", "TEXT NOT NULL DEFAULT ''"),
+            ("approved_payload_hash", "TEXT NOT NULL DEFAULT ''"),
+        ] {
+            if !self.table_column_exists("sensitive_memory_approvals", column_name)? {
+                self.connection
+                    .execute(
+                        &format!(
+                            "ALTER TABLE sensitive_memory_approvals ADD COLUMN {column_name} {column_definition}"
+                        ),
+                        [],
+                    )
+                    .map_err(|error| error.to_string())?;
+            }
+        }
+
+        Ok(())
+    }
+
     fn table_column_exists(&self, table_name: &str, column_name: &str) -> Result<bool, String> {
         let mut statement = self
             .connection
@@ -1007,6 +1126,15 @@ impl LocalDataService {
             (
                 "memory_metadata",
                 &["memory_id", "summary", "source_kind", "metadata_json"][..],
+            ),
+            (
+                "sensitive_memory_approvals",
+                &[
+                    "approval_id",
+                    "approval_token",
+                    "approved_action",
+                    "metadata_json",
+                ][..],
             ),
             (
                 "capability_metadata",
@@ -1109,6 +1237,42 @@ impl LocalDataService {
             .map(|_| ())
             .map_err(|error| error.to_string())
     }
+
+    #[cfg(test)]
+    pub(crate) fn insert_sensitive_memory_approval_for_test(
+        &self,
+        approval_evidence: &SensitiveMemoryApprovalEvidence,
+        memory: &LocalMemoryInput,
+    ) -> Result<(), String> {
+        let approved_payload_hash = sensitive_memory_approval_payload_hash(memory)?;
+
+        self.connection
+            .execute(
+                "
+                INSERT INTO sensitive_memory_approvals (
+                    approval_id,
+                    approval_token,
+                    approved_action,
+                    approved_memory_id,
+                    approved_source_kind,
+                    approved_payload_hash,
+                    metadata_json
+                )
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+                ",
+                params![
+                    approval_evidence.approval_id.as_str(),
+                    approval_evidence.approval_token.as_str(),
+                    "memory.write_sensitive",
+                    memory.memory_id.as_str(),
+                    memory.source_kind.as_str(),
+                    approved_payload_hash,
+                    "{}"
+                ],
+            )
+            .map(|_| ())
+            .map_err(|error| error.to_string())
+    }
 }
 
 fn encode_json(value: &impl Serialize) -> Result<String, String> {
@@ -1195,6 +1359,7 @@ fn memory_kind_key(kind: LocalMemoryKind) -> &'static str {
     match kind {
         LocalMemoryKind::Summary => "summary",
         LocalMemoryKind::Preference => "preference",
+        LocalMemoryKind::Correction => "correction",
     }
 }
 
@@ -1202,6 +1367,7 @@ fn parse_memory_kind(value: &str) -> Result<LocalMemoryKind, String> {
     match value {
         "summary" => Ok(LocalMemoryKind::Summary),
         "preference" => Ok(LocalMemoryKind::Preference),
+        "correction" => Ok(LocalMemoryKind::Correction),
         unknown => Err(format!("unknown memory kind `{unknown}`")),
     }
 }
@@ -1245,7 +1411,115 @@ fn memory_record_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<LocalMemo
     })
 }
 
-fn validate_memory_input(memory: &LocalMemoryInput) -> Result<(), String> {
+fn consume_sensitive_memory_approval(
+    transaction: &Transaction<'_>,
+    approval_evidence: &SensitiveMemoryApprovalEvidence,
+    memory: &LocalMemoryInput,
+) -> Result<(), String> {
+    if approval_evidence.approval_id.trim().is_empty() {
+        return Err("sensitive memory approval id is required".to_string());
+    }
+    if approval_evidence.approval_token.trim().is_empty() {
+        return Err("sensitive memory approval token is required".to_string());
+    }
+
+    let approval = transaction
+        .query_row(
+            "
+            SELECT
+                approval_token,
+                approved_action,
+                approved_memory_id,
+                approved_source_kind,
+                approved_payload_hash,
+                used_at
+            FROM sensitive_memory_approvals
+            WHERE approval_id = ?1
+            ",
+            [approval_evidence.approval_id.as_str()],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, String>(3)?,
+                    row.get::<_, String>(4)?,
+                    row.get::<_, Option<String>>(5)?,
+                ))
+            },
+        )
+        .optional()
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| "trusted sensitive memory approval was not found".to_string())?;
+
+    let (
+        approval_token,
+        approved_action,
+        approved_memory_id,
+        approved_source_kind,
+        approved_payload_hash,
+        used_at,
+    ) = approval;
+    if approval_token != approval_evidence.approval_token {
+        return Err("trusted sensitive memory approval token is invalid".to_string());
+    }
+    if approved_action != "memory.write_sensitive" {
+        return Err("trusted approval is not valid for sensitive memory writes".to_string());
+    }
+    if used_at.is_some() {
+        return Err("trusted sensitive memory approval has already been used".to_string());
+    }
+    if approved_memory_id != memory.memory_id {
+        return Err(
+            "trusted sensitive memory approval is not valid for this memory id".to_string(),
+        );
+    }
+    if approved_source_kind != memory.source_kind {
+        return Err(
+            "trusted sensitive memory approval is not valid for this memory source".to_string(),
+        );
+    }
+
+    let actual_payload_hash = sensitive_memory_approval_payload_hash(memory)?;
+    if approved_payload_hash != actual_payload_hash {
+        return Err(
+            "trusted sensitive memory approval is not valid for this memory payload".to_string(),
+        );
+    }
+
+    transaction
+        .execute(
+            "
+            UPDATE sensitive_memory_approvals
+            SET used_at = CURRENT_TIMESTAMP
+            WHERE approval_id = ?1 AND used_at IS NULL
+            ",
+            [approval_evidence.approval_id.as_str()],
+        )
+        .map_err(|error| error.to_string())?;
+
+    Ok(())
+}
+
+fn sensitive_memory_approval_payload_hash(memory: &LocalMemoryInput) -> Result<String, String> {
+    let canonical_payload = encode_json(&json!({
+        "memoryId": memory.memory_id,
+        "memoryKind": memory_kind_key(memory.memory_kind),
+        "summary": memory.summary,
+        "preferenceKey": memory.preference_key,
+        "preferenceValue": memory.preference_value,
+        "sourceKind": memory.source_kind,
+        "metadata": memory.metadata,
+    }))?;
+    let digest = Sha256::digest(canonical_payload.as_bytes());
+
+    Ok(format!("{digest:x}"))
+}
+
+fn validate_memory_input(
+    memory: &LocalMemoryInput,
+    allow_sensitive_data: bool,
+) -> Result<(), String> {
     if memory.memory_id.trim().is_empty() {
         return Err("memory id is required".to_string());
     }
@@ -1253,6 +1527,7 @@ fn validate_memory_input(memory: &LocalMemoryInput) -> Result<(), String> {
         return Err("memory summary is required".to_string());
     }
     reject_raw_transcript_text("summary", &memory.summary)?;
+    reject_unapproved_sensitive_memory(memory, allow_sensitive_data)?;
     if memory.source_kind.trim().is_empty() {
         return Err("memory source kind is required".to_string());
     }
@@ -1280,6 +1555,14 @@ fn validate_memory_input(memory: &LocalMemoryInput) -> Result<(), String> {
                 return Err("preference memory requires a preference value".to_string());
             }
         }
+        LocalMemoryKind::Correction => {
+            if memory.preference_key.is_some() || memory.preference_value.is_some() {
+                return Err("correction memory must not include preference fields".to_string());
+            }
+            if memory.source_kind != "user-correction" {
+                return Err("correction memory requires user-correction source".to_string());
+            }
+        }
     }
 
     Ok(())
@@ -1287,6 +1570,80 @@ fn validate_memory_input(memory: &LocalMemoryInput) -> Result<(), String> {
 
 pub(crate) fn validate_provider_metadata(value: &Value) -> Result<(), String> {
     reject_secret_material(value)
+}
+
+fn validate_sensitive_memory_approval_metadata(value: &Value) -> Result<(), String> {
+    reject_raw_transcript_material(value)?;
+    reject_sensitive_memory_approval_secrets(value)?;
+
+    let entries = value
+        .as_object()
+        .ok_or_else(|| "sensitive memory approval metadata must be an object".to_string())?;
+
+    for required_key in ["surface", "reason"] {
+        let Some(Value::String(text)) = entries.get(required_key) else {
+            return Err(format!(
+                "sensitive memory approval metadata `{required_key}` must be a non-empty string"
+            ));
+        };
+
+        if text.trim().is_empty() {
+            return Err(format!(
+                "sensitive memory approval metadata `{required_key}` must not be empty"
+            ));
+        }
+        if text.len() > 240 {
+            return Err(format!(
+                "sensitive memory approval metadata `{required_key}` is too long"
+            ));
+        }
+    }
+
+    for key in entries.keys() {
+        if !["surface", "reason"].contains(&key.as_str()) {
+            return Err(format!(
+                "sensitive memory approval metadata must not include `{key}`"
+            ));
+        }
+    }
+
+    Ok(())
+}
+
+fn reject_sensitive_memory_approval_secrets(value: &Value) -> Result<(), String> {
+    match value {
+        Value::Object(entries) => {
+            for (key, value) in entries {
+                if is_sensitive_field_name(key) {
+                    return Err(format!(
+                        "sensitive memory approval metadata must not include sensitive field `{key}`"
+                    ));
+                }
+
+                reject_sensitive_memory_approval_secrets(value)?;
+            }
+
+            Ok(())
+        }
+        Value::Array(values) => {
+            for value in values {
+                reject_sensitive_memory_approval_secrets(value)?;
+            }
+
+            Ok(())
+        }
+        Value::String(value) => {
+            if contains_sensitive_text(value) {
+                return Err(
+                    "sensitive memory approval metadata must not include sensitive values"
+                        .to_string(),
+                );
+            }
+
+            Ok(())
+        }
+        _ => Ok(()),
+    }
 }
 
 fn reject_raw_transcript_material(value: &Value) -> Result<(), String> {
@@ -1320,6 +1677,64 @@ fn reject_raw_transcript_material(value: &Value) -> Result<(), String> {
         Value::String(value) => reject_raw_transcript_text("value", value),
         _ => Ok(()),
     }
+}
+
+fn reject_unapproved_sensitive_memory(
+    memory: &LocalMemoryInput,
+    allow_sensitive_data: bool,
+) -> Result<(), String> {
+    if !memory_contains_sensitive_data(memory) || allow_sensitive_data {
+        return Ok(());
+    }
+
+    Err("memory payload contains sensitive data; trusted approval is required".to_string())
+}
+
+fn memory_contains_sensitive_data(memory: &LocalMemoryInput) -> bool {
+    contains_sensitive_text(&memory.summary)
+        || contains_sensitive_value(&memory.metadata)
+        || memory
+            .preference_value
+            .as_ref()
+            .map(contains_sensitive_value)
+            .unwrap_or(false)
+}
+
+fn contains_sensitive_value(value: &Value) -> bool {
+    match value {
+        Value::Object(entries) => entries
+            .iter()
+            .any(|(key, value)| is_sensitive_field_name(key) || contains_sensitive_value(value)),
+        Value::Array(values) => values.iter().any(contains_sensitive_value),
+        Value::String(value) => contains_sensitive_text(value),
+        _ => false,
+    }
+}
+
+fn is_sensitive_field_name(key: &str) -> bool {
+    let normalized_key = normalize_json_key(key);
+
+    [
+        "secret",
+        "credential",
+        "password",
+        "passcode",
+        "apikey",
+        "accesstoken",
+        "refreshtoken",
+        "token",
+        "bearer",
+        "creditcard",
+        "cardnumber",
+        "cvv",
+        "cvc",
+        "ssn",
+        "socialsecurity",
+        "privatemessage",
+        "confidential",
+    ]
+    .iter()
+    .any(|blocked| normalized_key.contains(blocked))
 }
 
 fn is_message_turn_object(entries: &serde_json::Map<String, Value>) -> bool {
@@ -1388,6 +1803,116 @@ fn looks_like_raw_transcript_text(value: &str) -> bool {
         .count();
 
     marker_count >= 2 || (marker_count >= 1 && lower.lines().count() >= 2)
+}
+
+fn contains_sensitive_text(value: &str) -> bool {
+    let lower = value.to_ascii_lowercase();
+
+    lower.contains("bearer ")
+        || contains_assignment_like_secret(&lower)
+        || looks_like_provider_key(value)
+        || looks_like_payment_card(value)
+        || looks_like_us_social_security_number(value)
+}
+
+fn contains_assignment_like_secret(value: &str) -> bool {
+    [
+        "api key",
+        "api_key",
+        "apikey",
+        "access token",
+        "access_token",
+        "refresh token",
+        "refresh_token",
+        "password",
+        "passcode",
+    ]
+    .iter()
+    .any(|label| {
+        value
+            .split(label)
+            .nth(1)
+            .map(|tail| {
+                let tail = tail.trim_start();
+                (tail.starts_with(':') || tail.starts_with('='))
+                    && tail
+                        .trim_start_matches([':', '='])
+                        .trim()
+                        .split_whitespace()
+                        .next()
+                        .map(|candidate| candidate.len() >= 6)
+                        .unwrap_or(false)
+            })
+            .unwrap_or(false)
+    })
+}
+
+fn looks_like_provider_key(value: &str) -> bool {
+    let lower = value.to_ascii_lowercase();
+
+    value
+        .split(|character: char| {
+            !(character.is_ascii_alphanumeric() || character == '_' || character == '-')
+        })
+        .any(|token| {
+            let token_lower = token.to_ascii_lowercase();
+            token.len() >= 16
+                && (token_lower.starts_with("sk_")
+                    || token_lower.starts_with("pk_")
+                    || token_lower.starts_with("rk_")
+                    || token_lower.starts_with("pat_")
+                    || token_lower.starts_with("ghp_")
+                    || token_lower.starts_with("gho_")
+                    || token_lower.starts_with("ghu_")
+                    || token_lower.starts_with("ghs_")
+                    || token_lower.starts_with("github_pat_"))
+        })
+        || lower.contains("github_pat_")
+}
+
+fn looks_like_payment_card(value: &str) -> bool {
+    let digits: String = value
+        .chars()
+        .filter(|character| character.is_ascii_digit())
+        .collect();
+
+    (13..=19).contains(&digits.len()) && luhn_checksum_is_valid(&digits)
+}
+
+fn luhn_checksum_is_valid(digits: &str) -> bool {
+    let mut sum = 0;
+    let mut should_double = false;
+
+    for digit in digits
+        .chars()
+        .rev()
+        .filter_map(|character| character.to_digit(10))
+    {
+        let mut value = digit;
+        if should_double {
+            value *= 2;
+            if value > 9 {
+                value -= 9;
+            }
+        }
+        sum += value;
+        should_double = !should_double;
+    }
+
+    sum > 0 && sum % 10 == 0
+}
+
+fn looks_like_us_social_security_number(value: &str) -> bool {
+    value.split_whitespace().any(|token| {
+        let parts: Vec<&str> = token.split('-').collect();
+        parts.len() == 3
+            && parts[0].len() == 3
+            && parts[1].len() == 2
+            && parts[2].len() == 4
+            && parts
+                .iter()
+                .all(|part| part.chars().all(|character| character.is_ascii_digit()))
+    })
 }
 
 fn reject_secret_material(value: &Value) -> Result<(), String> {
@@ -1498,6 +2023,18 @@ mod tests {
         std::env::temp_dir().join(unique_name)
     }
 
+    fn approved_sensitive_memory(memory_id: &str) -> LocalMemoryInput {
+        LocalMemoryInput {
+            memory_id: memory_id.to_string(),
+            memory_kind: LocalMemoryKind::Summary,
+            summary: "User API key = sk_test_1234567890abcdef".to_string(),
+            preference_key: None,
+            preference_value: None,
+            source_kind: "user-approved-sensitive-memory".to_string(),
+            metadata: json!({ "extractor": "local-test-boundary" }),
+        }
+    }
+
     #[test]
     fn creates_local_data_schema_boundaries() {
         let service = LocalDataService::in_memory().expect("create in-memory service");
@@ -1507,6 +2044,7 @@ mod tests {
             "provider_metadata",
             "task_metadata",
             "memory_metadata",
+            "sensitive_memory_approvals",
             "capability_metadata",
             "audit_history",
             "user_preferences",
@@ -1862,6 +2400,355 @@ mod tests {
         assert!(!service
             .contains_plaintext(raw_summary)
             .expect("scan persisted local data"));
+    }
+
+    #[test]
+    fn memory_writes_reject_sensitive_data_without_trusted_approval() {
+        let service = LocalDataService::in_memory().expect("create in-memory service");
+        let sensitive_summary = "User API key = sk_test_1234567890abcdef";
+        let memory = LocalMemoryInput {
+            memory_id: "memory-sensitive-api-key".to_string(),
+            memory_kind: LocalMemoryKind::Summary,
+            summary: sensitive_summary.to_string(),
+            preference_key: None,
+            preference_value: None,
+            source_kind: "conversation-summary".to_string(),
+            metadata: json!({ "extractor": "local-test-boundary" }),
+        };
+
+        let error = service
+            .upsert_memory_record(&memory)
+            .expect_err("sensitive memory is rejected without approval");
+
+        assert!(error.contains("trusted approval"));
+        assert_eq!(
+            service
+                .read_memory_record("memory-sensitive-api-key")
+                .expect("read rejected sensitive memory"),
+            None
+        );
+        assert!(!service
+            .contains_plaintext(sensitive_summary)
+            .expect("scan persisted local data"));
+    }
+
+    #[test]
+    fn memory_writes_reject_self_declared_sensitive_approval() {
+        let service = LocalDataService::in_memory().expect("create in-memory service");
+        let sensitive_summary = "User API key = sk_test_1234567890abcdef";
+        let memory = LocalMemoryInput {
+            memory_id: "memory-self-approved-api-key".to_string(),
+            memory_kind: LocalMemoryKind::Summary,
+            summary: sensitive_summary.to_string(),
+            preference_key: None,
+            preference_value: None,
+            source_kind: "conversation-summary".to_string(),
+            metadata: json!({
+                "extractor": "local-test-boundary",
+                "sensitiveDataApproved": true
+            }),
+        };
+
+        let error = service
+            .upsert_memory_record(&memory)
+            .expect_err("self-declared approval is rejected");
+
+        assert!(error.contains("trusted approval"));
+        assert_eq!(
+            service
+                .read_memory_record("memory-self-approved-api-key")
+                .expect("read rejected sensitive memory"),
+            None
+        );
+        assert!(!service
+            .contains_plaintext(sensitive_summary)
+            .expect("scan persisted local data"));
+    }
+
+    #[test]
+    fn trusted_approval_path_allows_sensitive_data() {
+        let service = LocalDataService::in_memory().expect("create in-memory service");
+        let sensitive_summary = "User API key = sk_test_1234567890abcdef";
+        let memory = approved_sensitive_memory("memory-approved-api-key");
+        let approval_evidence = SensitiveMemoryApprovalEvidence {
+            approval_id: "approval-sensitive-memory-native-state".to_string(),
+            approval_token: "trusted-token-from-native-approval-state".to_string(),
+        };
+        service
+            .insert_sensitive_memory_approval_for_test(&approval_evidence, &memory)
+            .expect("insert trusted approval evidence");
+
+        let saved = service
+            .upsert_approved_sensitive_memory_record(&memory, &approval_evidence)
+            .expect("trusted approved sensitive memory is persisted");
+
+        assert_eq!(saved.summary, sensitive_summary);
+        assert!(service
+            .contains_plaintext(sensitive_summary)
+            .expect("scan persisted local data"));
+        let audit_history = service
+            .read_recent_audit_history(5)
+            .expect("read approval audit history");
+        assert!(audit_history.iter().any(|entry| {
+            entry.action == "memory.sensitive_approval_used"
+                && entry.metadata["approvalId"] == approval_evidence.approval_id
+                && entry.metadata["approvedAction"] == "memory.write_sensitive"
+        }));
+        assert!(audit_history.iter().any(|entry| {
+            entry.action == "memory.upserted"
+                && entry.metadata["sensitiveApprovalId"] == approval_evidence.approval_id
+        }));
+    }
+
+    #[test]
+    fn sensitive_memory_approval_request_does_not_mint_consumable_evidence() {
+        let service = LocalDataService::in_memory().expect("create in-memory service");
+        let memory = approved_sensitive_memory("memory-self-minted-approval");
+
+        let error = service
+            .create_sensitive_memory_approval(&SensitiveMemoryApprovalRequest {
+                memory: memory.clone(),
+                metadata: json!({
+                    "surface": "human-approval-prompt",
+                    "reason": "User approved remembering sensitive data."
+                }),
+            })
+            .expect_err("memory code cannot mint approval evidence");
+
+        assert!(error.contains("trusted human approval boundary"));
+        assert_eq!(
+            service
+                .read_memory_record(&memory.memory_id)
+                .expect("read rejected sensitive memory"),
+            None
+        );
+        assert!(!service
+            .read_recent_audit_history(5)
+            .expect("read audit history")
+            .iter()
+            .any(|entry| entry.action == "memory.sensitive_approval_created"));
+    }
+
+    #[test]
+    fn sensitive_memory_approval_rejects_raw_transcript_metadata() {
+        let service = LocalDataService::in_memory().expect("create in-memory service");
+        let raw_transcript = "User: please remember this\nPlato: I can do that.";
+
+        let error = service
+            .create_sensitive_memory_approval(&SensitiveMemoryApprovalRequest {
+                memory: approved_sensitive_memory("memory-raw-transcript-approval"),
+                metadata: json!({
+                    "surface": "human-approval-prompt",
+                    "rawTranscript": raw_transcript
+                }),
+            })
+            .expect_err("approval metadata rejects raw transcript material");
+
+        assert!(error.contains("raw transcript material"));
+        assert!(!service
+            .contains_plaintext(raw_transcript)
+            .expect("scan persisted local data"));
+    }
+
+    #[test]
+    fn sensitive_memory_approval_rejects_sensitive_metadata() {
+        let service = LocalDataService::in_memory().expect("create in-memory service");
+        let sensitive_text = "api key = sk_test_1234567890abcdef";
+
+        let error = service
+            .create_sensitive_memory_approval(&SensitiveMemoryApprovalRequest {
+                memory: approved_sensitive_memory("memory-sensitive-metadata-approval"),
+                metadata: json!({
+                    "surface": "human-approval-prompt",
+                    "reason": sensitive_text
+                }),
+            })
+            .expect_err("approval metadata rejects sensitive values");
+
+        assert!(error.contains("sensitive values"));
+        assert!(!service
+            .contains_plaintext(sensitive_text)
+            .expect("scan persisted local data"));
+    }
+
+    #[test]
+    fn sensitive_memory_approval_rejects_unschematized_metadata() {
+        let service = LocalDataService::in_memory().expect("create in-memory service");
+
+        let error = service
+            .create_sensitive_memory_approval(&SensitiveMemoryApprovalRequest {
+                memory: approved_sensitive_memory("memory-unschematized-metadata-approval"),
+                metadata: json!({
+                    "surface": "human-approval-prompt",
+                    "reason": "User approved remembering sensitive data.",
+                    "debugPayload": "approval prompt rendered"
+                }),
+            })
+            .expect_err("approval metadata is restricted to approved fields");
+
+        assert!(error.contains("debugPayload"));
+    }
+
+    #[test]
+    fn sensitive_memory_approval_requires_complete_provenance() {
+        let service = LocalDataService::in_memory().expect("create in-memory service");
+
+        for metadata in [
+            json!({}),
+            json!({ "surface": "human-approval-prompt" }),
+            json!({ "reason": "User approved remembering sensitive data." }),
+            json!({
+                "surface": null,
+                "reason": "User approved remembering sensitive data."
+            }),
+            json!({
+                "surface": "human-approval-prompt",
+                "reason": null
+            }),
+        ] {
+            let error = service
+                .create_sensitive_memory_approval(&SensitiveMemoryApprovalRequest {
+                    memory: approved_sensitive_memory("memory-incomplete-provenance-approval"),
+                    metadata,
+                })
+                .expect_err("approval provenance requires non-empty surface and reason");
+
+            assert!(error.contains("surface") || error.contains("reason"));
+        }
+    }
+
+    #[test]
+    fn trusted_approval_path_rejects_missing_invalid_or_reused_evidence() {
+        let service = LocalDataService::in_memory().expect("create in-memory service");
+        let sensitive_summary = "User API key = sk_test_1234567890abcdef";
+        let approval_evidence = SensitiveMemoryApprovalEvidence {
+            approval_id: "approval-sensitive-memory-2".to_string(),
+            approval_token: "trusted-token-from-approval-flow".to_string(),
+        };
+        let memory = LocalMemoryInput {
+            memory_id: "memory-approved-api-key-replay".to_string(),
+            memory_kind: LocalMemoryKind::Summary,
+            summary: sensitive_summary.to_string(),
+            preference_key: None,
+            preference_value: None,
+            source_kind: "user-approved-sensitive-memory".to_string(),
+            metadata: json!({ "extractor": "local-test-boundary" }),
+        };
+
+        let missing_error = service
+            .upsert_approved_sensitive_memory_record(&memory, &approval_evidence)
+            .expect_err("missing trusted approval evidence is rejected");
+        assert!(missing_error.contains("approval was not found"));
+
+        service
+            .insert_sensitive_memory_approval_for_test(&approval_evidence, &memory)
+            .expect("insert trusted approval evidence");
+        let invalid_evidence = SensitiveMemoryApprovalEvidence {
+            approval_id: approval_evidence.approval_id.clone(),
+            approval_token: "caller-forged-token".to_string(),
+        };
+        let invalid_error = service
+            .upsert_approved_sensitive_memory_record(&memory, &invalid_evidence)
+            .expect_err("invalid approval token is rejected");
+        assert!(invalid_error.contains("approval token is invalid"));
+        assert_eq!(
+            service
+                .read_memory_record("memory-approved-api-key-replay")
+                .expect("read rejected sensitive memory"),
+            None
+        );
+
+        service
+            .upsert_approved_sensitive_memory_record(&memory, &approval_evidence)
+            .expect("valid trusted approval evidence is accepted");
+        let replay_error = service
+            .upsert_approved_sensitive_memory_record(
+                &LocalMemoryInput {
+                    memory_id: "memory-approved-api-key-replay-2".to_string(),
+                    ..memory
+                },
+                &approval_evidence,
+            )
+            .expect_err("approval evidence is one-time use");
+        assert!(replay_error.contains("already been used"));
+    }
+
+    #[test]
+    fn trusted_approval_path_rejects_different_sensitive_memory_payload() {
+        let service = LocalDataService::in_memory().expect("create in-memory service");
+        let approval_evidence = SensitiveMemoryApprovalEvidence {
+            approval_id: "approval-sensitive-memory-payload".to_string(),
+            approval_token: "trusted-token-from-approval-flow".to_string(),
+        };
+        let approved_memory = LocalMemoryInput {
+            memory_id: "memory-approved-api-key-payload".to_string(),
+            memory_kind: LocalMemoryKind::Summary,
+            summary: "User API key = sk_test_1234567890abcdef".to_string(),
+            preference_key: None,
+            preference_value: None,
+            source_kind: "user-approved-sensitive-memory".to_string(),
+            metadata: json!({ "extractor": "local-test-boundary" }),
+        };
+        service
+            .insert_sensitive_memory_approval_for_test(&approval_evidence, &approved_memory)
+            .expect("insert trusted approval evidence");
+
+        let mut changed_payload = approved_memory.clone();
+        changed_payload.summary = "User API key = sk_test_fedcba0987654321".to_string();
+        let payload_error = service
+            .upsert_approved_sensitive_memory_record(&changed_payload, &approval_evidence)
+            .expect_err("approval for another payload is rejected");
+        assert!(payload_error.contains("memory payload"));
+
+        let mut changed_memory_id = approved_memory.clone();
+        changed_memory_id.memory_id = "memory-approved-api-key-other".to_string();
+        let memory_id_error = service
+            .upsert_approved_sensitive_memory_record(&changed_memory_id, &approval_evidence)
+            .expect_err("approval for another memory id is rejected");
+        assert!(memory_id_error.contains("memory id"));
+        assert_eq!(
+            service
+                .read_memory_record("memory-approved-api-key-payload")
+                .expect("read rejected sensitive memory"),
+            None
+        );
+        assert_eq!(
+            service
+                .read_memory_record("memory-approved-api-key-other")
+                .expect("read rejected other sensitive memory"),
+            None
+        );
+
+        service
+            .upsert_approved_sensitive_memory_record(&approved_memory, &approval_evidence)
+            .expect("original approved payload remains valid after rejected attempts");
+    }
+
+    #[test]
+    fn user_correction_memory_can_be_retrieved_for_later_replay() {
+        let service = LocalDataService::in_memory().expect("create in-memory service");
+        let memory = LocalMemoryInput {
+            memory_id: "correction-status-tone".to_string(),
+            memory_kind: LocalMemoryKind::Correction,
+            summary: "When giving status updates, be blunt about blockers first.".to_string(),
+            preference_key: None,
+            preference_value: None,
+            source_kind: "user-correction".to_string(),
+            metadata: json!({ "appliesTo": "status updates" }),
+        };
+
+        let saved = service
+            .upsert_memory_record(&memory)
+            .expect("save user correction");
+        let retrieved = service
+            .retrieve_memory_records(&LocalMemoryRetrievalQuery {
+                query: Some("blockers first".to_string()),
+                memory_kind: Some(LocalMemoryKind::Correction),
+                limit: Some(5),
+            })
+            .expect("retrieve correction");
+
+        assert_eq!(retrieved, vec![saved]);
     }
 
     #[test]

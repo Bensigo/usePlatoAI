@@ -119,6 +119,23 @@ fn remember_local_memory(
 }
 
 #[tauri::command]
+fn remember_approved_sensitive_local_memory(
+    app: AppHandle,
+    memory: local_data::LocalMemoryInput,
+    approval_evidence: local_data::SensitiveMemoryApprovalEvidence,
+) -> Result<local_data::LocalMemoryRecord, String> {
+    local_data_service(&app)?.upsert_approved_sensitive_memory_record(&memory, &approval_evidence)
+}
+
+#[tauri::command]
+fn approve_sensitive_memory_write(
+    app: AppHandle,
+    request: local_data::SensitiveMemoryApprovalRequest,
+) -> Result<local_data::SensitiveMemoryApprovalEvidence, String> {
+    local_data_service(&app)?.create_sensitive_memory_approval(&request)
+}
+
+#[tauri::command]
 fn read_local_memory(
     app: AppHandle,
     memory_id: String,
@@ -243,6 +260,8 @@ pub fn run() {
             read_soul_guidance,
             save_soul_guidance,
             remember_local_memory,
+            approve_sensitive_memory_write,
+            remember_approved_sensitive_local_memory,
             read_local_memory,
             read_local_memory_preference,
             retrieve_local_memories,
