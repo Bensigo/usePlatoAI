@@ -207,9 +207,12 @@ export function createMemoryStore(
         approvalEvidence,
         memory,
       );
-      const record = await rememberMemory(memory, { allowSensitiveData: true });
-      approval.usedAt = new Date(0).toISOString();
-      return record;
+      try {
+        return await rememberMemory(memory, { allowSensitiveData: true });
+      } catch (error) {
+        approval.usedAt = null;
+        throw error;
+      }
     },
     async read(memoryId) {
       return records.get(memoryId) ?? null;
@@ -355,6 +358,11 @@ async function consumeSensitiveMemoryApproval(
       "trusted sensitive memory approval is not valid for this memory payload",
     );
   }
+  if (approval.usedAt) {
+    throw new Error("trusted sensitive memory approval has already been used");
+  }
+
+  approval.usedAt = new Date(0).toISOString();
 
   return approval;
 }
