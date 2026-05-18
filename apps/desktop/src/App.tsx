@@ -63,6 +63,7 @@ import {
   setVoiceOutputMuted,
   startMockSpeech,
   stopMockSpeech,
+  type CompanionPresenceState as VoiceOutputPresenceState,
 } from "./voiceOutput";
 import {
   companionPromptForInputWithCorrections,
@@ -126,6 +127,31 @@ export function isActiveCorrectionPromptTransition({
   return source === "text"
     ? snapshot.submittedFallbackText === promptInput
     : (snapshot.transcript || mockVoiceTranscript) === promptInput;
+}
+
+export function renderedPresenceStateFor({
+  voiceOutputPresenceState,
+  voiceInteractionSessionState,
+  sharedPresenceState,
+}: {
+  voiceOutputPresenceState: VoiceOutputPresenceState;
+  voiceInteractionSessionState: VoiceSessionState;
+  sharedPresenceState: string;
+}) {
+  const activePresenceState =
+    voiceInteractionSessionState === "idle"
+      ? sharedPresenceState
+      : companionPresenceForVoiceState(voiceInteractionSessionState);
+
+  if (voiceOutputPresenceState === "speaking") {
+    return "speaking";
+  }
+
+  if (voiceOutputPresenceState === "muted" && activePresenceState === "idle") {
+    return "muted";
+  }
+
+  return activePresenceState;
 }
 
 export function DismissedPresence({ onRestore }: { onRestore: () => void }) {
@@ -1263,15 +1289,11 @@ export function App({
     scheduleVoiceState(1800, "idle", "text");
   }
 
-  const voiceInteractionPresenceState = companionPresenceForVoiceState(
-    voiceInteraction.sessionState,
-  );
-  const renderedPresenceState =
-    voiceSession.presenceState !== "idle"
-      ? voiceSession.presenceState
-      : voiceInteraction.sessionState === "idle"
-        ? presence.state
-        : voiceInteractionPresenceState;
+  const renderedPresenceState = renderedPresenceStateFor({
+    voiceOutputPresenceState: voiceSession.presenceState,
+    voiceInteractionSessionState: voiceInteraction.sessionState,
+    sharedPresenceState: presence.state,
+  });
   const avatarPresenceState = avatarPresenceStateFor(renderedPresenceState);
   const avatarSurfaceHook = getLive2DAvatarSurfaceHook(avatarPresenceState);
 

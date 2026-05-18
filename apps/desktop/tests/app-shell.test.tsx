@@ -13,6 +13,7 @@ import {
   SoulEditorPanel,
   VoiceInteractionPanel,
   isActiveCorrectionPromptTransition,
+  renderedPresenceStateFor,
 } from "../src/App";
 import {
   Live2DAvatarSurface,
@@ -269,6 +270,37 @@ describe("desktop app shell", () => {
     expect(markup).toContain('data-presence-state="listening"');
     expect(markup).toContain('data-live2d-motion-group="tap_body"');
     expect(markup).toContain('data-live2d-expression="attentive"');
+  });
+
+  it("does not let passive mute hide active product presence states", () => {
+    expect(
+      renderedPresenceStateFor({
+        voiceOutputPresenceState: "muted",
+        voiceInteractionSessionState: "idle",
+        sharedPresenceState: "waiting_for_approval",
+      }),
+    ).toBe("waiting_for_approval");
+    expect(
+      renderedPresenceStateFor({
+        voiceOutputPresenceState: "muted",
+        voiceInteractionSessionState: "idle",
+        sharedPresenceState: "task_running",
+      }),
+    ).toBe("task_running");
+    expect(
+      renderedPresenceStateFor({
+        voiceOutputPresenceState: "muted",
+        voiceInteractionSessionState: "idle",
+        sharedPresenceState: "idle",
+      }),
+    ).toBe("muted");
+    expect(
+      renderedPresenceStateFor({
+        voiceOutputPresenceState: "speaking",
+        voiceInteractionSessionState: "idle",
+        sharedPresenceState: "waiting_for_approval",
+      }),
+    ).toBe("speaking");
   });
 
   it("falls back to idle presence for invalid state input", () => {
