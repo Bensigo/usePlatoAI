@@ -110,11 +110,15 @@ export function ControlSurfacePanel({
   onMuteChange,
   onTextFallbackChange,
   onSubmitTextFallback,
+  soulGuidanceStore,
+  onSoulGuidanceChange,
 }: {
   activeEntry: ControlSurfaceId;
   settings?: CompanionSettings;
   onSettingsChange?: (settings: CompanionSettings) => Promise<void>;
   trustFoundationStore?: TrustFoundationStore;
+  soulGuidanceStore?: SoulGuidanceStore;
+  onSoulGuidanceChange?: (guidance: SoulGuidance) => void;
   voiceInteraction?: VoiceInteractionSnapshot;
   onStartVoiceInteraction?: () => void;
   onStopVoiceInteraction?: () => void;
@@ -129,7 +133,11 @@ export function ControlSurfacePanel({
   return (
     <section className="placeholder-panel" aria-live="polite">
       <p className="status-label">
-        {activeEntry === "settings" ? "Local settings" : "Placeholder panel"}
+        {activeEntry === "settings"
+          ? "Local settings"
+          : activeEntry === "soul"
+            ? "Soul editor"
+            : "Placeholder panel"}
       </p>
       <h2>{activeControl.label}</h2>
       <p>{activeControl.description}</p>
@@ -152,6 +160,11 @@ export function ControlSurfacePanel({
         ) : (
           <SettingsSummary settings={settings} />
         )
+      ) : activeEntry === "soul" && soulGuidanceStore ? (
+        <SoulEditorPanel
+          soulGuidanceStore={soulGuidanceStore}
+          onSoulGuidanceChange={onSoulGuidanceChange}
+        />
       ) : (
         <p className="placeholder-note">
           This area is reachable from the macOS menu bar now. The underlying
@@ -159,6 +172,93 @@ export function ControlSurfacePanel({
         </p>
       )}
     </section>
+  );
+}
+
+export function SoulEditorPanel({
+  soulGuidanceStore,
+  onSoulGuidanceChange,
+}: {
+  soulGuidanceStore: SoulGuidanceStore;
+  onSoulGuidanceChange?: (guidance: SoulGuidance) => void;
+}) {
+  const [draft, setDraft] = useState("");
+  const [savedPath, setSavedPath] = useState("");
+  const [message, setMessage] = useState("Loading soul guidance");
+  const [isSaving, setIsSaving] = useState(false);
+
+  useEffect(() => {
+    let isCurrent = true;
+
+    soulGuidanceStore
+      .read()
+      .then((guidance) => {
+        if (isCurrent) {
+          setDraft(guidance.rawMarkdown);
+          setSavedPath(guidance.path);
+          setMessage("Soul guidance loaded");
+          onSoulGuidanceChange?.(guidance);
+        }
+      })
+      .catch((error: unknown) => {
+        if (isCurrent) {
+          setMessage(
+            error instanceof Error
+              ? error.message
+              : "Unable to load soul guidance",
+          );
+        }
+      });
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [onSoulGuidanceChange, soulGuidanceStore]);
+
+  async function saveDraft(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setIsSaving(true);
+
+    try {
+      const nextGuidance = await soulGuidanceStore.save(draft);
+      setDraft(nextGuidance.rawMarkdown);
+      setSavedPath(nextGuidance.path);
+      setMessage("Soul guidance saved");
+      onSoulGuidanceChange?.(nextGuidance);
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Soul guidance could not be saved",
+      );
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  return (
+    <form className="soul-editor" onSubmit={saveDraft}>
+      <label>
+        <span>Soul markdown</span>
+        <textarea
+          value={draft}
+          rows={12}
+          spellCheck={false}
+          onChange={(event) => setDraft(event.currentTarget.value)}
+        />
+      </label>
+
+      <div className="soul-editor-actions">
+        <button className="primary-button" type="submit" disabled={isSaving}>
+          {isSaving ? "Saving" : "Save soul"}
+        </button>
+        <span className="soul-path">{savedPath}</span>
+      </div>
+
+      <p className="soul-editor-message" aria-live="polite">
+        {message}
+      </p>
+    </form>
   );
 }
 
@@ -1040,6 +1140,8 @@ export function App({
             setVoiceInteraction((current) => ({ ...current, fallbackText }))
           }
           onSubmitTextFallback={submitTextFallback}
+          soulGuidanceStore={durableSoulGuidanceStore}
+          onSoulGuidanceChange={setSoulGuidance}
         />
       </section>
     </main>

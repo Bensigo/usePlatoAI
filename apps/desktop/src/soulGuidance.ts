@@ -18,11 +18,13 @@ export const fallbackSoulGuidance: SoulGuidance = {
 
 export type SoulGuidanceStore = {
   read: () => Promise<SoulGuidance>;
+  save: (markdown: string) => Promise<SoulGuidance>;
 };
 
 export function createTauriSoulGuidanceStore(): SoulGuidanceStore {
   return {
     read: readSoulGuidance,
+    save: saveSoulGuidance,
   };
 }
 
@@ -36,6 +38,66 @@ export async function readSoulGuidance(): Promise<SoulGuidance> {
 
   const { invoke } = await import("@tauri-apps/api/core");
   return invoke<SoulGuidance>("read_soul_guidance");
+}
+
+export async function saveSoulGuidance(markdown: string): Promise<SoulGuidance> {
+  if (!isTauriRuntime()) {
+    validateLocalSoulDraft(markdown);
+
+    return {
+      ...fallbackSoulGuidance,
+      rawMarkdown: markdown,
+      effectiveMarkdown: markdown,
+    };
+  }
+
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke<SoulGuidance>("save_soul_guidance", { markdown });
+}
+
+export function createMemorySoulGuidanceStore(
+  initialGuidance: SoulGuidance = fallbackSoulGuidance,
+): SoulGuidanceStore {
+  let guidance = initialGuidance;
+
+  return {
+    read: async () => guidance,
+    save: async (markdown: string) => {
+      validateLocalSoulDraft(markdown);
+
+      guidance = {
+        ...guidance,
+        rawMarkdown: markdown,
+        effectiveMarkdown: markdown.trim() || fallbackSoulGuidance.effectiveMarkdown,
+        unsafeDirectives: [],
+      };
+
+      return guidance;
+    },
+  };
+}
+
+function validateLocalSoulDraft(markdown: string) {
+  if (!markdown.trim()) {
+    throw new Error("Soul guidance cannot be empty.");
+  }
+
+  if (
+    [
+      "disable approvals",
+      "auto-approve",
+      "without approval",
+      "ignore permission",
+      "bypass safety",
+      "delete memory",
+      untrustedSoulStartDelimiter.toLowerCase(),
+      untrustedSoulEndDelimiter.toLowerCase(),
+    ].some((term) => markdown.toLowerCase().includes(term))
+  ) {
+    throw new Error(
+      "Soul guidance includes instructions that try to change protected app rules.",
+    );
+  }
 }
 
 export function buildSoulGuidancePrompt(guidance: SoulGuidance): string {

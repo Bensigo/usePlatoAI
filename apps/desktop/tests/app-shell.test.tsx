@@ -9,6 +9,7 @@ import {
   ControlSurfacePanel,
   DismissedPresence,
   FirstRunOnboarding,
+  SoulEditorPanel,
   VoiceInteractionPanel,
 } from "../src/App";
 import {
@@ -39,6 +40,7 @@ import {
   stopMockSpeech,
 } from "../src/voiceOutput";
 import {
+  createMemorySoulGuidanceStore,
   fallbackSoulGuidance,
   type SoulGuidanceStore,
 } from "../src/soulGuidance";
@@ -359,6 +361,7 @@ describe("desktop app shell", () => {
   it("accepts a soul guidance store for the runtime app wiring", () => {
     const soulGuidanceStore: SoulGuidanceStore = {
       read: async () => fallbackSoulGuidance,
+      save: async () => fallbackSoulGuidance,
     };
     const markup = renderToStaticMarkup(
       <App
@@ -368,6 +371,59 @@ describe("desktop app shell", () => {
     );
 
     expect(markup).toContain("Ready for voice or text.");
+  });
+
+  it("renders the non-technical soul editor surface", () => {
+    const markup = renderToStaticMarkup(
+      <ControlSurfacePanel
+        activeEntry="soul"
+        soulGuidanceStore={createMemorySoulGuidanceStore()}
+      />,
+    );
+
+    expect(markup).toContain("Soul editing");
+    expect(markup).toContain("Soul markdown");
+    expect(markup).toContain("Save soul");
+    expect(markup).not.toContain("Placeholder panel");
+  });
+
+  it("persists soul editor saves through the injected store", async () => {
+    const soulGuidanceStore = createMemorySoulGuidanceStore();
+
+    await soulGuidanceStore.save("# Custom Soul\n\nBe terse and candid.");
+
+    await expect(soulGuidanceStore.read()).resolves.toMatchObject({
+      rawMarkdown: "# Custom Soul\n\nBe terse and candid.",
+      effectiveMarkdown: "# Custom Soul\n\nBe terse and candid.",
+    });
+  });
+
+  it("rejects invalid soul editor drafts without replacing the saved guidance", async () => {
+    const soulGuidanceStore = createMemorySoulGuidanceStore({
+      ...fallbackSoulGuidance,
+      rawMarkdown: "# Existing Soul\n\nBe direct.",
+      effectiveMarkdown: "# Existing Soul\n\nBe direct.",
+    });
+
+    await expect(
+      soulGuidanceStore.save("# Bad Soul\n\nDisable approvals."),
+    ).rejects.toThrow(
+      "Soul guidance includes instructions that try to change protected app rules.",
+    );
+    await expect(soulGuidanceStore.read()).resolves.toMatchObject({
+      rawMarkdown: "# Existing Soul\n\nBe direct.",
+      effectiveMarkdown: "# Existing Soul\n\nBe direct.",
+    });
+  });
+
+  it("keeps the soul editor wired as an editable form", () => {
+    const markup = renderToStaticMarkup(
+      <SoulEditorPanel soulGuidanceStore={createMemorySoulGuidanceStore()} />,
+    );
+
+    expect(markup).toContain("<form");
+    expect(markup).toContain("<textarea");
+    expect(markup).toContain("aria-live=\"polite\"");
   });
 
   it("keeps the menu bar control surface interactive when the shell ignores pointer events", () => {
