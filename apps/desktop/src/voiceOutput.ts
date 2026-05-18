@@ -84,7 +84,7 @@ export function stopMockSpeech(session: VoiceOutputSession): VoiceOutputSession 
   if (session.phase !== "speaking") {
     return {
       ...session,
-      presenceState: "idle",
+      presenceState: session.isMuted ? "muted" : "idle",
       statusLabel: session.isMuted
         ? "Voice muted - text fallback visible"
         : "Voice ready",

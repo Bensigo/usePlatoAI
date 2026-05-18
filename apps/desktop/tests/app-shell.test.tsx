@@ -936,6 +936,23 @@ describe("desktop app shell", () => {
     expect(unmutedSession.statusLabel).toBe("Voice ready");
   });
 
+  it("preserves muted presence when stopping muted text fallback", () => {
+    const mutedSession = startMockSpeech(
+      setVoiceOutputMuted(createVoiceOutputSession(), true),
+      mockVoiceResponse,
+    );
+    const stoppedSession = stopMockSpeech(mutedSession);
+
+    expect(mutedSession.isMuted).toBe(true);
+    expect(mutedSession.phase).toBe("text_fallback");
+    expect(stoppedSession.isMuted).toBe(true);
+    expect(stoppedSession.phase).toBe("text_fallback");
+    expect(stoppedSession.presenceState).toBe("muted");
+    expect(stoppedSession.statusLabel).toBe(
+      "Voice muted - text fallback visible",
+    );
+  });
+
   it("stops mocked speech and returns presence to idle", () => {
     const speakingSession = startMockSpeech(
       createVoiceOutputSession(),
