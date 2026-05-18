@@ -1,9 +1,7 @@
 :root {
-  font-family:
-    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
-    sans-serif;
-  color: #111827;
-  background: transparent;
+  font-family: var(--plato-font-family);
+  color: var(--plato-color-text);
+  background: var(--plato-color-canvas);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -18,7 +16,7 @@ body {
   margin: 0;
   min-width: 300px;
   min-height: 100vh;
-  background: transparent;
+  background: var(--plato-color-canvas);
   overflow: hidden;
 }
 
@@ -45,10 +43,10 @@ button {
 .control-surface,
 .onboarding-panel {
   width: min(100%, 272px);
-  border: 1px solid rgb(17 24 39 / 14%);
-  border-radius: 8px;
-  background: rgb(255 255 255 / 94%);
-  box-shadow: 0 18px 44px rgb(15 23 42 / 18%);
+  border: var(--plato-border-panel);
+  border-radius: var(--plato-radius-panel);
+  background: var(--plato-color-surface);
+  box-shadow: var(--plato-elevation-panel);
   backdrop-filter: blur(16px);
 }
 
@@ -76,8 +74,8 @@ button {
   position: fixed;
   right: max(18px, env(safe-area-inset-right));
   bottom: max(18px, env(safe-area-inset-bottom));
-  gap: 10px;
-  padding: 14px;
+  gap: var(--plato-space-md);
+  padding: var(--plato-space-lg);
   pointer-events: auto;
 }
 
@@ -90,9 +88,9 @@ button {
   display: grid;
   grid-template-columns: auto auto;
   align-items: center;
-  gap: 4px;
+  gap: var(--plato-space-xs);
   opacity: 0;
-  transition: opacity 140ms ease;
+  transition: opacity var(--plato-motion-fast);
 }
 
 .presence-card:hover .presence-controls,
@@ -104,7 +102,7 @@ button {
 .hide-button {
   border: 0;
   background: transparent;
-  color: #374151;
+  color: var(--plato-color-text-soft);
 }
 
 .drag-handle {
@@ -112,7 +110,7 @@ button {
   height: 28px;
   display: grid;
   place-items: center;
-  gap: 4px;
+  gap: var(--plato-space-xs);
   padding: 0;
 }
 
@@ -121,8 +119,8 @@ button {
 .drag-handle::after {
   width: 24px;
   height: 2px;
-  border-radius: 999px;
-  background: #6b7280;
+  border-radius: var(--plato-radius-pill);
+  background: var(--plato-state-offline);
   content: "";
 }
 
@@ -134,7 +132,7 @@ button {
 .hide-button,
 .restore-button {
   min-height: 28px;
-  border-radius: 999px;
+  border-radius: var(--plato-radius-pill);
   padding: 0;
   line-height: 1;
 }
@@ -148,13 +146,13 @@ button {
 .drag-handle:hover,
 .hide-button:hover,
 .restore-button:hover {
-  background: #eef2f7;
+  background: var(--plato-color-control-hover);
 }
 
 .restore-card p {
   margin: 0;
-  color: #111827;
-  font-size: 0.9rem;
+  color: var(--plato-color-text);
+  font-size: var(--plato-font-body);
   font-weight: 700;
 }
 
@@ -162,10 +160,10 @@ button {
   width: auto;
   min-height: 32px;
   padding: 0 12px;
-  border: 1px solid rgb(15 118 110 / 28%);
-  color: #0f766e;
-  background: #ffffff;
-  font-size: 0.84rem;
+  border: var(--plato-border-companion);
+  color: var(--plato-color-companion);
+  background: var(--plato-color-surface-raised);
+  font-size: var(--plato-font-control);
   font-weight: 700;
 }
 
@@ -174,7 +172,7 @@ button {
   display: grid;
   justify-items: center;
   margin: 0;
-  filter: drop-shadow(0 18px 22px rgb(15 23 42 / 22%));
+  filter: var(--plato-elevation-avatar);
 }
 
 .live2d-avatar-stage {
@@ -183,7 +181,7 @@ button {
   height: 208px;
   background: transparent;
   transform-origin: 50% 100%;
-  animation: avatar-idle-breathe 3.8s ease-in-out infinite;
+  animation: avatar-idle-breathe var(--plato-motion-idle) infinite;
 }
 
 .live2d-avatar-hair {
@@ -241,7 +239,7 @@ button {
   width: 16px;
   height: 3px;
   transform: translateX(-50%);
-  border-radius: 999px;
+  border-radius: var(--plato-radius-pill);
 }
 
 .live2d-avatar-body {
@@ -251,8 +249,8 @@ button {
   width: 92px;
   height: 92px;
   transform: translateX(-50%);
-  border-radius: 44px 44px 16px 16px;
-  background: #0f766e;
+  border-radius: var(--plato-radius-avatar-body);
+  background: var(--plato-state-idle);
   box-shadow:
     inset 0 14px 0 rgb(255 255 255 / 12%),
     inset 0 -18px 0 rgb(15 23 42 / 14%);
@@ -261,30 +259,31 @@ button {
 .live2d-avatar-caption {
   display: grid;
   justify-items: center;
-  gap: 2px;
+  gap: var(--plato-space-xxs);
   min-width: 0;
-  color: #334155;
+  color: var(--plato-color-text-soft);
   text-align: center;
 }
 
 .live2d-avatar-caption span {
-  font-size: 0.72rem;
+  color: var(--plato-color-companion);
+  font-size: var(--plato-font-label);
   font-weight: 800;
 }
 
 .live2d-avatar-caption small {
   max-width: 136px;
-  color: #64748b;
-  font-size: 0.62rem;
+  color: var(--plato-color-text-muted);
+  font-size: var(--plato-font-caption);
   line-height: 1.2;
 }
 
 .live2d-avatar-surface[data-presence-state="listening"] .live2d-avatar-stage {
-  animation-duration: 2.4s;
+  animation-duration: var(--plato-motion-listening);
 }
 
 .live2d-avatar-surface[data-presence-state="listening"] .live2d-avatar-body {
-  background: #2563eb;
+  background: var(--plato-state-listening);
 }
 
 .live2d-avatar-surface[data-presence-state="listening"] .live2d-avatar-eye {
@@ -296,20 +295,20 @@ button {
 }
 
 .live2d-avatar-surface[data-presence-state="thinking"] .live2d-avatar-body {
-  background: #475569;
+  background: var(--plato-state-thinking);
 }
 
 .live2d-avatar-surface[data-presence-state="thinking"] .live2d-avatar-eye {
   height: 8px;
-  border-radius: 999px;
+  border-radius: var(--plato-radius-pill);
 }
 
 .live2d-avatar-surface[data-presence-state="speaking"] .live2d-avatar-stage {
-  animation-duration: 1.6s;
+  animation-duration: var(--plato-motion-speaking);
 }
 
 .live2d-avatar-surface[data-presence-state="speaking"] .live2d-avatar-body {
-  background: #db2777;
+  background: var(--plato-state-speaking);
 }
 
 .live2d-avatar-surface[data-presence-state="speaking"] .live2d-avatar-mouth {
@@ -320,12 +319,12 @@ button {
 
 .live2d-avatar-surface[data-presence-state="waiting_for_approval"]
   .live2d-avatar-stage {
-  animation-duration: 4.8s;
+  animation-duration: var(--plato-motion-waiting-approval);
 }
 
 .live2d-avatar-surface[data-presence-state="waiting_for_approval"]
   .live2d-avatar-body {
-  background: #d97706;
+  background: var(--plato-state-waiting-approval);
 }
 
 .live2d-avatar-surface[data-presence-state="waiting_for_approval"]
@@ -355,11 +354,11 @@ button {
 }
 
 .product-name {
-  color: #0f766e;
+  color: var(--plato-color-companion);
 }
 
 .status-label {
-  color: #475569;
+  color: var(--plato-state-thinking);
 }
 
 h1,
@@ -389,8 +388,8 @@ h1 {
 .control-nav {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 4px;
-  padding: 10px;
+  gap: var(--plato-space-xs);
+  padding: var(--plato-space-md);
   border-bottom: 1px solid #dde3ec;
   background: #f8fafc;
 }
@@ -399,21 +398,21 @@ h1 {
   min-height: 32px;
   padding: 6px 8px;
   border: 1px solid #cbd5e1;
-  border-radius: 6px;
-  background: #ffffff;
-  color: #1f2937;
+  border-radius: var(--plato-radius-control);
+  background: var(--plato-color-surface-raised);
+  color: var(--plato-color-text);
   font-size: 0.75rem;
   font-weight: 700;
   text-align: center;
 }
 
 .control-nav button:hover {
-  border-color: #64748b;
+  border-color: var(--plato-color-text-muted);
 }
 
 .control-nav button.active {
-  border-color: #1f2937;
-  background: #1f2937;
+  border-color: var(--plato-color-companion);
+  background: var(--plato-color-companion);
   color: #ffffff;
 }
 
@@ -421,7 +420,7 @@ h1 {
   min-height: 112px;
   max-height: min(64vh, 560px);
   overflow: auto;
-  padding: 12px 14px 14px;
+  padding: 12px var(--plato-space-lg) var(--plato-space-lg);
 }
 
 .placeholder-panel h2 {
@@ -433,7 +432,7 @@ h1 {
 
 .placeholder-panel p {
   margin-bottom: 8px;
-  color: #4b5563;
+  color: var(--plato-color-text-soft);
   font-size: 0.8rem;
   line-height: 1.45;
 }
@@ -633,8 +632,8 @@ h1 {
 .voice-output-panel {
   width: 100%;
   display: grid;
-  gap: 8px;
-  padding-top: 10px;
+  gap: var(--plato-space-sm);
+  padding-top: var(--plato-space-md);
   border-top: 1px solid #e5e7eb;
 }
 
@@ -642,8 +641,8 @@ h1 {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  color: #374151;
+  gap: var(--plato-space-sm);
+  color: var(--plato-color-text-soft);
   font-size: 0.74rem;
   line-height: 1.35;
 }
@@ -655,12 +654,12 @@ h1 {
 
 .voice-status-row strong {
   flex: 0 0 auto;
-  color: #0f766e;
+  color: var(--plato-color-companion);
 }
 
 .voice-fallback {
   margin: 0;
-  color: #374151;
+  color: var(--plato-color-text-soft);
   font-size: 0.76rem;
   line-height: 1.35;
   text-align: center;
@@ -669,27 +668,32 @@ h1 {
 .voice-controls {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 6px;
+  gap: var(--plato-space-sm);
 }
 
 .voice-controls button {
   min-height: 32px;
   border: 1px solid #cbd5e1;
-  border-radius: 6px;
-  background: #ffffff;
-  color: #1f2937;
+  border-radius: var(--plato-radius-control);
+  background: var(--plato-color-surface-raised);
+  color: var(--plato-color-text);
   font-size: 0.68rem;
   font-weight: 800;
   line-height: 1.15;
 }
 
+.voice-controls button:first-child {
+  border-color: var(--plato-color-companion);
+  color: var(--plato-color-companion);
+}
+
 .voice-controls button:hover:not(:disabled) {
-  border-color: #64748b;
+  border-color: var(--plato-color-text-muted);
 }
 
 .voice-controls button[aria-pressed="true"] {
-  border-color: #0f766e;
-  background: #0f766e;
+  border-color: var(--plato-color-companion);
+  background: var(--plato-color-companion);
   color: #ffffff;
 }
 

@@ -74,6 +74,7 @@ import {
   type VoiceInteractionSnapshot,
   type VoiceSessionState,
 } from "./voiceInteraction";
+import { experienceTokenCss } from "./experienceTokens";
 
 function startPresenceDrag(event: MouseEvent<HTMLButtonElement>) {
   if (event.button !== 0) {
@@ -1093,6 +1094,12 @@ export function App({
   memoryStore?: MemoryStore;
   presenceStateSource?: PresenceStateSource;
 }) {
+  const experienceTokenStyle = (
+    <style
+      data-plato-experience-tokens="true"
+      dangerouslySetInnerHTML={{ __html: experienceTokenCss }}
+    />
+  );
   const durableSettingsStore = useMemo(
     () => settingsStore ?? createTauriSettingsStore(),
     [settingsStore],
@@ -1348,6 +1355,7 @@ export function App({
   if (!isSettingsLoaded) {
     return (
       <main className="presence-shell">
+        {experienceTokenStyle}
         <section className="onboarding-panel" aria-live="polite">
           <p className="product-name">usePlatoAI</p>
           <h1>Loading setup</h1>
@@ -1359,6 +1367,7 @@ export function App({
   if (!settings.onboardingComplete) {
     return (
       <main className="presence-shell">
+        {experienceTokenStyle}
         <FirstRunOnboarding
           initialSettings={settings}
           onComplete={completeOnboarding}
@@ -1369,6 +1378,7 @@ export function App({
 
   return (
     <main className="presence-shell" aria-labelledby="presence-title">
+      {experienceTokenStyle}
       {isDismissed ? (
         <DismissedPresence onRestore={() => setIsDismissed(false)} />
       ) : (
