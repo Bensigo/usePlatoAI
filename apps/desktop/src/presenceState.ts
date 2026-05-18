@@ -6,8 +6,8 @@ export const companionPresenceStates = [
   "focused",
   "happy",
   "confused",
-  "waiting-for-approval",
-  "task-running",
+  "waiting_for_approval",
+  "task_running",
   "sleeping",
 ] as const;
 
@@ -76,13 +76,13 @@ const presenceStateSnapshots: Record<
     label: "Confused",
     rendererHint: "uncertain",
   },
-  "waiting-for-approval": {
-    state: "waiting-for-approval",
+  waiting_for_approval: {
+    state: "waiting_for_approval",
     label: "Waiting for approval",
     rendererHint: "approval",
   },
-  "task-running": {
-    state: "task-running",
+  task_running: {
+    state: "task_running",
     label: "Task running",
     rendererHint: "working",
   },

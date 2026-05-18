@@ -69,9 +69,10 @@ describe("desktop app shell", () => {
     expect(presenceStateSnapshot("listening").label).toBe("Listening");
     expect(presenceStateSnapshot("thinking").label).toBe("Thinking");
     expect(presenceStateSnapshot("speaking").label).toBe("Speaking");
-    expect(presenceStateSnapshot("waiting-for-approval").label).toBe(
+    expect(presenceStateSnapshot("waiting_for_approval").label).toBe(
       "Waiting for approval",
     );
+    expect(presenceStateSnapshot("task_running").label).toBe("Task running");
   });
 
   it("renders a restore path for the dismissed presence state", () => {
