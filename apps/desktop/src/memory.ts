@@ -26,15 +26,26 @@ export type MemoryStore = {
   read: (memoryId: string) => Promise<LocalMemoryRecord | null>;
   readPreference: (preferenceKey: string) => Promise<LocalMemoryRecord | null>;
   retrieve: (query: LocalMemoryRetrievalQuery) => Promise<LocalMemoryRecord[]>;
+  delete: (memoryId: string) => Promise<boolean>;
+  setMemoryEnabled: (isEnabled: boolean) => void;
 };
 
-export function createMemoryStore(initialRecords: LocalMemoryRecord[] = []): MemoryStore {
+export function createMemoryStore(
+  initialRecords: LocalMemoryRecord[] = [],
+  initialEnabled = true,
+): MemoryStore {
   const records = new Map(initialRecords.map((record) => [record.memoryId, record]));
+  let isMemoryEnabled = initialEnabled;
 
   return {
     async remember(memory) {
       const now = new Date(0).toISOString();
       const existing = records.get(memory.memoryId);
+
+      if (!existing && !isMemoryEnabled) {
+        throw new Error("memory is disabled; new memory writes are paused");
+      }
+
       const record: LocalMemoryRecord = {
         ...memory,
         createdAt: existing?.createdAt ?? now,
@@ -71,6 +82,12 @@ export function createMemoryStore(initialRecords: LocalMemoryRecord[] = []): Mem
           ].some((value) => value.toLocaleLowerCase().includes(textQuery));
         })
         .slice(0, query.limit ?? 10);
+    },
+    async delete(memoryId) {
+      return records.delete(memoryId);
+    },
+    setMemoryEnabled(nextEnabled) {
+      isMemoryEnabled = nextEnabled;
     },
   };
 }
@@ -112,6 +129,17 @@ export function createTauriMemoryStore(): MemoryStore {
 
       const { invoke } = await import("@tauri-apps/api/core");
       return invoke<LocalMemoryRecord[]>("retrieve_local_memories", { query });
+    },
+    async delete(memoryId) {
+      if (!isTauriRuntime()) {
+        return fallbackStore.delete(memoryId);
+      }
+
+      const { invoke } = await import("@tauri-apps/api/core");
+      return invoke<boolean>("delete_local_memory", { memoryId });
+    },
+    setMemoryEnabled(isEnabled) {
+      fallbackStore.setMemoryEnabled(isEnabled);
     },
   };
 }

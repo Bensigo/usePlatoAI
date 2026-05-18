@@ -51,6 +51,12 @@ import {
   type SoulGuidanceStore,
 } from "./soulGuidance";
 import {
+  createTauriMemoryStore,
+  type LocalMemoryInput,
+  type LocalMemoryRecord,
+  type MemoryStore,
+} from "./memory";
+import {
   createVoiceOutputSession,
   mockVoiceResponse,
   setVoiceOutputMuted,
@@ -112,6 +118,7 @@ export function ControlSurfacePanel({
   onSubmitTextFallback,
   soulGuidanceStore,
   onSoulGuidanceChange,
+  memoryStore,
 }: {
   activeEntry: ControlSurfaceId;
   settings?: CompanionSettings;
@@ -125,6 +132,7 @@ export function ControlSurfacePanel({
   onMuteChange?: (isMuted: boolean) => void;
   onTextFallbackChange?: (value: string) => void;
   onSubmitTextFallback?: () => void;
+  memoryStore?: MemoryStore;
 }) {
   const activeControl = controlSurfaceEntries.find(
     (entry) => entry.id === activeEntry,
@@ -164,6 +172,12 @@ export function ControlSurfacePanel({
         <SoulEditorPanel
           soulGuidanceStore={soulGuidanceStore}
           onSoulGuidanceChange={onSoulGuidanceChange}
+        />
+      ) : activeEntry === "memory" && settings && onSettingsChange ? (
+        <MemoryBrowserPanel
+          settings={settings}
+          onSettingsChange={onSettingsChange}
+          memoryStore={memoryStore}
         />
       ) : (
         <p className="placeholder-note">
@@ -259,6 +273,247 @@ export function SoulEditorPanel({
         {message}
       </p>
     </form>
+  );
+}
+
+export function MemoryBrowserPanel({
+  settings,
+  onSettingsChange,
+  memoryStore,
+  initialRecords = [],
+}: {
+  settings: CompanionSettings;
+  onSettingsChange: (settings: CompanionSettings) => Promise<void>;
+  memoryStore?: MemoryStore;
+  initialRecords?: LocalMemoryRecord[];
+}) {
+  const durableMemoryStore = useMemo(
+    () => memoryStore ?? createTauriMemoryStore(),
+    [memoryStore],
+  );
+  const [records, setRecords] = useState<LocalMemoryRecord[]>(initialRecords);
+  const [selectedMemoryId, setSelectedMemoryId] = useState(
+    initialRecords[0]?.memoryId ?? "",
+  );
+  const selectedRecord =
+    records.find((record) => record.memoryId === selectedMemoryId) ??
+    records[0] ??
+    null;
+  const [draftSummary, setDraftSummary] = useState(selectedRecord?.summary ?? "");
+  const [message, setMessage] = useState("Memory browser ready");
+  const [isSaving, setIsSaving] = useState(false);
+  const memoryEnabled = settings.memoryMode === "enabled";
+
+  useEffect(() => {
+    durableMemoryStore.setMemoryEnabled(memoryEnabled);
+  }, [durableMemoryStore, memoryEnabled]);
+
+  useEffect(() => {
+    let isCurrent = true;
+
+    durableMemoryStore
+      .retrieve({ limit: 25 })
+      .then((nextRecords) => {
+        if (!isCurrent) {
+          return;
+        }
+
+        setRecords(nextRecords);
+        setSelectedMemoryId((currentId) =>
+          nextRecords.some((record) => record.memoryId === currentId)
+            ? currentId
+            : nextRecords[0]?.memoryId ?? "",
+        );
+        setMessage(
+          nextRecords.length > 0
+            ? "Memory records loaded"
+            : "No memory records stored yet",
+        );
+      })
+      .catch((error: unknown) => {
+        if (isCurrent) {
+          setMessage(
+            error instanceof Error ? error.message : "Unable to load memory",
+          );
+        }
+      });
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [durableMemoryStore]);
+
+  useEffect(() => {
+    setDraftSummary(selectedRecord?.summary ?? "");
+  }, [selectedRecord?.memoryId, selectedRecord?.summary]);
+
+  async function reloadRecords(nextMessage: string) {
+    const nextRecords = await durableMemoryStore.retrieve({ limit: 25 });
+    setRecords(nextRecords);
+    setSelectedMemoryId((currentId) =>
+      nextRecords.some((record) => record.memoryId === currentId)
+        ? currentId
+        : nextRecords[0]?.memoryId ?? "",
+    );
+    setMessage(nextMessage);
+  }
+
+  async function toggleMemoryEnabled() {
+    const nextSettings: CompanionSettings = {
+      ...settings,
+      memoryMode: memoryEnabled ? "paused" : "enabled",
+    };
+
+    setIsSaving(true);
+    try {
+      await onSettingsChange(nextSettings);
+      durableMemoryStore.setMemoryEnabled(nextSettings.memoryMode === "enabled");
+      setMessage(
+        nextSettings.memoryMode === "enabled"
+          ? "Memory writes enabled"
+          : "Memory writes paused",
+      );
+    } catch (error) {
+      setMessage(
+        error instanceof Error ? error.message : "Unable to change memory mode",
+      );
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  async function saveSelectedMemory(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!selectedRecord) {
+      return;
+    }
+
+    const summary = draftSummary.trim();
+
+    if (!summary) {
+      setMessage("Memory summary cannot be empty");
+      return;
+    }
+
+    const input: LocalMemoryInput = {
+      memoryId: selectedRecord.memoryId,
+      memoryKind: selectedRecord.memoryKind,
+      summary,
+      preferenceKey: selectedRecord.preferenceKey,
+      preferenceValue: selectedRecord.preferenceValue,
+      sourceKind: selectedRecord.sourceKind,
+      metadata: selectedRecord.metadata,
+    };
+
+    setIsSaving(true);
+    try {
+      await durableMemoryStore.remember(input);
+      await reloadRecords("Memory updated");
+    } catch (error) {
+      setMessage(
+        error instanceof Error ? error.message : "Unable to update memory",
+      );
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  async function deleteSelectedMemory() {
+    if (!selectedRecord) {
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      await durableMemoryStore.delete(selectedRecord.memoryId);
+      await reloadRecords("Memory deleted");
+    } catch (error) {
+      setMessage(
+        error instanceof Error ? error.message : "Unable to delete memory",
+      );
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  return (
+    <div className="memory-browser">
+      <div className="memory-toolbar">
+        <dl className="compact-facts" aria-label="Memory browser status">
+          <div>
+            <dt>Mode</dt>
+            <dd>{memoryEnabled ? "Enabled" : "Paused"}</dd>
+          </div>
+          <div>
+            <dt>Records</dt>
+            <dd>{records.length}</dd>
+          </div>
+        </dl>
+        <button type="button" disabled={isSaving} onClick={toggleMemoryEnabled}>
+          {memoryEnabled ? "Disable memory" : "Enable memory"}
+        </button>
+      </div>
+
+      {records.length > 0 ? (
+        <div className="memory-layout">
+          <div className="memory-list" role="list" aria-label="Stored memory">
+            {records.map((record) => (
+              <button
+                key={record.memoryId}
+                type="button"
+                className={
+                  record.memoryId === selectedRecord?.memoryId
+                    ? "active"
+                    : undefined
+                }
+                onClick={() => setSelectedMemoryId(record.memoryId)}
+              >
+                <strong>{record.memoryKind}</strong>
+                <span>{record.summary}</span>
+              </button>
+            ))}
+          </div>
+
+          <form className="memory-editor" onSubmit={saveSelectedMemory}>
+            <label>
+              <span>Summary</span>
+              <textarea
+                rows={4}
+                value={draftSummary}
+                onChange={(event) => setDraftSummary(event.currentTarget.value)}
+              />
+            </label>
+            {selectedRecord?.memoryKind === "preference" ? (
+              <dl className="compact-facts">
+                <div>
+                  <dt>Preference</dt>
+                  <dd>{selectedRecord.preferenceKey}</dd>
+                </div>
+              </dl>
+            ) : null}
+            <div className="memory-actions">
+              <button type="submit" disabled={isSaving || !selectedRecord}>
+                Save edit
+              </button>
+              <button
+                type="button"
+                disabled={isSaving || !selectedRecord}
+                onClick={deleteSelectedMemory}
+              >
+                Delete
+              </button>
+            </div>
+          </form>
+        </div>
+      ) : (
+        <p className="empty-state">No memory records stored yet</p>
+      )}
+
+      <p className="trust-message" aria-live="polite">
+        {message}
+      </p>
+    </div>
   );
 }
 
@@ -799,6 +1054,7 @@ export function App({
   settingsStore,
   trustFoundationStore,
   soulGuidanceStore,
+  memoryStore,
   presenceStateSource,
 }: {
   initialSettings?: CompanionSettings;
@@ -806,6 +1062,7 @@ export function App({
   settingsStore?: SettingsStore;
   trustFoundationStore?: TrustFoundationStore;
   soulGuidanceStore?: SoulGuidanceStore;
+  memoryStore?: MemoryStore;
   presenceStateSource?: PresenceStateSource;
 }) {
   const durableSettingsStore = useMemo(
@@ -1142,6 +1399,7 @@ export function App({
           onSubmitTextFallback={submitTextFallback}
           soulGuidanceStore={durableSoulGuidanceStore}
           onSoulGuidanceChange={setSoulGuidance}
+          memoryStore={memoryStore}
         />
       </section>
     </main>

@@ -34,7 +34,7 @@ export const controlSurfaceEntries: {
     id: "memory",
     label: "Memory",
     description:
-      "Placeholder for viewing, editing, deleting, and disabling local memory records.",
+      "View, edit, delete, and disable local summary and preference memory records.",
   },
   {
     id: "permissions",
