@@ -64,8 +64,10 @@ import {
   stopMockSpeech,
 } from "./voiceOutput";
 import {
+  companionPromptForInputWithCorrections,
   companionPresenceForVoiceState,
   defaultVoiceInteractionSnapshot,
+  mockVoiceTranscript,
   nextMockVoiceSnapshot,
   textFallbackResponseSnapshot,
   textFallbackThinkingSnapshot,
@@ -1078,6 +1080,10 @@ export function App({
     () => soulGuidanceStore ?? createTauriSoulGuidanceStore(),
     [soulGuidanceStore],
   );
+  const durableMemoryStore = useMemo(
+    () => memoryStore ?? createTauriMemoryStore(),
+    [memoryStore],
+  );
   const presence = usePresenceState(companionPresenceStateSource);
   const [activeEntry, setActiveEntry] = useState<ControlSurfaceId>("voice");
   const [isControlSurfaceVisible, setIsControlSurfaceVisible] = useState(false);
@@ -1110,11 +1116,12 @@ export function App({
   ) {
     voiceTimers.current.push(
       setTimeout(() => {
-        setVoiceInteraction((current) => {
-          if (source === "text" && sessionState === "speaking") {
-            return textFallbackResponseSnapshot(current, soulGuidance);
-          }
+        if (sessionState === "speaking") {
+          setVoiceInteractionWithCorrectionPrompt(source);
+          return;
+        }
 
+        setVoiceInteraction((current) => {
           if (source === "text") {
             return { ...current, sessionState, companionPrompt: null };
           }
@@ -1123,6 +1130,38 @@ export function App({
         });
       }, delay),
     );
+  }
+
+  function setVoiceInteractionWithCorrectionPrompt(source: "voice" | "text") {
+    setVoiceInteraction((current) => {
+      const responseSnapshot =
+        source === "text"
+          ? textFallbackResponseSnapshot(current, soulGuidance)
+          : nextMockVoiceSnapshot(current, "speaking", soulGuidance);
+      const promptInput =
+        source === "text"
+          ? current.fallbackText
+          : current.transcript || mockVoiceTranscript;
+
+      void companionPromptForInputWithCorrections(
+        promptInput,
+        durableMemoryStore,
+        soulGuidance,
+      )
+        .then((companionPrompt) => {
+          setVoiceInteraction((latest) => ({
+            ...(source === "text"
+              ? textFallbackResponseSnapshot(latest, soulGuidance)
+              : nextMockVoiceSnapshot(latest, "speaking", soulGuidance)),
+            companionPrompt,
+          }));
+        })
+        .catch(() => {
+          setVoiceInteraction(responseSnapshot);
+        });
+
+      return responseSnapshot;
+    });
   }
 
   function startVoiceInteraction() {
@@ -1399,7 +1438,7 @@ export function App({
           onSubmitTextFallback={submitTextFallback}
           soulGuidanceStore={durableSoulGuidanceStore}
           onSoulGuidanceChange={setSoulGuidance}
-          memoryStore={memoryStore}
+          memoryStore={durableMemoryStore}
         />
       </section>
     </main>
