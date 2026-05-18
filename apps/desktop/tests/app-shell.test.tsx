@@ -424,9 +424,27 @@ describe("desktop app shell", () => {
     expect(textThinking.companionPrompt).toBeNull();
     expect(textThinking.activationSource).toBe("text");
     expect(textThinking.sessionState).toBe("thinking");
+    expect(textThinking.submittedFallbackText).toBe("Fallback now");
     expect(textSpeaking.sessionState).toBe("speaking");
     expect(textSpeaking.response).toContain("Fallback now");
     expect(textSpeaking.companionPrompt).toContain("Trusted policy layer:");
+  });
+
+  it("keeps submitted text fallback responses independent from the editable draft", () => {
+    const textThinking = textFallbackThinkingSnapshot(
+      defaultVoiceInteractionSnapshot,
+      "Submitted request",
+    );
+    const editedDraft = {
+      ...textThinking,
+      fallbackText: "Next draft before response resolves",
+    };
+    const textSpeaking = textFallbackResponseSnapshot(editedDraft);
+
+    expect(textSpeaking.response).toContain("Submitted request");
+    expect(textSpeaking.response).not.toContain("Next draft");
+    expect(textSpeaking.companionPrompt).toContain("Submitted request");
+    expect(textSpeaking.companionPrompt).not.toContain("Next draft");
   });
 
   it("clears stale companion prompts outside active response snapshots", () => {
@@ -524,6 +542,15 @@ describe("desktop app shell", () => {
     expect(
       isActiveCorrectionPromptTransition({
         snapshot: { ...speaking, fallbackText: "New request" },
+        source: "text",
+        promptInput: "Original request",
+        requestId: 2,
+        activeRequestId: 2,
+      }),
+    ).toBe(true);
+    expect(
+      isActiveCorrectionPromptTransition({
+        snapshot: { ...speaking, submittedFallbackText: "New request" },
         source: "text",
         promptInput: "Original request",
         requestId: 2,

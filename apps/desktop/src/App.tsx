@@ -118,7 +118,7 @@ export function isActiveCorrectionPromptTransition({
   }
 
   return source === "text"
-    ? snapshot.fallbackText === promptInput
+    ? snapshot.submittedFallbackText === promptInput
     : (snapshot.transcript || mockVoiceTranscript) === promptInput;
 }
 
@@ -1169,7 +1169,7 @@ export function App({
           : nextMockVoiceSnapshot(current, "speaking", soulGuidance);
       const promptInput =
         source === "text"
-          ? current.fallbackText
+          ? (current.submittedFallbackText ?? current.transcript)
           : current.transcript || mockVoiceTranscript;
 
       void companionPromptForInputWithCorrections(
