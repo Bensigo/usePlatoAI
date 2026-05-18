@@ -86,6 +86,8 @@ const sensitiveTextPatterns = [
   /\b\d{3}-\d{2}-\d{4}\b/,
 ];
 
+const sensitiveApprovalMetadataKeys = ["surface", "reason"];
+
 export function containsSensitiveMemoryData(memory: LocalMemoryInput): boolean {
   return (
     containsSensitiveText(memory.summary) ||
@@ -195,7 +197,8 @@ export function createMemoryStore(
     async remember(memory) {
       return rememberMemory(memory, { allowSensitiveData: false });
     },
-    async approveSensitiveMemoryWrite() {
+    async approveSensitiveMemoryWrite(request) {
+      validateSensitiveMemoryApprovalMetadata(request.metadata);
       approvalSequence += 1;
       const approvalEvidence = {
         approvalId: `approval-sensitive-memory-${approvalSequence}`,
@@ -334,6 +337,82 @@ function isTauriRuntime() {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 }
 
+function validateSensitiveMemoryApprovalMetadata(value: unknown) {
+  rejectRawTranscriptMaterial(value);
+  if (containsSensitiveValue(value)) {
+    throw new Error(
+      "sensitive memory approval metadata must not include sensitive values",
+    );
+  }
+
+  if (!isRecord(value)) {
+    throw new Error("sensitive memory approval metadata must be an object");
+  }
+
+  for (const [key, nestedValue] of Object.entries(value)) {
+    if (!sensitiveApprovalMetadataKeys.includes(key)) {
+      throw new Error(
+        `sensitive memory approval metadata must not include \`${key}\``,
+      );
+    }
+
+    if (nestedValue === null) {
+      continue;
+    }
+
+    if (typeof nestedValue !== "string") {
+      throw new Error(
+        `sensitive memory approval metadata \`${key}\` must be a string`,
+      );
+    }
+
+    if (!nestedValue.trim()) {
+      throw new Error(
+        `sensitive memory approval metadata \`${key}\` must not be empty`,
+      );
+    }
+
+    if (nestedValue.length > 240) {
+      throw new Error(
+        `sensitive memory approval metadata \`${key}\` is too long`,
+      );
+    }
+  }
+}
+
+function rejectRawTranscriptMaterial(value: unknown) {
+  if (Array.isArray(value)) {
+    for (const nestedValue of value) {
+      rejectRawTranscriptMaterial(nestedValue);
+    }
+    return;
+  }
+
+  if (isRecord(value)) {
+    if (isMessageTurnObject(value)) {
+      throw new Error(
+        "memory payload must not include raw transcript message objects",
+      );
+    }
+
+    for (const [key, nestedValue] of Object.entries(value)) {
+      if (isRawTranscriptFieldName(key)) {
+        throw new Error(
+          `memory payload must not include raw transcript material in \`${key}\``,
+        );
+      }
+      rejectRawTranscriptMaterial(nestedValue);
+    }
+    return;
+  }
+
+  if (typeof value === "string" && looksLikeRawTranscriptText(value)) {
+    throw new Error(
+      "memory payload must not include raw transcript material in `value`",
+    );
+  }
+}
+
 function containsSensitiveValue(value: unknown): boolean {
   if (typeof value === "string") {
     return containsSensitiveText(value);
@@ -363,6 +442,55 @@ function containsSensitiveJsonKey(key: string): boolean {
 
 function containsSensitiveText(value: string): boolean {
   return sensitiveTextPatterns.some((pattern) => pattern.test(value));
+}
+
+function isMessageTurnObject(value: Record<string, unknown>) {
+  const keys = Object.keys(value);
+  return (
+    keys.some(isMessageParticipantFieldName) &&
+    keys.some(isMessageTextFieldName)
+  );
+}
+
+function isMessageParticipantFieldName(key: string) {
+  return ["role", "speaker"].includes(normalizeJsonKey(key));
+}
+
+function isMessageTextFieldName(key: string) {
+  return ["text", "message", "body", "utterance"].includes(
+    normalizeJsonKey(key),
+  );
+}
+
+function isRawTranscriptFieldName(key: string) {
+  return [
+    "transcript",
+    "rawtranscript",
+    "conversation",
+    "conversationlog",
+    "fullconversation",
+    "messages",
+    "rawmessages",
+    "messagelog",
+    "turns",
+    "content",
+  ].includes(normalizeJsonKey(key));
+}
+
+function normalizeJsonKey(key: string) {
+  return key.replace(/[^a-z0-9]/gi, "").toLocaleLowerCase();
+}
+
+function looksLikeRawTranscriptText(value: string) {
+  const lowerValue = value.trim().toLocaleLowerCase();
+  if (!lowerValue) {
+    return false;
+  }
+
+  return (
+    /\b(user|assistant|plato|system)\s*:/.test(lowerValue) ||
+    /\n\s*(user|assistant|plato|system)\s*:/.test(lowerValue)
+  );
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
