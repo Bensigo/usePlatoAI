@@ -23,6 +23,7 @@ import {
 import { controlSurfaceEntries } from "../src/controlSurface";
 import {
   createMemoryStore,
+  createSensitiveMemoryApprovalRecord,
   rememberApprovedSensitiveMemory,
   rememberExtractedMemory,
   retrieveUserCorrections,
@@ -323,8 +324,28 @@ describe("desktop app shell", () => {
   });
 
   it("requires trusted approval before saving sensitive memory", async () => {
-    const memoryStore = createMemoryStore();
     const sensitiveSummary = "User API key = sk_test_1234567890abcdef";
+    const approvedSensitiveMemory = {
+      memoryId: "memory-sensitive-approved",
+      memoryKind: "summary" as const,
+      summary: sensitiveSummary,
+      sourceKind: "user-approved-sensitive-memory",
+      metadata: { extractor: "local-test-boundary" },
+    };
+    const approvalEvidence = {
+      approvalId: "approval-sensitive-memory-1",
+      approvalToken: "trusted-token-from-approval-flow",
+    };
+    const memoryStore = createMemoryStore(
+      [],
+      true,
+      [
+        await createSensitiveMemoryApprovalRecord(
+          approvedSensitiveMemory,
+          approvalEvidence,
+        ),
+      ],
+    );
 
     await expect(
       rememberExtractedMemory(memoryStore, {
@@ -376,21 +397,12 @@ describe("desktop app shell", () => {
       }),
     ).rejects.toThrow("trusted approval is required");
 
-    const approvalEvidence = await memoryStore.approveSensitiveMemoryWrite({
-      metadata: {
-        surface: "human-approval-prompt",
-        reason: "User approved remembering sensitive data.",
-      },
-    });
-
     await expect(
-      rememberApprovedSensitiveMemory(memoryStore, {
-        memoryId: "memory-sensitive-approved",
-        memoryKind: "summary",
-        summary: sensitiveSummary,
-        sourceKind: "user-approved-sensitive-memory",
-        metadata: { extractor: "local-test-boundary" },
-      }, approvalEvidence),
+      rememberApprovedSensitiveMemory(
+        memoryStore,
+        approvedSensitiveMemory,
+        approvalEvidence,
+      ),
     ).resolves.toMatchObject({
       memoryId: "memory-sensitive-approved",
       summary: sensitiveSummary,
@@ -404,7 +416,7 @@ describe("desktop app shell", () => {
         sourceKind: "user-approved-sensitive-memory",
         metadata: { extractor: "local-test-boundary" },
       }, approvalEvidence),
-    ).rejects.toThrow("approval was not found");
+    ).rejects.toThrow("already been used");
   });
 
   it("saves user corrections as replayable memory", async () => {
