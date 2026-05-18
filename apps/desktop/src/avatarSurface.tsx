@@ -1,16 +1,38 @@
-export type AvatarPresenceState =
-  | "idle"
-  | "listening"
-  | "thinking"
-  | "speaking"
-  | "waiting_for_approval";
+export const avatarPresenceStates = [
+  "appearing",
+  "idle",
+  "listening",
+  "thinking",
+  "speaking",
+  "waitingApproval",
+  "muted",
+  "error",
+] as const;
+
+export type AvatarPresenceState = (typeof avatarPresenceStates)[number];
 
 export type Live2DAvatarSurfaceHook = {
   state: AvatarPresenceState;
   label: string;
   statusText: string;
-  motionGroup: "idle" | "tap_body" | "thinking" | "speak" | "approval";
-  expression: "neutral" | "attentive" | "focused" | "talking" | "concerned";
+  motionGroup:
+    | "appear"
+    | "idle"
+    | "tap_body"
+    | "thinking"
+    | "speak"
+    | "approval"
+    | "quiet"
+    | "error";
+  expression:
+    | "bright"
+    | "neutral"
+    | "attentive"
+    | "focused"
+    | "talking"
+    | "concerned"
+    | "soft"
+    | "strained";
   parameterHints: {
     eyeOpen: number;
     mouthOpen: number;
@@ -23,6 +45,19 @@ export const live2dAvatarSurfaceHooks: Record<
   AvatarPresenceState,
   Live2DAvatarSurfaceHook
 > = {
+  appearing: {
+    state: "appearing",
+    label: "Appearing",
+    statusText: "Coming online",
+    motionGroup: "appear",
+    expression: "bright",
+    parameterHints: {
+      eyeOpen: 1,
+      mouthOpen: 0.16,
+      bodyAngleX: 0,
+      bodyAngleY: -4,
+    },
+  },
   idle: {
     state: "idle",
     label: "Idle",
@@ -75,8 +110,8 @@ export const live2dAvatarSurfaceHooks: Record<
       bodyAngleY: 0,
     },
   },
-  waiting_for_approval: {
-    state: "waiting_for_approval",
+  waitingApproval: {
+    state: "waitingApproval",
     label: "Waiting for approval",
     statusText: "Waiting for approval",
     motionGroup: "approval",
@@ -88,12 +123,41 @@ export const live2dAvatarSurfaceHooks: Record<
       bodyAngleY: 2,
     },
   },
+  muted: {
+    state: "muted",
+    label: "Muted",
+    statusText: "Muted",
+    motionGroup: "quiet",
+    expression: "soft",
+    parameterHints: {
+      eyeOpen: 0.68,
+      mouthOpen: 0,
+      bodyAngleX: 0,
+      bodyAngleY: 3,
+    },
+  },
+  error: {
+    state: "error",
+    label: "Error",
+    statusText: "Needs repair",
+    motionGroup: "error",
+    expression: "strained",
+    parameterHints: {
+      eyeOpen: 0.5,
+      mouthOpen: 0.22,
+      bodyAngleX: -4,
+      bodyAngleY: 0,
+    },
+  },
 };
 
 export function isAvatarPresenceState(
   value: string | null,
 ): value is AvatarPresenceState {
-  return value !== null && value in live2dAvatarSurfaceHooks;
+  return (
+    value !== null &&
+    avatarPresenceStates.some((presenceState) => presenceState === value)
+  );
 }
 
 export function getLive2DAvatarSurfaceHook(

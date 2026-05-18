@@ -1,4 +1,5 @@
 export const companionPresenceStates = [
+  "appearing",
   "idle",
   "listening",
   "thinking",
@@ -7,6 +8,9 @@ export const companionPresenceStates = [
   "happy",
   "confused",
   "waiting_for_approval",
+  "waitingApproval",
+  "muted",
+  "error",
   "task_running",
   "sleeping",
 ] as const;
@@ -22,6 +26,8 @@ export type PresenceRendererHint =
   | "positive"
   | "uncertain"
   | "approval"
+  | "muted"
+  | "error"
   | "working"
   | "quiet";
 
@@ -45,6 +51,11 @@ const presenceStateSnapshots: Record<
     state: "idle",
     label: "Idle presence",
     rendererHint: "resting",
+  },
+  appearing: {
+    state: "appearing",
+    label: "Coming online",
+    rendererHint: "attentive",
   },
   listening: {
     state: "listening",
@@ -80,6 +91,21 @@ const presenceStateSnapshots: Record<
     state: "waiting_for_approval",
     label: "Waiting for approval",
     rendererHint: "approval",
+  },
+  waitingApproval: {
+    state: "waitingApproval",
+    label: "Waiting for approval",
+    rendererHint: "approval",
+  },
+  muted: {
+    state: "muted",
+    label: "Muted",
+    rendererHint: "muted",
+  },
+  error: {
+    state: "error",
+    label: "Needs repair",
+    rendererHint: "error",
   },
   task_running: {
     state: "task_running",

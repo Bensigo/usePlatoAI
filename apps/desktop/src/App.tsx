@@ -7,6 +7,7 @@ import {
   useState,
   useSyncExternalStore,
   type FormEvent,
+  type KeyboardEvent,
   type MouseEvent,
 } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -94,6 +95,10 @@ function usePresenceState(source: PresenceStateSource) {
 }
 
 function avatarPresenceStateFor(state: string): AvatarPresenceState {
+  if (state === "waiting_for_approval") {
+    return "waitingApproval";
+  }
+
   return isAvatarPresenceState(state) ? state : "idle";
 }
 
@@ -132,6 +137,10 @@ export function DismissedPresence({ onRestore }: { onRestore: () => void }) {
       </button>
     </section>
   );
+}
+
+function isKeyboardActivation(event: KeyboardEvent<HTMLElement>) {
+  return event.key === "Enter" || event.key === " ";
 }
 
 export function ControlSurfacePanel({
@@ -1405,7 +1414,29 @@ export function App({
             </button>
           </div>
 
-          <Live2DAvatarSurface presenceState={avatarPresenceState} />
+          <div
+            className="avatar-activation-button"
+            role="button"
+            tabIndex={0}
+            onClick={() =>
+              setVoiceSession((session) =>
+                startMockSpeech(session, mockVoiceResponse),
+              )
+            }
+            onKeyDown={(event) => {
+              if (!isKeyboardActivation(event)) {
+                return;
+              }
+
+              event.preventDefault();
+              setVoiceSession((session) =>
+                startMockSpeech(session, mockVoiceResponse),
+              );
+            }}
+            aria-label="Activate Plato audio"
+          >
+            <Live2DAvatarSurface presenceState={avatarPresenceState} />
+          </div>
 
           <div className="presence-copy sr-only">
             <p className="product-name">usePlatoAI</p>

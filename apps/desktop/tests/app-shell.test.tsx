@@ -16,6 +16,7 @@ import {
 } from "../src/App";
 import {
   Live2DAvatarSurface,
+  avatarPresenceStates,
   getLive2DAvatarSurfaceHook,
   isAvatarPresenceState,
   type AvatarPresenceState,
@@ -131,12 +132,29 @@ describe("desktop app shell", () => {
   });
 
   it("maps renderer-independent presence states to Live2D surface hooks", () => {
+    expect(avatarPresenceStates).toEqual([
+      "appearing",
+      "idle",
+      "listening",
+      "thinking",
+      "speaking",
+      "waitingApproval",
+      "muted",
+      "error",
+    ]);
+
     const expectedMappings: Array<{
       state: AvatarPresenceState;
       statusText: string;
       motionGroup: string;
       expression: string;
     }> = [
+      {
+        state: "appearing",
+        statusText: "Coming online",
+        motionGroup: "appear",
+        expression: "bright",
+      },
       {
         state: "idle",
         statusText: "Idle presence",
@@ -162,10 +180,22 @@ describe("desktop app shell", () => {
         expression: "talking",
       },
       {
-        state: "waiting_for_approval",
+        state: "waitingApproval",
         statusText: "Waiting for approval",
         motionGroup: "approval",
         expression: "concerned",
+      },
+      {
+        state: "muted",
+        statusText: "Muted",
+        motionGroup: "quiet",
+        expression: "soft",
+      },
+      {
+        state: "error",
+        statusText: "Needs repair",
+        motionGroup: "error",
+        expression: "strained",
       },
     ];
 
@@ -193,21 +223,33 @@ describe("desktop app shell", () => {
     const markup = renderToStaticMarkup(
       <App
         initialSettings={completedSettings}
-        initialPresenceState="waiting_for_approval"
+        initialPresenceState="waitingApproval"
       />,
     );
 
     expect(markup).toContain("Waiting for approval");
-    expect(markup).toContain('data-presence-state="waiting_for_approval"');
+    expect(markup).toContain('data-presence-state="waitingApproval"');
     expect(markup).toContain('data-live2d-motion-group="approval"');
     expect(markup).toContain('data-live2d-expression="concerned"');
   });
 
   it("recognizes valid URL presence states for visual smoke checks", () => {
+    expect(isAvatarPresenceState("appearing")).toBe(true);
     expect(isAvatarPresenceState("speaking")).toBe(true);
-    expect(isAvatarPresenceState("waiting_for_approval")).toBe(true);
+    expect(isAvatarPresenceState("waitingApproval")).toBe(true);
+    expect(isAvatarPresenceState("muted")).toBe(true);
+    expect(isAvatarPresenceState("error")).toBe(true);
     expect(isAvatarPresenceState("unknown")).toBe(false);
     expect(isAvatarPresenceState(null)).toBe(false);
+  });
+
+  it("renders Plato with a direct clickable audio affordance", () => {
+    const markup = renderToStaticMarkup(
+      <App initialSettings={completedSettings} />,
+    );
+
+    expect(markup).toContain("Activate Plato audio");
+    expect(markup).toContain("avatar-activation-button");
   });
 
   it("renders presence state through the shared source boundary", () => {
@@ -865,13 +907,13 @@ describe("desktop app shell", () => {
 
     expect(nextSession.isMuted).toBe(true);
     expect(nextSession.phase).toBe("text_fallback");
-    expect(nextSession.presenceState).toBe("idle");
+    expect(nextSession.presenceState).toBe("muted");
     expect(nextSession.spokenText).toBeNull();
     expect(nextSession.textFallback).toBe(mockVoiceResponse);
     expect(nextSession.statusLabel).toBe("Voice muted - text fallback visible");
   });
 
-  it("mutes in-progress mocked speech and returns presence to idle", () => {
+  it("mutes in-progress mocked speech and returns presence to muted", () => {
     const speakingSession = startMockSpeech(
       createVoiceOutputSession(),
       mockVoiceResponse,
@@ -880,9 +922,18 @@ describe("desktop app shell", () => {
 
     expect(mutedSession.isMuted).toBe(true);
     expect(mutedSession.phase).toBe("text_fallback");
-    expect(mutedSession.presenceState).toBe("idle");
+    expect(mutedSession.presenceState).toBe("muted");
     expect(mutedSession.spokenText).toBeNull();
     expect(mutedSession.textFallback).toBe(mockVoiceResponse);
+  });
+
+  it("returns muted voice output to idle presence after unmuting", () => {
+    const mutedSession = setVoiceOutputMuted(createVoiceOutputSession(), true);
+    const unmutedSession = setVoiceOutputMuted(mutedSession, false);
+
+    expect(unmutedSession.isMuted).toBe(false);
+    expect(unmutedSession.presenceState).toBe("idle");
+    expect(unmutedSession.statusLabel).toBe("Voice ready");
   });
 
   it("stops mocked speech and returns presence to idle", () => {
