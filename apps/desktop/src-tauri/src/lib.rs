@@ -138,6 +138,11 @@ fn retrieve_local_memories(
 }
 
 #[tauri::command]
+fn delete_local_memory(app: AppHandle, memory_id: String) -> Result<bool, String> {
+    local_data_service(&app)?.delete_memory_record(&memory_id)
+}
+
+#[tauri::command]
 fn read_trust_foundation_snapshot(app: AppHandle) -> Result<TrustFoundationSnapshot, String> {
     let local_data = local_data_service(&app)?;
     let secret_store = provider_secret_store()?;
@@ -235,6 +240,7 @@ pub fn run() {
             read_local_memory,
             read_local_memory_preference,
             retrieve_local_memories,
+            delete_local_memory,
             read_trust_foundation_snapshot,
             save_provider_credential,
             has_provider_credential,
