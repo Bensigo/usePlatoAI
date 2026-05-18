@@ -5,6 +5,7 @@ use tauri::{AppHandle, Manager};
 mod local_data;
 mod provider_credentials;
 mod secret_store;
+mod soul;
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -52,6 +53,10 @@ fn legacy_companion_settings_path(app: &AppHandle) -> Result<std::path::PathBuf,
         .join("companion-settings.v1.json"))
 }
 
+fn soul_app_data_dir(app: &AppHandle) -> Result<std::path::PathBuf, String> {
+    app.path().app_data_dir().map_err(|error| error.to_string())
+}
+
 fn local_data_service(app: &AppHandle) -> Result<local_data::LocalDataService, String> {
     local_data::LocalDataService::open(local_data_path(app)?)
 }
@@ -93,6 +98,11 @@ fn read_recent_audit_history(
     limit: u32,
 ) -> Result<Vec<local_data::AuditHistoryEntry>, String> {
     local_data_service(&app)?.read_recent_audit_history(limit)
+}
+
+#[tauri::command]
+fn read_soul_guidance(app: AppHandle) -> Result<soul::SoulGuidance, String> {
+    soul::read_or_create_soul_guidance(soul_app_data_dir(&app)?)
 }
 
 #[tauri::command]
@@ -188,6 +198,7 @@ pub fn run() {
             save_companion_settings,
             read_execution_authority_policy,
             read_recent_audit_history,
+            read_soul_guidance,
             read_trust_foundation_snapshot,
             save_provider_credential,
             has_provider_credential,
