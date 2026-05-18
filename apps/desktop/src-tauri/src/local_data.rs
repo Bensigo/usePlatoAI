@@ -566,6 +566,15 @@ impl LocalDataService {
         memory: &LocalMemoryInput,
     ) -> Result<LocalMemoryRecord, String> {
         validate_memory_input(memory)?;
+        let existing_memory = self.read_memory_record(&memory.memory_id)?;
+        let memory_mode = self
+            .read_companion_settings()?
+            .unwrap_or_else(default_companion_settings)
+            .memory_mode;
+
+        if existing_memory.is_none() && memory_mode == "paused" {
+            return Err("memory is disabled; new memory writes are paused".to_string());
+        }
 
         let memory_kind = memory_kind_key(memory.memory_kind);
         let preference_value_json = memory
@@ -623,6 +632,29 @@ impl LocalDataService {
 
         self.read_memory_record(&memory.memory_id)?
             .ok_or_else(|| format!("memory record `{}` was not persisted", memory.memory_id))
+    }
+
+    pub fn delete_memory_record(&self, memory_id: &str) -> Result<bool, String> {
+        let removed = self
+            .connection
+            .execute(
+                "DELETE FROM memory_metadata WHERE memory_id = ?1",
+                [memory_id],
+            )
+            .map_err(|error| error.to_string())?
+            > 0;
+
+        if removed {
+            self.record_audit_entry(
+                "memory",
+                "memory.deleted",
+                json!({
+                    "memoryId": memory_id,
+                }),
+            )?;
+        }
+
+        Ok(removed)
     }
 
     pub fn read_memory_record(&self, memory_id: &str) -> Result<Option<LocalMemoryRecord>, String> {
@@ -1607,6 +1639,71 @@ mod tests {
             .expect("retrieve memories");
 
         assert_eq!(retrieved, vec![saved_preference]);
+    }
+
+    #[test]
+    fn edits_deletes_and_blocks_new_memory_writes_while_paused() {
+        let service = LocalDataService::in_memory().expect("create in-memory service");
+        let mut settings = test_settings();
+        settings.memory_mode = "enabled".to_string();
+        service
+            .save_companion_settings(&settings)
+            .expect("save enabled settings");
+        let memory = LocalMemoryInput {
+            memory_id: "memory-summary-1".to_string(),
+            memory_kind: LocalMemoryKind::Summary,
+            summary: "User prefers direct implementation notes.".to_string(),
+            preference_key: None,
+            preference_value: None,
+            source_kind: "conversation-summary".to_string(),
+            metadata: json!({ "extractor": "local-test-boundary" }),
+        };
+
+        service
+            .upsert_memory_record(&memory)
+            .expect("save initial memory");
+
+        settings.memory_mode = "paused".to_string();
+        service
+            .save_companion_settings(&settings)
+            .expect("pause memory");
+
+        let mut edited_memory = memory.clone();
+        edited_memory.summary = "User prefers concise implementation notes.".to_string();
+        let edited = service
+            .upsert_memory_record(&edited_memory)
+            .expect("edit existing memory while paused");
+        assert_eq!(edited.summary, edited_memory.summary);
+
+        let blocked_memory = LocalMemoryInput {
+            memory_id: "memory-summary-2".to_string(),
+            memory_kind: LocalMemoryKind::Summary,
+            summary: "This new memory should be blocked.".to_string(),
+            preference_key: None,
+            preference_value: None,
+            source_kind: "conversation-summary".to_string(),
+            metadata: json!({ "extractor": "local-test-boundary" }),
+        };
+        let error = service
+            .upsert_memory_record(&blocked_memory)
+            .expect_err("new memory writes are blocked while paused");
+        assert!(error.contains("memory is disabled"));
+        assert_eq!(
+            service
+                .read_memory_record("memory-summary-2")
+                .expect("read blocked memory"),
+            None
+        );
+
+        assert!(service
+            .delete_memory_record("memory-summary-1")
+            .expect("delete memory"));
+        assert_eq!(
+            service
+                .read_memory_record("memory-summary-1")
+                .expect("read deleted memory"),
+            None
+        );
     }
 
     #[test]

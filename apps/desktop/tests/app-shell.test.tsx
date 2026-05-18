@@ -9,6 +9,7 @@ import {
   ControlSurfacePanel,
   DismissedPresence,
   FirstRunOnboarding,
+  MemoryBrowserPanel,
   VoiceInteractionPanel,
 } from "../src/App";
 import {
@@ -238,7 +239,7 @@ describe("desktop app shell", () => {
     expect(markup).not.toContain("OpenAI credential");
   });
 
-  it("persists and retrieves local summary and preference memory through the app store boundary", async () => {
+  it("persists, edits, deletes, and disables local memory through the app store boundary", async () => {
     const memoryStore = createMemoryStore();
 
     await memoryStore.remember({
@@ -271,6 +272,44 @@ describe("desktop app shell", () => {
     await expect(
       memoryStore.retrieve({ query: "verification", memoryKind: "preference" }),
     ).resolves.toHaveLength(1);
+
+    await memoryStore.remember({
+      memoryId: "memory-summary-1",
+      memoryKind: "summary",
+      summary: "User prefers concise implementation notes.",
+      sourceKind: "conversation-summary",
+      metadata: { extractor: "local-test-boundary" },
+    });
+    await expect(memoryStore.read("memory-summary-1")).resolves.toMatchObject({
+      summary: "User prefers concise implementation notes.",
+    });
+
+    await expect(memoryStore.delete("memory-preference-1")).resolves.toBe(true);
+    await expect(
+      memoryStore.retrieve({ query: "verification", memoryKind: "preference" }),
+    ).resolves.toHaveLength(0);
+
+    memoryStore.setMemoryEnabled(false);
+    await expect(
+      memoryStore.remember({
+        memoryId: "memory-summary-2",
+        memoryKind: "summary",
+        summary: "This new memory should be blocked.",
+        sourceKind: "conversation-summary",
+        metadata: { extractor: "local-test-boundary" },
+      }),
+    ).rejects.toThrow("memory is disabled");
+    await expect(
+      memoryStore.remember({
+        memoryId: "memory-summary-1",
+        memoryKind: "summary",
+        summary: "Existing memory remains repairable while paused.",
+        sourceKind: "conversation-summary",
+        metadata: { extractor: "local-test-boundary" },
+      }),
+    ).resolves.toMatchObject({
+      summary: "Existing memory remains repairable while paused.",
+    });
   });
 
   it("renders the voice interaction panel for an active session state", () => {
@@ -408,6 +447,35 @@ describe("desktop app shell", () => {
     expect(markup).toContain("OpenAI");
     expect(markup).toContain("Execution authority");
     expect(markup).toContain("Ask first");
+  });
+
+  it("renders a memory browser with edit, delete, and disable controls", () => {
+    const markup = renderToStaticMarkup(
+      <MemoryBrowserPanel
+        settings={completedSettings}
+        onSettingsChange={async () => undefined}
+        initialRecords={[
+          {
+            memoryId: "memory-preference-1",
+            memoryKind: "preference",
+            summary: "User wants verification notes in implementation PRs.",
+            preferenceKey: "pr.verification_notes",
+            preferenceValue: true,
+            sourceKind: "user-approved-preference",
+            metadata: { extractor: "local-test-boundary" },
+            createdAt: new Date(0).toISOString(),
+            updatedAt: new Date(0).toISOString(),
+          },
+        ]}
+      />,
+    );
+
+    expect(markup).toContain("Memory browser status");
+    expect(markup).toContain("Enabled");
+    expect(markup).toContain("Disable memory");
+    expect(markup).toContain("User wants verification notes");
+    expect(markup).toContain("Save edit");
+    expect(markup).toContain("Delete");
   });
 
   it("renders a placeholder panel for every menu bar entry", () => {

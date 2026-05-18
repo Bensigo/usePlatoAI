@@ -763,6 +763,122 @@ h1 {
   gap: 10px;
 }
 
+.memory-browser {
+  display: grid;
+  gap: 10px;
+}
+
+.memory-toolbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: start;
+  padding-top: 8px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.memory-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  gap: 8px;
+}
+
+.memory-list {
+  display: grid;
+  gap: 6px;
+  align-content: start;
+}
+
+.memory-list button {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  min-height: 54px;
+  border: 1px solid #dbe2ea;
+  border-radius: 6px;
+  padding: 7px;
+  background: #ffffff;
+  color: #374151;
+  text-align: left;
+}
+
+.memory-list button.active {
+  border-color: #0f766e;
+  background: #f0fdfa;
+}
+
+.memory-list strong {
+  color: #0f766e;
+  font-size: 0.66rem;
+  text-transform: uppercase;
+}
+
+.memory-list span {
+  overflow: hidden;
+  color: #111827;
+  font-size: 0.74rem;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.memory-editor {
+  display: grid;
+  gap: 8px;
+}
+
+.memory-editor label {
+  display: grid;
+  gap: 5px;
+}
+
+.memory-editor label span {
+  color: #64748b;
+  font-size: 0.7rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.memory-editor textarea {
+  width: 100%;
+  min-width: 0;
+  resize: vertical;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  padding: 7px 8px;
+  color: #111827;
+  background: #ffffff;
+  line-height: 1.4;
+}
+
+.memory-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.memory-toolbar button,
+.memory-actions button {
+  min-height: 32px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #1f2937;
+  font-size: 0.74rem;
+  font-weight: 800;
+}
+
+.memory-toolbar button:hover,
+.memory-actions button:hover {
+  border-color: #64748b;
+}
+
+.memory-actions button:first-child {
+  border-color: #0f766e;
+  background: #0f766e;
+  color: #ffffff;
+}
+
 .trust-section {
   display: grid;
   gap: 8px;
@@ -920,7 +1036,9 @@ h1 {
   }
 
   .voice-status,
-  .voice-actions {
+  .voice-actions,
+  .memory-layout,
+  .memory-toolbar {
     grid-template-columns: minmax(0, 1fr);
   }
 }
