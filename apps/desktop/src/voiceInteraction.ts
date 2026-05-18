@@ -1,3 +1,9 @@
+import {
+  buildCompanionBehaviorPrompt,
+  fallbackSoulGuidance,
+  type SoulGuidance,
+} from "./soulGuidance";
+
 export type VoiceSessionState = "idle" | "listening" | "thinking" | "speaking";
 
 export type VoiceActivationSource = "voice" | "text";
@@ -15,6 +21,7 @@ export type VoiceInteractionSnapshot = {
   transcript: string;
   fallbackText: string;
   response: string;
+  companionPrompt: string | null;
 };
 
 export const defaultVoiceInteractionSnapshot: VoiceInteractionSnapshot = {
@@ -24,11 +31,22 @@ export const defaultVoiceInteractionSnapshot: VoiceInteractionSnapshot = {
   transcript: "",
   fallbackText: "",
   response: "Ready for voice or text.",
+  companionPrompt: null,
 };
 
 export const mockVoiceTranscript = "Mock voice input: help me plan the next step.";
 export const mockVoiceResponse =
   "I heard the mock request. Voice is running locally without provider credentials.";
+
+export function companionPromptForInput(
+  userInput: string,
+  soulGuidance: SoulGuidance = fallbackSoulGuidance,
+): string {
+  return buildCompanionBehaviorPrompt({
+    guidance: soulGuidance,
+    userInput,
+  });
+}
 
 export function companionPresenceForVoiceState(
   sessionState: VoiceSessionState,
@@ -52,6 +70,7 @@ export function presenceLabelForState(state: CompanionPresenceState): string {
 export function nextMockVoiceSnapshot(
   snapshot: VoiceInteractionSnapshot,
   sessionState: VoiceSessionState,
+  soulGuidance: SoulGuidance = fallbackSoulGuidance,
 ): VoiceInteractionSnapshot {
   if (sessionState === "listening") {
     return {
@@ -60,6 +79,7 @@ export function nextMockVoiceSnapshot(
       sessionState,
       transcript: "Listening through local mock voice...",
       response: "Waiting for speech.",
+      companionPrompt: null,
     };
   }
 
@@ -69,14 +89,21 @@ export function nextMockVoiceSnapshot(
       sessionState,
       transcript: mockVoiceTranscript,
       response: "Thinking through the mock voice request.",
+      companionPrompt: null,
     };
   }
 
   if (sessionState === "speaking") {
+    const companionPrompt = companionPromptForInput(
+      snapshot.transcript || mockVoiceTranscript,
+      soulGuidance,
+    );
+
     return {
       ...snapshot,
       sessionState,
       response: snapshot.isMuted ? "Muted response ready." : mockVoiceResponse,
+      companionPrompt,
     };
   }
 
@@ -84,6 +111,7 @@ export function nextMockVoiceSnapshot(
     ...snapshot,
     sessionState,
     response: "Voice session complete.",
+    companionPrompt: null,
   };
 }
 
@@ -98,17 +126,25 @@ export function textFallbackThinkingSnapshot(
     fallbackText,
     transcript: fallbackText,
     response: "Reading text fallback.",
+    companionPrompt: null,
   };
 }
 
 export function textFallbackResponseSnapshot(
   snapshot: VoiceInteractionSnapshot,
+  soulGuidance: SoulGuidance = fallbackSoulGuidance,
 ): VoiceInteractionSnapshot {
+  const companionPrompt = companionPromptForInput(
+    snapshot.fallbackText,
+    soulGuidance,
+  );
+
   return {
     ...snapshot,
     sessionState: "speaking",
     response: snapshot.isMuted
       ? "Muted text response ready."
       : `Text fallback received: ${snapshot.fallbackText}`,
+    companionPrompt,
   };
 }

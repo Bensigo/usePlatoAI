@@ -39,7 +39,12 @@ import {
   stopMockSpeech,
 } from "../src/voiceOutput";
 import {
+  fallbackSoulGuidance,
+  type SoulGuidanceStore,
+} from "../src/soulGuidance";
+import {
   companionPresenceForVoiceState,
+  companionPromptForInput,
   defaultVoiceInteractionSnapshot,
   nextMockVoiceSnapshot,
   presenceLabelForState,
@@ -305,10 +310,64 @@ describe("desktop app shell", () => {
     expect(listening.sessionState).toBe("listening");
     expect(thinking.sessionState).toBe("thinking");
     expect(speaking.sessionState).toBe("speaking");
+    expect(speaking.companionPrompt).toContain("Trusted policy layer:");
+    expect(textThinking.companionPrompt).toBeNull();
     expect(textThinking.activationSource).toBe("text");
     expect(textThinking.sessionState).toBe("thinking");
     expect(textSpeaking.sessionState).toBe("speaking");
     expect(textSpeaking.response).toContain("Fallback now");
+    expect(textSpeaking.companionPrompt).toContain("Trusted policy layer:");
+  });
+
+  it("clears stale companion prompts outside active response snapshots", () => {
+    const activeResponse = textFallbackResponseSnapshot({
+      ...defaultVoiceInteractionSnapshot,
+      fallbackText: "Previous request",
+    });
+
+    expect(activeResponse.companionPrompt).toContain("Previous request");
+
+    const listening = nextMockVoiceSnapshot(activeResponse, "listening");
+    const thinking = nextMockVoiceSnapshot(activeResponse, "thinking");
+    const idle = nextMockVoiceSnapshot(activeResponse, "idle");
+    const textThinking = textFallbackThinkingSnapshot(
+      activeResponse,
+      "Next request",
+    );
+
+    expect(listening.companionPrompt).toBeNull();
+    expect(thinking.companionPrompt).toBeNull();
+    expect(idle.companionPrompt).toBeNull();
+    expect(textThinking.companionPrompt).toBeNull();
+  });
+
+  it("builds runtime companion prompts from local soul guidance", () => {
+    const guidance = {
+      ...fallbackSoulGuidance,
+      effectiveMarkdown: "# Custom Soul\n\nBe terse and candid.",
+    };
+    const companionPrompt = companionPromptForInput(
+      "Draft the next step.",
+      guidance,
+    );
+
+    expect(companionPrompt).toContain("Draft the next step.");
+    expect(companionPrompt).toContain("Be terse and candid.");
+    expect(companionPrompt).toContain("Trusted policy layer:");
+  });
+
+  it("accepts a soul guidance store for the runtime app wiring", () => {
+    const soulGuidanceStore: SoulGuidanceStore = {
+      read: async () => fallbackSoulGuidance,
+    };
+    const markup = renderToStaticMarkup(
+      <App
+        initialSettings={completedSettings}
+        soulGuidanceStore={soulGuidanceStore}
+      />,
+    );
+
+    expect(markup).toContain("Ready for voice or text.");
   });
 
   it("keeps the menu bar control surface interactive when the shell ignores pointer events", () => {
