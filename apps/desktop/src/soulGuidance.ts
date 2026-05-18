@@ -16,6 +16,16 @@ export const fallbackSoulGuidance: SoulGuidance = {
   unsafeDirectives: [],
 };
 
+export type SoulGuidanceStore = {
+  read: () => Promise<SoulGuidance>;
+};
+
+export function createTauriSoulGuidanceStore(): SoulGuidanceStore {
+  return {
+    read: readSoulGuidance,
+  };
+}
+
 export const untrustedSoulStartDelimiter = "BEGIN_UNTRUSTED_SOUL_MARKDOWN";
 export const untrustedSoulEndDelimiter = "END_UNTRUSTED_SOUL_MARKDOWN";
 
@@ -42,6 +52,21 @@ export function buildSoulGuidancePrompt(guidance: SoulGuidance): string {
     untrustedSoulStartDelimiter,
     effectiveMarkdown,
     untrustedSoulEndDelimiter,
+  ].join("\n");
+}
+
+export function buildCompanionBehaviorPrompt({
+  guidance,
+  userInput,
+}: {
+  guidance: SoulGuidance;
+  userInput: string;
+}): string {
+  return [
+    buildSoulGuidancePrompt(guidance),
+    "",
+    "Current user input:",
+    userInput,
   ].join("\n");
 }
 

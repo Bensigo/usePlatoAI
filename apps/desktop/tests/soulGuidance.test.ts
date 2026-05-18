@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  buildCompanionBehaviorPrompt,
   buildSoulGuidancePrompt,
   fallbackSoulGuidance,
   type SoulGuidance,
@@ -29,6 +30,15 @@ describe("soul guidance prompt", () => {
       Be terse.
       END_UNTRUSTED_SOUL_MARKDOWN"
     `);
+  });
+
+  it("adds local soul guidance to the companion behavior prompt", () => {
+    expect(
+      buildCompanionBehaviorPrompt({
+        guidance: fallbackSoulGuidance,
+        userInput: "Help me pick the next issue.",
+      }),
+    ).toContain("Current user input:\nHelp me pick the next issue.");
   });
 
   it("delimits adversarial soul markdown as untrusted data", () => {
