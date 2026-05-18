@@ -398,6 +398,11 @@ async function consumeSensitiveMemoryApproval(
       "trusted sensitive memory approval is not valid for this memory payload",
     );
   }
+  if (approval.usedAt) {
+    throw new Error("trusted sensitive memory approval has already been used");
+  }
+
+  approval.usedAt = new Date(0).toISOString();
 
   approval.usedAt = new Date(0).toISOString();
   return approval;

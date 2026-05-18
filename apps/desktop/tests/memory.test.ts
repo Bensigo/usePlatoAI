@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   createMemoryStore,
@@ -21,6 +21,10 @@ const approvedMemory: LocalMemoryInput = {
   sourceKind: "user-approved-sensitive-memory",
   metadata: { extractor: "local-test-boundary" },
 };
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 describe("memory store sensitive approval fallback", () => {
   it("rejects approved-sensitive writes without a registered trusted approval", async () => {
@@ -129,6 +133,82 @@ describe("memory store sensitive approval fallback", () => {
     });
   });
 
+  it("reserves an approval atomically after payload validation", async () => {
+    const store = createMemoryStore(
+      [],
+      true,
+      [
+        await createSensitiveMemoryApprovalRecord(
+          approvedMemory,
+          approvalEvidence,
+        ),
+      ],
+    );
+    const originalDigest = crypto.subtle.digest.bind(crypto.subtle);
+    let digestCalls = 0;
+    let releaseDigestCalls: (() => void) | null = null;
+    const waitForBothDigestCalls = new Promise<void>((resolve) => {
+      releaseDigestCalls = resolve;
+    });
+
+    vi.spyOn(crypto.subtle, "digest").mockImplementation(
+      async (
+        algorithm: AlgorithmIdentifier,
+        data: BufferSource,
+      ): Promise<ArrayBuffer> => {
+        digestCalls += 1;
+        if (digestCalls === 2) {
+          releaseDigestCalls?.();
+        }
+        await waitForBothDigestCalls;
+        return originalDigest(algorithm, data);
+      },
+    );
+
+    const results = await Promise.allSettled([
+      store.rememberApprovedSensitive(approvedMemory, approvalEvidence),
+      store.rememberApprovedSensitive(approvedMemory, approvalEvidence),
+    ]);
+    const fulfilled = results.filter((result) => result.status === "fulfilled");
+    const rejected = results.filter((result) => result.status === "rejected");
+
+    expect(fulfilled).toHaveLength(1);
+    expect(rejected).toHaveLength(1);
+    if (rejected[0]?.status !== "rejected") {
+      throw new Error("expected one concurrent approved-sensitive write to fail");
+    }
+    expect(rejected[0].reason).toBeInstanceOf(Error);
+    expect((rejected[0].reason as Error).message).toContain(
+      "already been used",
+    );
+  });
+
+  it("rolls back an approval reservation when the approved write fails", async () => {
+    const store = createMemoryStore(
+      [],
+      false,
+      [
+        await createSensitiveMemoryApprovalRecord(
+          approvedMemory,
+          approvalEvidence,
+        ),
+      ],
+    );
+
+    await expect(
+      store.rememberApprovedSensitive(approvedMemory, approvalEvidence),
+    ).rejects.toThrow("memory is disabled");
+
+    store.setMemoryEnabled(true);
+
+    await expect(
+      store.rememberApprovedSensitive(approvedMemory, approvalEvidence),
+    ).resolves.toMatchObject({
+      memoryId: approvedMemory.memoryId,
+      summary: approvedMemory.summary,
+    });
+  });
+
   it("rejects approval evidence bound to a different sensitive memory payload", async () => {
     const store = createMemoryStore(
       [],
@@ -194,31 +274,5 @@ describe("memory store sensitive approval fallback", () => {
       store.rememberApprovedSensitive(changedSourceKind, approvalEvidence),
     ).rejects.toThrow("memory source");
     await expect(store.read(approvedMemory.memoryId)).resolves.toBeNull();
-  });
-
-  it("rolls back approval use when the approved write fails", async () => {
-    const store = createMemoryStore(
-      [],
-      false,
-      [
-        await createSensitiveMemoryApprovalRecord(
-          approvedMemory,
-          approvalEvidence,
-        ),
-      ],
-    );
-
-    await expect(
-      store.rememberApprovedSensitive(approvedMemory, approvalEvidence),
-    ).rejects.toThrow("memory is disabled");
-
-    store.setMemoryEnabled(true);
-
-    await expect(
-      store.rememberApprovedSensitive(approvedMemory, approvalEvidence),
-    ).resolves.toMatchObject({
-      memoryId: approvedMemory.memoryId,
-      summary: approvedMemory.summary,
-    });
   });
 });
