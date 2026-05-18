@@ -6,7 +6,6 @@ use rusqlite::{params, Connection, OptionalExtension, Transaction, TransactionBe
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
-use uuid::Uuid;
 
 use crate::CompanionSettings;
 
@@ -613,50 +612,10 @@ impl LocalDataService {
         validate_memory_input(&request.memory, true)?;
         validate_sensitive_memory_approval_metadata(&request.metadata)?;
 
-        let approval_evidence = SensitiveMemoryApprovalEvidence {
-            approval_id: format!("approval-sensitive-memory-{}", Uuid::new_v4()),
-            approval_token: Uuid::new_v4().to_string(),
-        };
-        let approved_payload_hash = sensitive_memory_approval_payload_hash(&request.memory)?;
-        let metadata_json = encode_json(&request.metadata)?;
-
-        self.connection
-            .execute(
-                "
-                INSERT INTO sensitive_memory_approvals (
-                    approval_id,
-                    approval_token,
-                    approved_action,
-                    approved_memory_id,
-                    approved_source_kind,
-                    approved_payload_hash,
-                    metadata_json
-                )
-                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
-                ",
-                params![
-                    approval_evidence.approval_id.as_str(),
-                    approval_evidence.approval_token.as_str(),
-                    "memory.write_sensitive",
-                    request.memory.memory_id.as_str(),
-                    request.memory.source_kind.as_str(),
-                    approved_payload_hash,
-                    metadata_json
-                ],
-            )
-            .map_err(|error| error.to_string())?;
-
-        self.record_audit_entry(
-            "memory",
-            "memory.sensitive_approval_created",
-            json!({
-                "approvalId": approval_evidence.approval_id.as_str(),
-                "approvedAction": "memory.write_sensitive",
-                "memoryId": request.memory.memory_id.as_str(),
-            }),
-        )?;
-
-        Ok(approval_evidence)
+        Err(
+            "sensitive memory approval evidence must be issued by a trusted human approval boundary"
+                .to_string(),
+        )
     }
 
     fn upsert_memory_record_with_sensitive_approval(
@@ -2511,15 +2470,13 @@ mod tests {
         let service = LocalDataService::in_memory().expect("create in-memory service");
         let sensitive_summary = "User API key = sk_test_1234567890abcdef";
         let memory = approved_sensitive_memory("memory-approved-api-key");
-        let approval_evidence = service
-            .create_sensitive_memory_approval(&SensitiveMemoryApprovalRequest {
-                memory: memory.clone(),
-                metadata: json!({
-                    "surface": "human-approval-prompt",
-                    "reason": "User approved remembering sensitive data."
-                }),
-            })
-            .expect("create trusted approval evidence");
+        let approval_evidence = SensitiveMemoryApprovalEvidence {
+            approval_id: "approval-sensitive-memory-native-state".to_string(),
+            approval_token: "trusted-token-from-native-approval-state".to_string(),
+        };
+        service
+            .insert_sensitive_memory_approval_for_test(&approval_evidence, &memory)
+            .expect("insert trusted approval evidence");
 
         let saved = service
             .upsert_approved_sensitive_memory_record(&memory, &approval_evidence)
@@ -2533,11 +2490,6 @@ mod tests {
             .read_recent_audit_history(5)
             .expect("read approval audit history");
         assert!(audit_history.iter().any(|entry| {
-            entry.action == "memory.sensitive_approval_created"
-                && entry.metadata["approvalId"] == approval_evidence.approval_id
-                && entry.metadata["approvedAction"] == "memory.write_sensitive"
-        }));
-        assert!(audit_history.iter().any(|entry| {
             entry.action == "memory.sensitive_approval_used"
                 && entry.metadata["approvalId"] == approval_evidence.approval_id
                 && entry.metadata["approvedAction"] == "memory.write_sensitive"
@@ -2546,6 +2498,35 @@ mod tests {
             entry.action == "memory.upserted"
                 && entry.metadata["sensitiveApprovalId"] == approval_evidence.approval_id
         }));
+    }
+
+    #[test]
+    fn sensitive_memory_approval_request_does_not_mint_consumable_evidence() {
+        let service = LocalDataService::in_memory().expect("create in-memory service");
+        let memory = approved_sensitive_memory("memory-self-minted-approval");
+
+        let error = service
+            .create_sensitive_memory_approval(&SensitiveMemoryApprovalRequest {
+                memory: memory.clone(),
+                metadata: json!({
+                    "surface": "human-approval-prompt",
+                    "reason": "User approved remembering sensitive data."
+                }),
+            })
+            .expect_err("memory code cannot mint approval evidence");
+
+        assert!(error.contains("trusted human approval boundary"));
+        assert_eq!(
+            service
+                .read_memory_record(&memory.memory_id)
+                .expect("read rejected sensitive memory"),
+            None
+        );
+        assert!(!service
+            .read_recent_audit_history(5)
+            .expect("read audit history")
+            .iter()
+            .any(|entry| entry.action == "memory.sensitive_approval_created"));
     }
 
     #[test]

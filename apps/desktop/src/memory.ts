@@ -185,7 +185,6 @@ export function createMemoryStore(
       { ...approval },
     ]),
   );
-  let approvalSequence = 0;
   let isMemoryEnabled = initialEnabled;
 
   async function rememberMemory(
@@ -220,16 +219,9 @@ export function createMemoryStore(
     },
     async approveSensitiveMemoryWrite(request) {
       validateSensitiveMemoryApprovalMetadata(request.metadata);
-      approvalSequence += 1;
-      const approvalEvidence = {
-        approvalId: `approval-sensitive-memory-${approvalSequence}`,
-        approvalToken: `trusted-token-${approvalSequence}`,
-      };
-      sensitiveMemoryApprovals.set(
-        approvalEvidence.approvalId,
-        await createSensitiveMemoryApprovalRecord(request.memory, approvalEvidence),
+      throw new Error(
+        "sensitive memory approval evidence must be issued by a trusted human approval boundary",
       );
-      return approvalEvidence;
     },
     async rememberApprovedSensitive(memory, approvalEvidence) {
       const approval = await consumeSensitiveMemoryApproval(
@@ -401,8 +393,6 @@ async function consumeSensitiveMemoryApproval(
   if (approval.usedAt) {
     throw new Error("trusted sensitive memory approval has already been used");
   }
-
-  approval.usedAt = new Date(0).toISOString();
 
   approval.usedAt = new Date(0).toISOString();
   return approval;

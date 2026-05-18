@@ -36,7 +36,7 @@ describe("memory store sensitive approval fallback", () => {
     await expect(store.read(approvedMemory.memoryId)).resolves.toBeNull();
   });
 
-  it("validates raw transcript approval metadata before minting evidence", async () => {
+  it("validates raw transcript approval metadata before accepting an approval request", async () => {
     const store = createMemoryStore();
 
     await expect(
@@ -50,7 +50,7 @@ describe("memory store sensitive approval fallback", () => {
     ).rejects.toThrow("raw transcript material");
   });
 
-  it("validates sensitive approval metadata before minting evidence", async () => {
+  it("validates sensitive approval metadata before accepting an approval request", async () => {
     const store = createMemoryStore();
 
     await expect(
@@ -64,7 +64,7 @@ describe("memory store sensitive approval fallback", () => {
     ).rejects.toThrow("sensitive values");
   });
 
-  it("requires complete approval provenance before minting evidence", async () => {
+  it("requires complete approval provenance before accepting an approval request", async () => {
     const store = createMemoryStore();
 
     await expect(
@@ -77,7 +77,7 @@ describe("memory store sensitive approval fallback", () => {
     ).rejects.toThrow("reason");
   });
 
-  it("rejects unschematized approval metadata before minting evidence", async () => {
+  it("rejects unschematized approval metadata before accepting an approval request", async () => {
     const store = createMemoryStore();
 
     await expect(
@@ -115,22 +115,19 @@ describe("memory store sensitive approval fallback", () => {
     ).rejects.toThrow("already been used");
   });
 
-  it("mints fallback approvals bound to the requested memory payload", async () => {
+  it("does not let fallback callers mint consumable approval evidence", async () => {
     const store = createMemoryStore();
-    const mintedApproval = await store.approveSensitiveMemoryWrite({
-      memory: approvedMemory,
-      metadata: {
-        surface: "human-approval-prompt",
-        reason: "User approved remembering sensitive data.",
-      },
-    });
 
     await expect(
-      store.rememberApprovedSensitive(approvedMemory, mintedApproval),
-    ).resolves.toMatchObject({
-      memoryId: approvedMemory.memoryId,
-      summary: approvedMemory.summary,
-    });
+      store.approveSensitiveMemoryWrite({
+        memory: approvedMemory,
+        metadata: {
+          surface: "human-approval-prompt",
+          reason: "User approved remembering sensitive data.",
+        },
+      }),
+    ).rejects.toThrow("trusted human approval boundary");
+    await expect(store.read(approvedMemory.memoryId)).resolves.toBeNull();
   });
 
   it("reserves an approval atomically after payload validation", async () => {
