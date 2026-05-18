@@ -96,6 +96,32 @@ function avatarPresenceStateFor(state: string): AvatarPresenceState {
   return isAvatarPresenceState(state) ? state : "idle";
 }
 
+export function isActiveCorrectionPromptTransition({
+  snapshot,
+  source,
+  promptInput,
+  requestId,
+  activeRequestId,
+}: {
+  snapshot: VoiceInteractionSnapshot;
+  source: "voice" | "text";
+  promptInput: string;
+  requestId: number;
+  activeRequestId: number;
+}) {
+  if (
+    requestId !== activeRequestId ||
+    snapshot.sessionState !== "speaking" ||
+    snapshot.activationSource !== source
+  ) {
+    return false;
+  }
+
+  return source === "text"
+    ? snapshot.fallbackText === promptInput
+    : (snapshot.transcript || mockVoiceTranscript) === promptInput;
+}
+
 export function DismissedPresence({ onRestore }: { onRestore: () => void }) {
   return (
     <section className="restore-card" aria-label="Plato presence hidden">
@@ -1100,6 +1126,7 @@ export function App({
   const [soulGuidance, setSoulGuidance] =
     useState<SoulGuidance>(fallbackSoulGuidance);
   const voiceTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const correctionPromptRequestId = useRef(0);
 
   function clearVoiceTimers() {
     for (const timer of voiceTimers.current) {
@@ -1134,6 +1161,8 @@ export function App({
 
   function setVoiceInteractionWithCorrectionPrompt(source: "voice" | "text") {
     setVoiceInteraction((current) => {
+      const requestId = correctionPromptRequestId.current + 1;
+      correctionPromptRequestId.current = requestId;
       const responseSnapshot =
         source === "text"
           ? textFallbackResponseSnapshot(current, soulGuidance)
@@ -1149,16 +1178,28 @@ export function App({
         soulGuidance,
       )
         .then((companionPrompt) => {
-          setVoiceInteraction((latest) => ({
-            ...(source === "text"
-              ? textFallbackResponseSnapshot(latest, soulGuidance)
-              : nextMockVoiceSnapshot(latest, "speaking", soulGuidance)),
-            companionPrompt,
-          }));
+          setVoiceInteraction((latest) => {
+            if (
+              !isActiveCorrectionPromptTransition({
+                snapshot: latest,
+                source,
+                promptInput,
+                requestId,
+                activeRequestId: correctionPromptRequestId.current,
+              })
+            ) {
+              return latest;
+            }
+
+            return {
+              ...(source === "text"
+                ? textFallbackResponseSnapshot(latest, soulGuidance)
+                : nextMockVoiceSnapshot(latest, "speaking", soulGuidance)),
+              companionPrompt,
+            };
+          });
         })
-        .catch(() => {
-          setVoiceInteraction(responseSnapshot);
-        });
+        .catch(() => undefined);
 
       return responseSnapshot;
     });
@@ -1166,6 +1207,7 @@ export function App({
 
   function startVoiceInteraction() {
     clearVoiceTimers();
+    correctionPromptRequestId.current += 1;
     setVoiceInteraction((current) =>
       nextMockVoiceSnapshot(current, "listening", soulGuidance),
     );
@@ -1176,6 +1218,7 @@ export function App({
 
   function stopVoiceInteraction() {
     clearVoiceTimers();
+    correctionPromptRequestId.current += 1;
     setVoiceInteraction((current) => ({
       ...current,
       sessionState: "idle",
@@ -1196,6 +1239,7 @@ export function App({
     }
 
     clearVoiceTimers();
+    correctionPromptRequestId.current += 1;
     setVoiceInteraction((current) =>
       textFallbackThinkingSnapshot(current, fallbackText),
     );

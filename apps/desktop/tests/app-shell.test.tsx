@@ -12,6 +12,7 @@ import {
   MemoryBrowserPanel,
   SoulEditorPanel,
   VoiceInteractionPanel,
+  isActiveCorrectionPromptTransition,
 } from "../src/App";
 import {
   Live2DAvatarSurface,
@@ -484,6 +485,51 @@ describe("desktop app shell", () => {
     expect(companionPrompt).toContain(
       "When answering planning questions, state the blocker before the plan.",
     );
+  });
+
+  it("rejects stale async correction prompt results after the active response changes", () => {
+    const speaking = textFallbackResponseSnapshot({
+      ...defaultVoiceInteractionSnapshot,
+      activationSource: "text",
+      fallbackText: "Original request",
+    });
+
+    expect(
+      isActiveCorrectionPromptTransition({
+        snapshot: speaking,
+        source: "text",
+        promptInput: "Original request",
+        requestId: 2,
+        activeRequestId: 2,
+      }),
+    ).toBe(true);
+    expect(
+      isActiveCorrectionPromptTransition({
+        snapshot: { ...speaking, sessionState: "idle" },
+        source: "text",
+        promptInput: "Original request",
+        requestId: 2,
+        activeRequestId: 2,
+      }),
+    ).toBe(false);
+    expect(
+      isActiveCorrectionPromptTransition({
+        snapshot: speaking,
+        source: "text",
+        promptInput: "Original request",
+        requestId: 1,
+        activeRequestId: 2,
+      }),
+    ).toBe(false);
+    expect(
+      isActiveCorrectionPromptTransition({
+        snapshot: { ...speaking, fallbackText: "New request" },
+        source: "text",
+        promptInput: "Original request",
+        requestId: 2,
+        activeRequestId: 2,
+      }),
+    ).toBe(false);
   });
 
   it("accepts a soul guidance store for the runtime app wiring", () => {
