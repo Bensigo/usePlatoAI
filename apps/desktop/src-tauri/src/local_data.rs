@@ -34,6 +34,47 @@ pub struct TaskMetadata {
     pub metadata: Value,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum LocalMemoryKind {
+    Summary,
+    Preference,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LocalMemoryInput {
+    pub memory_id: String,
+    pub memory_kind: LocalMemoryKind,
+    pub summary: String,
+    pub preference_key: Option<String>,
+    pub preference_value: Option<Value>,
+    pub source_kind: String,
+    pub metadata: Value,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LocalMemoryRecord {
+    pub memory_id: String,
+    pub memory_kind: LocalMemoryKind,
+    pub summary: String,
+    pub preference_key: Option<String>,
+    pub preference_value: Option<Value>,
+    pub source_kind: String,
+    pub metadata: Value,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LocalMemoryRetrievalQuery {
+    pub query: Option<String>,
+    pub memory_kind: Option<LocalMemoryKind>,
+    pub limit: Option<u32>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AuditHistoryEntry {
@@ -200,9 +241,13 @@ impl LocalDataService {
 
                 CREATE TABLE IF NOT EXISTS memory_metadata (
                     memory_id TEXT PRIMARY KEY,
+                    memory_kind TEXT NOT NULL DEFAULT 'summary',
                     summary TEXT NOT NULL,
+                    preference_key TEXT,
+                    preference_value_json TEXT,
                     source_kind TEXT NOT NULL,
                     metadata_json TEXT NOT NULL DEFAULT '{}',
+                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
                 );
 
@@ -229,7 +274,9 @@ impl LocalDataService {
                 );
                 ",
             )
-            .map_err(|error| error.to_string())
+            .map_err(|error| error.to_string())?;
+
+        self.migrate_memory_metadata_columns()
     }
 
     pub fn read_companion_settings(&self) -> Result<Option<CompanionSettings>, String> {
@@ -514,6 +561,188 @@ impl LocalDataService {
             .map_err(|error| error.to_string())
     }
 
+    pub fn upsert_memory_record(
+        &self,
+        memory: &LocalMemoryInput,
+    ) -> Result<LocalMemoryRecord, String> {
+        validate_memory_input(memory)?;
+
+        let memory_kind = memory_kind_key(memory.memory_kind);
+        let preference_value_json = memory
+            .preference_value
+            .as_ref()
+            .map(encode_json)
+            .transpose()?;
+        let metadata_json = encode_json(&memory.metadata)?;
+
+        self.connection
+            .execute(
+                "
+                INSERT INTO memory_metadata (
+                    memory_id,
+                    memory_kind,
+                    summary,
+                    preference_key,
+                    preference_value_json,
+                    source_kind,
+                    metadata_json,
+                    created_at,
+                    updated_at
+                )
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                ON CONFLICT(memory_id) DO UPDATE SET
+                    memory_kind = excluded.memory_kind,
+                    summary = excluded.summary,
+                    preference_key = excluded.preference_key,
+                    preference_value_json = excluded.preference_value_json,
+                    source_kind = excluded.source_kind,
+                    metadata_json = excluded.metadata_json,
+                    updated_at = excluded.updated_at
+                ",
+                params![
+                    memory.memory_id,
+                    memory_kind,
+                    memory.summary,
+                    memory.preference_key,
+                    preference_value_json,
+                    memory.source_kind,
+                    metadata_json
+                ],
+            )
+            .map_err(|error| error.to_string())?;
+
+        self.record_audit_entry(
+            "memory",
+            "memory.upserted",
+            json!({
+                "memoryId": memory.memory_id,
+                "memoryKind": memory_kind,
+                "sourceKind": memory.source_kind,
+            }),
+        )?;
+
+        self.read_memory_record(&memory.memory_id)?
+            .ok_or_else(|| format!("memory record `{}` was not persisted", memory.memory_id))
+    }
+
+    pub fn read_memory_record(&self, memory_id: &str) -> Result<Option<LocalMemoryRecord>, String> {
+        self.connection
+            .query_row(
+                "
+                SELECT
+                    memory_id,
+                    memory_kind,
+                    summary,
+                    preference_key,
+                    preference_value_json,
+                    source_kind,
+                    metadata_json,
+                    created_at,
+                    updated_at
+                FROM memory_metadata
+                WHERE memory_id = ?1
+                ",
+                [memory_id],
+                memory_record_from_row,
+            )
+            .optional()
+            .map_err(|error| error.to_string())
+    }
+
+    pub fn read_memory_preference(
+        &self,
+        preference_key: &str,
+    ) -> Result<Option<LocalMemoryRecord>, String> {
+        self.connection
+            .query_row(
+                "
+                SELECT
+                    memory_id,
+                    memory_kind,
+                    summary,
+                    preference_key,
+                    preference_value_json,
+                    source_kind,
+                    metadata_json,
+                    created_at,
+                    updated_at
+                FROM memory_metadata
+                WHERE memory_kind = 'preference' AND preference_key = ?1
+                ORDER BY updated_at DESC, memory_id DESC
+                LIMIT 1
+                ",
+                [preference_key],
+                memory_record_from_row,
+            )
+            .optional()
+            .map_err(|error| error.to_string())
+    }
+
+    pub fn retrieve_memory_records(
+        &self,
+        query: &LocalMemoryRetrievalQuery,
+    ) -> Result<Vec<LocalMemoryRecord>, String> {
+        let limit = query.limit.unwrap_or(10).clamp(1, 50);
+        let mut where_clauses = Vec::new();
+        let mut values = Vec::new();
+
+        if let Some(kind) = query.memory_kind {
+            where_clauses.push("memory_kind = ?".to_string());
+            values.push(memory_kind_key(kind).to_string());
+        }
+
+        if let Some(text_query) = query.query.as_ref().map(|value| value.trim()) {
+            if !text_query.is_empty() {
+                where_clauses.push(
+                    "(summary LIKE ? OR COALESCE(preference_key, '') LIKE ? OR COALESCE(preference_value_json, '') LIKE ?)".to_string(),
+                );
+                let pattern = format!("%{text_query}%");
+                values.push(pattern.clone());
+                values.push(pattern.clone());
+                values.push(pattern);
+            }
+        }
+
+        let filter_sql = if where_clauses.is_empty() {
+            String::new()
+        } else {
+            format!("WHERE {}", where_clauses.join(" AND "))
+        };
+        let sql = format!(
+            "
+            SELECT
+                memory_id,
+                memory_kind,
+                summary,
+                preference_key,
+                preference_value_json,
+                source_kind,
+                metadata_json,
+                created_at,
+                updated_at
+            FROM memory_metadata
+            {filter_sql}
+            ORDER BY updated_at DESC, memory_id DESC
+            LIMIT {limit}
+            "
+        );
+
+        let mut statement = self
+            .connection
+            .prepare(&sql)
+            .map_err(|error| error.to_string())?;
+        let records = statement
+            .query_map(
+                rusqlite::params_from_iter(values.iter()),
+                memory_record_from_row,
+            )
+            .map_err(|error| error.to_string())?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|error| error.to_string())?;
+
+        Ok(records)
+    }
+
     pub fn read_recent_audit_history(&self, limit: u32) -> Result<Vec<AuditHistoryEntry>, String> {
         let limit = limit.clamp(1, 100);
         let mut statement = self
@@ -628,7 +857,7 @@ impl LocalDataService {
             memory_status: MemoryStatus {
                 mode: settings.memory_mode,
                 record_count: memory_count,
-                intelligence_status: "metadata-only".to_string(),
+                intelligence_status: "local-storage-boundary".to_string(),
             },
         })
     }
@@ -669,6 +898,42 @@ impl LocalDataService {
             )
             .map(|_| ())
             .map_err(|error| error.to_string())
+    }
+
+    fn migrate_memory_metadata_columns(&self) -> Result<(), String> {
+        for (column_name, column_definition) in [
+            ("memory_kind", "TEXT NOT NULL DEFAULT 'summary'"),
+            ("preference_key", "TEXT"),
+            ("preference_value_json", "TEXT"),
+            ("created_at", "TEXT NOT NULL DEFAULT ''"),
+        ] {
+            if !self.table_column_exists("memory_metadata", column_name)? {
+                self.connection
+                    .execute(
+                        &format!(
+                            "ALTER TABLE memory_metadata ADD COLUMN {column_name} {column_definition}"
+                        ),
+                        [],
+                    )
+                    .map_err(|error| error.to_string())?;
+            }
+        }
+
+        Ok(())
+    }
+
+    fn table_column_exists(&self, table_name: &str, column_name: &str) -> Result<bool, String> {
+        let mut statement = self
+            .connection
+            .prepare(&format!("PRAGMA table_info({table_name})"))
+            .map_err(|error| error.to_string())?;
+        let columns = statement
+            .query_map([], |row| row.get::<_, String>(1))
+            .map_err(|error| error.to_string())?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|error| error.to_string())?;
+
+        Ok(columns.iter().any(|column| column == column_name))
     }
 
     #[cfg(test)]
@@ -894,8 +1159,138 @@ fn status_for_count(count: i64) -> String {
     }
 }
 
+fn memory_kind_key(kind: LocalMemoryKind) -> &'static str {
+    match kind {
+        LocalMemoryKind::Summary => "summary",
+        LocalMemoryKind::Preference => "preference",
+    }
+}
+
+fn parse_memory_kind(value: &str) -> Result<LocalMemoryKind, String> {
+    match value {
+        "summary" => Ok(LocalMemoryKind::Summary),
+        "preference" => Ok(LocalMemoryKind::Preference),
+        unknown => Err(format!("unknown memory kind `{unknown}`")),
+    }
+}
+
+fn memory_record_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<LocalMemoryRecord> {
+    let memory_kind: String = row.get(1)?;
+    let preference_value_json: Option<String> = row.get(4)?;
+    let metadata_json: String = row.get(6)?;
+    let memory_kind = parse_memory_kind(&memory_kind).map_err(|error| {
+        rusqlite::Error::FromSqlConversionFailure(
+            1,
+            rusqlite::types::Type::Text,
+            Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, error)),
+        )
+    })?;
+    let preference_value = preference_value_json
+        .map(|value| {
+            serde_json::from_str(&value).map_err(|error| {
+                rusqlite::Error::FromSqlConversionFailure(
+                    4,
+                    rusqlite::types::Type::Text,
+                    Box::new(error),
+                )
+            })
+        })
+        .transpose()?;
+    let metadata = serde_json::from_str(&metadata_json).map_err(|error| {
+        rusqlite::Error::FromSqlConversionFailure(6, rusqlite::types::Type::Text, Box::new(error))
+    })?;
+
+    Ok(LocalMemoryRecord {
+        memory_id: row.get(0)?,
+        memory_kind,
+        summary: row.get(2)?,
+        preference_key: row.get(3)?,
+        preference_value,
+        source_kind: row.get(5)?,
+        metadata,
+        created_at: row.get(7)?,
+        updated_at: row.get(8)?,
+    })
+}
+
+fn validate_memory_input(memory: &LocalMemoryInput) -> Result<(), String> {
+    if memory.memory_id.trim().is_empty() {
+        return Err("memory id is required".to_string());
+    }
+    if memory.summary.trim().is_empty() {
+        return Err("memory summary is required".to_string());
+    }
+    if memory.source_kind.trim().is_empty() {
+        return Err("memory source kind is required".to_string());
+    }
+    reject_raw_transcript_material(&memory.metadata)?;
+
+    match memory.memory_kind {
+        LocalMemoryKind::Summary => {
+            if memory.preference_key.is_some() || memory.preference_value.is_some() {
+                return Err("summary memory must not include preference fields".to_string());
+            }
+        }
+        LocalMemoryKind::Preference => {
+            if memory
+                .preference_key
+                .as_ref()
+                .map(|key| key.trim().is_empty())
+                .unwrap_or(true)
+            {
+                return Err("preference memory requires a preference key".to_string());
+            }
+            if memory.preference_value.is_none() {
+                return Err("preference memory requires a preference value".to_string());
+            }
+        }
+    }
+
+    Ok(())
+}
+
 pub(crate) fn validate_provider_metadata(value: &Value) -> Result<(), String> {
     reject_secret_material(value)
+}
+
+fn reject_raw_transcript_material(value: &Value) -> Result<(), String> {
+    match value {
+        Value::Object(entries) => {
+            for (key, value) in entries {
+                let normalized_key = key
+                    .chars()
+                    .filter(|character| character.is_ascii_alphanumeric())
+                    .collect::<String>()
+                    .to_ascii_lowercase();
+                if [
+                    "transcript",
+                    "rawtranscript",
+                    "conversationlog",
+                    "fullconversation",
+                    "rawmessages",
+                    "messagelog",
+                ]
+                .contains(&normalized_key.as_str())
+                {
+                    return Err(format!(
+                        "memory metadata must not include raw transcript material in `{key}`"
+                    ));
+                }
+
+                reject_raw_transcript_material(value)?;
+            }
+
+            Ok(())
+        }
+        Value::Array(values) => {
+            for value in values {
+                reject_raw_transcript_material(value)?;
+            }
+
+            Ok(())
+        }
+        _ => Ok(()),
+    }
 }
 
 fn reject_secret_material(value: &Value) -> Result<(), String> {
@@ -1091,6 +1486,123 @@ mod tests {
     }
 
     #[test]
+    fn creates_reads_and_retrieves_summary_and_preference_memory() {
+        let service = LocalDataService::in_memory().expect("create in-memory service");
+        let summary_memory = LocalMemoryInput {
+            memory_id: "memory-summary-1".to_string(),
+            memory_kind: LocalMemoryKind::Summary,
+            summary: "User prefers direct implementation notes over generic advice.".to_string(),
+            preference_key: None,
+            preference_value: None,
+            source_kind: "conversation-summary".to_string(),
+            metadata: json!({ "extractor": "local-test-boundary" }),
+        };
+        let preference_memory = LocalMemoryInput {
+            memory_id: "memory-preference-1".to_string(),
+            memory_kind: LocalMemoryKind::Preference,
+            summary: "User wants verification notes in every implementation PR.".to_string(),
+            preference_key: Some("pr.verification_notes".to_string()),
+            preference_value: Some(json!(true)),
+            source_kind: "user-approved-preference".to_string(),
+            metadata: json!({ "extractor": "local-test-boundary" }),
+        };
+
+        let saved_summary = service
+            .upsert_memory_record(&summary_memory)
+            .expect("save summary memory");
+        let saved_preference = service
+            .upsert_memory_record(&preference_memory)
+            .expect("save preference memory");
+
+        assert_eq!(saved_summary.memory_kind, LocalMemoryKind::Summary);
+        assert_eq!(saved_preference.memory_kind, LocalMemoryKind::Preference);
+        assert_eq!(
+            service
+                .read_memory_record("memory-summary-1")
+                .expect("read summary memory")
+                .expect("summary memory")
+                .summary,
+            summary_memory.summary
+        );
+        assert_eq!(
+            service
+                .read_memory_preference("pr.verification_notes")
+                .expect("read preference")
+                .expect("preference")
+                .preference_value,
+            Some(json!(true))
+        );
+
+        let retrieved = service
+            .retrieve_memory_records(&LocalMemoryRetrievalQuery {
+                query: Some("verification".to_string()),
+                memory_kind: Some(LocalMemoryKind::Preference),
+                limit: Some(5),
+            })
+            .expect("retrieve memories");
+
+        assert_eq!(retrieved, vec![saved_preference]);
+    }
+
+    #[test]
+    fn memory_writes_reject_raw_transcript_metadata() {
+        let service = LocalDataService::in_memory().expect("create in-memory service");
+        let raw_transcript = "User: keep this exact transcript out of durable memory";
+        let memory = LocalMemoryInput {
+            memory_id: "memory-raw-transcript".to_string(),
+            memory_kind: LocalMemoryKind::Summary,
+            summary: "User prefers not to store raw transcripts.".to_string(),
+            preference_key: None,
+            preference_value: None,
+            source_kind: "conversation-summary".to_string(),
+            metadata: json!({ "rawTranscript": raw_transcript }),
+        };
+
+        let error = service
+            .upsert_memory_record(&memory)
+            .expect_err("raw transcripts are rejected");
+
+        assert!(error.contains("raw transcript"));
+        assert_eq!(
+            service
+                .read_memory_record("memory-raw-transcript")
+                .expect("read rejected memory"),
+            None
+        );
+        assert!(!service
+            .contains_plaintext(raw_transcript)
+            .expect("scan persisted local data"));
+    }
+
+    #[test]
+    fn memory_boundary_validates_summary_and_preference_shapes() {
+        let service = LocalDataService::in_memory().expect("create in-memory service");
+        let missing_summary = LocalMemoryInput {
+            memory_id: "memory-missing-summary".to_string(),
+            memory_kind: LocalMemoryKind::Summary,
+            summary: " ".to_string(),
+            preference_key: None,
+            preference_value: None,
+            source_kind: "conversation-summary".to_string(),
+            metadata: json!({}),
+        };
+        let incomplete_preference = LocalMemoryInput {
+            memory_id: "memory-incomplete-preference".to_string(),
+            memory_kind: LocalMemoryKind::Preference,
+            summary: "User prefers concise replies.".to_string(),
+            preference_key: Some("communication.concise".to_string()),
+            preference_value: None,
+            source_kind: "user-approved-preference".to_string(),
+            metadata: json!({}),
+        };
+
+        assert!(service.upsert_memory_record(&missing_summary).is_err());
+        assert!(service
+            .upsert_memory_record(&incomplete_preference)
+            .is_err());
+    }
+
+    #[test]
     fn records_recent_audit_history_for_settings_changes() {
         let service = LocalDataService::in_memory().expect("create in-memory service");
         let mut settings = test_settings();
@@ -1164,7 +1676,10 @@ mod tests {
             ]
         );
         assert_eq!(overview.memory_status.mode, "paused");
-        assert_eq!(overview.memory_status.intelligence_status, "metadata-only");
+        assert_eq!(
+            overview.memory_status.intelligence_status,
+            "local-storage-boundary"
+        );
         assert_eq!(
             overview
                 .categories
