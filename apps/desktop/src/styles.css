@@ -453,6 +453,7 @@ h1 {
 .onboarding-panel {
   padding: 16px;
   background: rgb(255 255 255 / 96%);
+  pointer-events: auto;
 }
 
 .onboarding-panel h1 {

@@ -553,6 +553,7 @@ export function App({
     [settingsStore],
   );
   const [activeEntry, setActiveEntry] = useState<ControlSurfaceId>("settings");
+  const [isControlSurfaceVisible, setIsControlSurfaceVisible] = useState(false);
   const [isDismissed, setIsDismissed] = useState(false);
   const [settings, setSettings] = useState<CompanionSettings>(
     () => initialSettings ?? defaultCompanionSettings,
@@ -605,6 +606,7 @@ export function App({
         listen<ControlSurfaceId>("plato-control-surface://open", (event) => {
           if (isControlSurfaceId(event.payload)) {
             setActiveEntry(event.payload);
+            setIsControlSurfaceVisible(true);
           }
         }),
       )
@@ -686,7 +688,7 @@ export function App({
       <section
         className="control-surface"
         aria-label="Menu bar control surface"
-        hidden
+        hidden={!isControlSurfaceVisible}
       >
         <nav className="control-nav" aria-label="Control surface entries">
           {controlSurfaceEntries.map((entry) => (
