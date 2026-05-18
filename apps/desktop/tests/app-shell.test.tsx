@@ -20,7 +20,12 @@ import {
   type AvatarPresenceState,
 } from "../src/avatarSurface";
 import { controlSurfaceEntries } from "../src/controlSurface";
-import { createMemoryStore } from "../src/memory";
+import {
+  createMemoryStore,
+  rememberExtractedMemory,
+  retrieveUserCorrections,
+  saveUserCorrectionMemory,
+} from "../src/memory";
 import {
   createMemoryPresenceStateSource,
   normalizePresenceState,
@@ -312,6 +317,68 @@ describe("desktop app shell", () => {
     ).resolves.toMatchObject({
       summary: "Existing memory remains repairable while paused.",
     });
+  });
+
+  it("skips sensitive extracted memories unless the user explicitly approves saving them", async () => {
+    const memoryStore = createMemoryStore();
+    const sensitiveSummary = "User API key = sk_test_1234567890abcdef";
+
+    await expect(
+      rememberExtractedMemory(memoryStore, {
+        memoryId: "memory-sensitive-1",
+        memoryKind: "summary",
+        summary: sensitiveSummary,
+        sourceKind: "conversation-summary",
+        metadata: { extractor: "local-test-boundary" },
+      }),
+    ).resolves.toBeNull();
+    await expect(memoryStore.read("memory-sensitive-1")).resolves.toBeNull();
+
+    await expect(
+      memoryStore.remember({
+        memoryId: "memory-sensitive-direct",
+        memoryKind: "summary",
+        summary: sensitiveSummary,
+        sourceKind: "conversation-summary",
+        metadata: { extractor: "local-test-boundary" },
+      }),
+    ).rejects.toThrow("explicit approval is required");
+
+    await expect(
+      rememberExtractedMemory(memoryStore, {
+        memoryId: "memory-sensitive-approved",
+        memoryKind: "summary",
+        summary: sensitiveSummary,
+        sourceKind: "user-approved-sensitive-memory",
+        metadata: {
+          extractor: "local-test-boundary",
+          sensitiveDataApproved: true,
+        },
+      }),
+    ).resolves.toMatchObject({
+      memoryId: "memory-sensitive-approved",
+      summary: sensitiveSummary,
+    });
+  });
+
+  it("saves user corrections as replayable memory", async () => {
+    const memoryStore = createMemoryStore();
+
+    await saveUserCorrectionMemory(memoryStore, {
+      correctionId: "correction-status-tone",
+      correction: "When giving status updates, be blunt about blockers first.",
+      appliesTo: "status updates",
+    });
+
+    await expect(
+      retrieveUserCorrections(memoryStore, "blockers first"),
+    ).resolves.toMatchObject([
+      {
+        memoryKind: "correction",
+        sourceKind: "user-correction",
+        summary: "When giving status updates, be blunt about blockers first.",
+      },
+    ]);
   });
 
   it("renders the voice interaction panel for an active session state", () => {

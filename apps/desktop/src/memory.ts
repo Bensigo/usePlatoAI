@@ -1,4 +1,4 @@
-export type LocalMemoryKind = "summary" | "preference";
+export type LocalMemoryKind = "summary" | "preference" | "correction";
 
 export type LocalMemoryInput = {
   memoryId: string;
@@ -30,6 +30,109 @@ export type MemoryStore = {
   setMemoryEnabled: (isEnabled: boolean) => void;
 };
 
+export type UserCorrectionInput = {
+  correctionId: string;
+  correction: string;
+  appliesTo?: string | null;
+  metadata?: Record<string, unknown>;
+};
+
+const sensitiveJsonKeyFragments = [
+  "secret",
+  "credential",
+  "password",
+  "passcode",
+  "api_key",
+  "apikey",
+  "access_token",
+  "refreshtoken",
+  "refresh_token",
+  "token",
+  "bearer",
+  "creditcard",
+  "credit_card",
+  "cardnumber",
+  "card_number",
+  "cvv",
+  "cvc",
+  "ssn",
+  "socialsecurity",
+  "private_message",
+  "privatemessage",
+  "confidential",
+];
+
+const sensitiveTextPatterns = [
+  /\b(?:sk|pk|rk|pat|ghp|gho|ghu|ghs|github_pat)_[A-Za-z0-9_=-]{12,}\b/i,
+  /\b(?:api[_ -]?key|access[_ -]?token|refresh[_ -]?token|password|passcode)\s*[:=]\s*\S{6,}/i,
+  /\bbearer\s+[A-Za-z0-9._~+/=-]{16,}\b/i,
+  /\b(?:\d[ -]?){13,19}\b/,
+  /\b\d{3}-\d{2}-\d{4}\b/,
+];
+
+export function isExplicitSensitiveMemoryApproval(
+  memory: LocalMemoryInput,
+): boolean {
+  if (!isRecord(memory.metadata)) {
+    return false;
+  }
+
+  return (
+    memory.metadata.sensitiveDataApproved === true ||
+    memory.metadata.approvedSensitiveData === true
+  );
+}
+
+export function containsSensitiveMemoryData(memory: LocalMemoryInput): boolean {
+  return (
+    containsSensitiveText(memory.summary) ||
+    containsSensitiveValue(memory.metadata) ||
+    containsSensitiveValue(memory.preferenceValue ?? null)
+  );
+}
+
+export async function rememberExtractedMemory(
+  store: MemoryStore,
+  memory: LocalMemoryInput,
+): Promise<LocalMemoryRecord | null> {
+  if (
+    containsSensitiveMemoryData(memory) &&
+    !isExplicitSensitiveMemoryApproval(memory)
+  ) {
+    return null;
+  }
+
+  return store.remember(memory);
+}
+
+export async function saveUserCorrectionMemory(
+  store: MemoryStore,
+  correction: UserCorrectionInput,
+): Promise<LocalMemoryRecord> {
+  return store.remember({
+    memoryId: correction.correctionId,
+    memoryKind: "correction",
+    summary: correction.correction,
+    sourceKind: "user-correction",
+    metadata: {
+      ...(correction.metadata ?? {}),
+      appliesTo: correction.appliesTo ?? null,
+    },
+  });
+}
+
+export async function retrieveUserCorrections(
+  store: MemoryStore,
+  query: string,
+  limit = 5,
+): Promise<LocalMemoryRecord[]> {
+  return store.retrieve({
+    query,
+    memoryKind: "correction",
+    limit,
+  });
+}
+
 export function createMemoryStore(
   initialRecords: LocalMemoryRecord[] = [],
   initialEnabled = true,
@@ -44,6 +147,15 @@ export function createMemoryStore(
 
       if (!existing && !isMemoryEnabled) {
         throw new Error("memory is disabled; new memory writes are paused");
+      }
+
+      if (
+        containsSensitiveMemoryData(memory) &&
+        !isExplicitSensitiveMemoryApproval(memory)
+      ) {
+        throw new Error(
+          "memory payload contains sensitive data; explicit approval is required",
+        );
       }
 
       const record: LocalMemoryRecord = {
@@ -146,4 +258,39 @@ export function createTauriMemoryStore(): MemoryStore {
 
 function isTauriRuntime() {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+}
+
+function containsSensitiveValue(value: unknown): boolean {
+  if (typeof value === "string") {
+    return containsSensitiveText(value);
+  }
+
+  if (Array.isArray(value)) {
+    return value.some(containsSensitiveValue);
+  }
+
+  if (isRecord(value)) {
+    return Object.entries(value).some(([key, nestedValue]) => {
+      return (
+        containsSensitiveJsonKey(key) || containsSensitiveValue(nestedValue)
+      );
+    });
+  }
+
+  return false;
+}
+
+function containsSensitiveJsonKey(key: string): boolean {
+  const normalizedKey = key.replace(/[^a-z0-9]/gi, "").toLocaleLowerCase();
+  return sensitiveJsonKeyFragments.some((fragment) =>
+    normalizedKey.includes(fragment.replace(/[^a-z0-9]/gi, "")),
+  );
+}
+
+function containsSensitiveText(value: string): boolean {
+  return sensitiveTextPatterns.some((pattern) => pattern.test(value));
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
