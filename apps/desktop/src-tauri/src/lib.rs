@@ -96,6 +96,38 @@ fn read_recent_audit_history(
 }
 
 #[tauri::command]
+fn remember_local_memory(
+    app: AppHandle,
+    memory: local_data::LocalMemoryInput,
+) -> Result<local_data::LocalMemoryRecord, String> {
+    local_data_service(&app)?.upsert_memory_record(&memory)
+}
+
+#[tauri::command]
+fn read_local_memory(
+    app: AppHandle,
+    memory_id: String,
+) -> Result<Option<local_data::LocalMemoryRecord>, String> {
+    local_data_service(&app)?.read_memory_record(&memory_id)
+}
+
+#[tauri::command]
+fn read_local_memory_preference(
+    app: AppHandle,
+    preference_key: String,
+) -> Result<Option<local_data::LocalMemoryRecord>, String> {
+    local_data_service(&app)?.read_memory_preference(&preference_key)
+}
+
+#[tauri::command]
+fn retrieve_local_memories(
+    app: AppHandle,
+    query: local_data::LocalMemoryRetrievalQuery,
+) -> Result<Vec<local_data::LocalMemoryRecord>, String> {
+    local_data_service(&app)?.retrieve_memory_records(&query)
+}
+
+#[tauri::command]
 fn read_trust_foundation_snapshot(app: AppHandle) -> Result<TrustFoundationSnapshot, String> {
     let local_data = local_data_service(&app)?;
     let secret_store = provider_secret_store()?;
@@ -188,6 +220,10 @@ pub fn run() {
             save_companion_settings,
             read_execution_authority_policy,
             read_recent_audit_history,
+            remember_local_memory,
+            read_local_memory,
+            read_local_memory_preference,
+            retrieve_local_memories,
             read_trust_foundation_snapshot,
             save_provider_credential,
             has_provider_credential,
