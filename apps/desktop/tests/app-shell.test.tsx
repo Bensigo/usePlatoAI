@@ -52,6 +52,7 @@ import {
 } from "../src/soulGuidance";
 import {
   companionPresenceForVoiceState,
+  companionPromptForInputWithCorrections,
   companionPromptForInput,
   defaultVoiceInteractionSnapshot,
   nextMockVoiceSnapshot,
@@ -462,6 +463,27 @@ describe("desktop app shell", () => {
     expect(companionPrompt).toContain("Draft the next step.");
     expect(companionPrompt).toContain("Be terse and candid.");
     expect(companionPrompt).toContain("Trusted policy layer:");
+  });
+
+  it("applies saved correction memories to later companion prompts", async () => {
+    const memoryStore = createMemoryStore();
+
+    await saveUserCorrectionMemory(memoryStore, {
+      correctionId: "correction-answer-style",
+      correction:
+        "When answering planning questions, state the blocker before the plan.",
+      appliesTo: "planning questions",
+    });
+
+    const companionPrompt = await companionPromptForInputWithCorrections(
+      "Plan the next implementation step.",
+      memoryStore,
+      fallbackSoulGuidance,
+    );
+
+    expect(companionPrompt).toContain(
+      "When answering planning questions, state the blocker before the plan.",
+    );
   });
 
   it("accepts a soul guidance store for the runtime app wiring", () => {

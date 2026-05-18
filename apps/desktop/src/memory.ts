@@ -126,8 +126,17 @@ export async function retrieveUserCorrections(
   query: string,
   limit = 5,
 ): Promise<LocalMemoryRecord[]> {
-  return store.retrieve({
+  const matchingCorrections = await store.retrieve({
     query,
+    memoryKind: "correction",
+    limit,
+  });
+
+  if (matchingCorrections.length > 0) {
+    return matchingCorrections;
+  }
+
+  return store.retrieve({
     memoryKind: "correction",
     limit,
   });
