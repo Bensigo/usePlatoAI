@@ -106,6 +106,11 @@ fn read_soul_guidance(app: AppHandle) -> Result<soul::SoulGuidance, String> {
 }
 
 #[tauri::command]
+fn save_soul_guidance(app: AppHandle, markdown: String) -> Result<soul::SoulGuidance, String> {
+    soul::save_soul_guidance(soul_app_data_dir(&app)?, &markdown)
+}
+
+#[tauri::command]
 fn remember_local_memory(
     app: AppHandle,
     memory: local_data::LocalMemoryInput,
@@ -236,6 +241,7 @@ pub fn run() {
             read_execution_authority_policy,
             read_recent_audit_history,
             read_soul_guidance,
+            save_soul_guidance,
             remember_local_memory,
             read_local_memory,
             read_local_memory_preference,

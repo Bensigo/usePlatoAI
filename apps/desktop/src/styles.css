@@ -449,6 +449,60 @@ h1 {
   gap: 10px;
 }
 
+.soul-editor {
+  display: grid;
+  gap: 9px;
+}
+
+.soul-editor label {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  color: #111827;
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.soul-editor textarea {
+  width: 100%;
+  min-width: 0;
+  min-height: 220px;
+  resize: vertical;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  padding: 9px;
+  background: #ffffff;
+  color: #111827;
+  font-family:
+    ui-monospace, SFMono-Regular, "SF Mono", Consolas, "Liberation Mono",
+    monospace;
+  font-size: 0.76rem;
+  line-height: 1.45;
+}
+
+.soul-editor-actions {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 9px;
+  align-items: center;
+}
+
+.soul-path {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: #64748b;
+  font-size: 0.7rem;
+  line-height: 1.35;
+}
+
+.soul-editor-message {
+  margin: 0;
+  color: #0f766e;
+  font-size: 0.76rem;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
 .voice-status {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
