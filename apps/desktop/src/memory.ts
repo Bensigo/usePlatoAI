@@ -15,6 +15,11 @@ export type LocalMemoryRecord = LocalMemoryInput & {
   updatedAt: string;
 };
 
+export type SensitiveMemoryApprovalEvidence = {
+  approvalId: string;
+  approvalToken: string;
+};
+
 export type LocalMemoryRetrievalQuery = {
   query?: string | null;
   memoryKind?: LocalMemoryKind | null;
@@ -25,6 +30,7 @@ export type MemoryStore = {
   remember: (memory: LocalMemoryInput) => Promise<LocalMemoryRecord>;
   rememberApprovedSensitive: (
     memory: LocalMemoryInput,
+    approvalEvidence: SensitiveMemoryApprovalEvidence,
   ) => Promise<LocalMemoryRecord>;
   read: (memoryId: string) => Promise<LocalMemoryRecord | null>;
   readPreference: (preferenceKey: string) => Promise<LocalMemoryRecord | null>;
@@ -95,8 +101,9 @@ export async function rememberExtractedMemory(
 export async function rememberApprovedSensitiveMemory(
   store: MemoryStore,
   memory: LocalMemoryInput,
+  approvalEvidence: SensitiveMemoryApprovalEvidence,
 ): Promise<LocalMemoryRecord> {
-  return store.rememberApprovedSensitive(memory);
+  return store.rememberApprovedSensitive(memory, approvalEvidence);
 }
 
 export async function saveUserCorrectionMemory(
@@ -167,7 +174,11 @@ export function createMemoryStore(
     async remember(memory) {
       return rememberMemory(memory, { allowSensitiveData: false });
     },
-    async rememberApprovedSensitive(memory) {
+    async rememberApprovedSensitive(memory, approvalEvidence) {
+      if (!approvalEvidence.approvalId.trim() || !approvalEvidence.approvalToken.trim()) {
+        throw new Error("trusted approval evidence is required");
+      }
+
       return rememberMemory(memory, { allowSensitiveData: true });
     },
     async read(memoryId) {
@@ -220,14 +231,15 @@ export function createTauriMemoryStore(): MemoryStore {
       const { invoke } = await import("@tauri-apps/api/core");
       return invoke<LocalMemoryRecord>("remember_local_memory", { memory });
     },
-    async rememberApprovedSensitive(memory) {
+    async rememberApprovedSensitive(memory, approvalEvidence) {
       if (!isTauriRuntime()) {
-        return fallbackStore.rememberApprovedSensitive(memory);
+        return fallbackStore.rememberApprovedSensitive(memory, approvalEvidence);
       }
 
       const { invoke } = await import("@tauri-apps/api/core");
       return invoke<LocalMemoryRecord>("remember_approved_sensitive_local_memory", {
         memory,
+        approvalEvidence,
       });
     },
     async read(memoryId) {
