@@ -16,9 +16,14 @@ import {
   type ControlSurfaceId,
 } from "./controlSurface";
 import {
+  Live2DAvatarSurface,
+  getLive2DAvatarSurfaceHook,
+  isAvatarPresenceState,
+  type AvatarPresenceState,
+} from "./avatarSurface";
+import {
   createMemoryPresenceStateSource,
   type PresenceStateSource,
-  type PresenceStateSnapshot,
 } from "./presenceState";
 import {
   createTauriSettingsStore,
@@ -56,24 +61,8 @@ function usePresenceState(source: PresenceStateSource) {
   );
 }
 
-export function CompanionPresenceAvatar({
-  presence,
-}: {
-  presence: PresenceStateSnapshot;
-}) {
-  return (
-    <div
-      className="avatar-placeholder"
-      data-presence-state={presence.state}
-      data-renderer-hint={presence.rendererHint}
-      aria-hidden="true"
-    >
-      <div className="avatar-face">
-        <span className="avatar-eye" />
-        <span className="avatar-eye" />
-      </div>
-    </div>
-  );
+function avatarPresenceStateFor(state: string): AvatarPresenceState {
+  return isAvatarPresenceState(state) ? state : "idle";
 }
 
 export function DismissedPresence({ onRestore }: { onRestore: () => void }) {
@@ -568,11 +557,13 @@ export function FirstRunOnboarding({
 
 export function App({
   initialSettings,
+  initialPresenceState = "idle",
   settingsStore,
   trustFoundationStore,
   presenceStateSource,
 }: {
   initialSettings?: CompanionSettings;
+  initialPresenceState?: AvatarPresenceState;
   settingsStore?: SettingsStore;
   trustFoundationStore?: TrustFoundationStore;
   presenceStateSource?: PresenceStateSource;
@@ -582,11 +573,13 @@ export function App({
     [settingsStore],
   );
   const companionPresenceStateSource = useMemo(
-    () => presenceStateSource ?? createMemoryPresenceStateSource(),
-    [presenceStateSource],
+    () =>
+      presenceStateSource ?? createMemoryPresenceStateSource(initialPresenceState),
+    [initialPresenceState, presenceStateSource],
   );
   const presence = usePresenceState(companionPresenceStateSource);
   const [activeEntry, setActiveEntry] = useState<ControlSurfaceId>("settings");
+  const [isControlSurfaceVisible, setIsControlSurfaceVisible] = useState(false);
   const [isDismissed, setIsDismissed] = useState(false);
   const [settings, setSettings] = useState<CompanionSettings>(
     () => initialSettings ?? defaultCompanionSettings,
@@ -594,6 +587,8 @@ export function App({
   const [isSettingsLoaded, setIsSettingsLoaded] = useState(
     () => initialSettings !== undefined,
   );
+  const avatarPresenceState = avatarPresenceStateFor(presence.state);
+  const avatarSurfaceHook = getLive2DAvatarSurfaceHook(avatarPresenceState);
 
   useEffect(() => {
     if (initialSettings) {
@@ -637,6 +632,7 @@ export function App({
         listen<ControlSurfaceId>("plato-control-surface://open", (event) => {
           if (isControlSurfaceId(event.payload)) {
             setActiveEntry(event.payload);
+            setIsControlSurfaceVisible(true);
           }
         }),
       )
@@ -704,18 +700,22 @@ export function App({
             </button>
           </div>
 
-          <CompanionPresenceAvatar presence={presence} />
+          <Live2DAvatarSurface presenceState={avatarPresenceState} />
 
-          <div className="presence-copy">
+          <div className="presence-copy sr-only">
             <p className="product-name">usePlatoAI</p>
             <h1 id="presence-title">{settings.companionName}</h1>
-            <p className="status-label">{presence.label}</p>
+            <p className="status-label">{avatarSurfaceHook.statusText}</p>
             <p className="wake-name">Wake name: {settings.wakeName}</p>
           </div>
         </section>
       )}
 
-      <section className="control-surface" aria-label="Menu bar control surface">
+      <section
+        className="control-surface"
+        aria-label="Menu bar control surface"
+        hidden={!isControlSurfaceVisible}
+      >
         <nav className="control-nav" aria-label="Control surface entries">
           {controlSurfaceEntries.map((entry) => (
             <button

@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
@@ -7,6 +10,12 @@ import {
   DismissedPresence,
   FirstRunOnboarding,
 } from "../src/App";
+import {
+  Live2DAvatarSurface,
+  getLive2DAvatarSurfaceHook,
+  isAvatarPresenceState,
+  type AvatarPresenceState,
+} from "../src/avatarSurface";
 import { controlSurfaceEntries } from "../src/controlSurface";
 import {
   createMemoryPresenceStateSource,
@@ -36,9 +45,91 @@ describe("desktop app shell", () => {
     expect(markup).toContain("Plato");
     expect(markup).toContain("Wake name: Plato");
     expect(markup).toContain("Idle presence");
+    expect(markup).toContain("data-live2d-motion-group=\"idle\"");
+    expect(markup).toContain("data-live2d-expression=\"neutral\"");
     expect(markup).toContain("Drag Plato presence");
     expect(markup).toContain("Hide Plato presence");
     expect(markup).not.toContain("Plato is hidden");
+  });
+
+  it("maps renderer-independent presence states to Live2D surface hooks", () => {
+    const expectedMappings: Array<{
+      state: AvatarPresenceState;
+      statusText: string;
+      motionGroup: string;
+      expression: string;
+    }> = [
+      {
+        state: "idle",
+        statusText: "Idle presence",
+        motionGroup: "idle",
+        expression: "neutral",
+      },
+      {
+        state: "listening",
+        statusText: "Listening now",
+        motionGroup: "tap_body",
+        expression: "attentive",
+      },
+      {
+        state: "thinking",
+        statusText: "Thinking through it",
+        motionGroup: "thinking",
+        expression: "focused",
+      },
+      {
+        state: "speaking",
+        statusText: "Speaking",
+        motionGroup: "speak",
+        expression: "talking",
+      },
+      {
+        state: "waiting_for_approval",
+        statusText: "Waiting for approval",
+        motionGroup: "approval",
+        expression: "concerned",
+      },
+    ];
+
+    for (const mapping of expectedMappings) {
+      const hook = getLive2DAvatarSurfaceHook(mapping.state);
+      const markup = renderToStaticMarkup(
+        <Live2DAvatarSurface presenceState={mapping.state} />,
+      );
+
+      expect(hook.statusText).toBe(mapping.statusText);
+      expect(hook.motionGroup).toBe(mapping.motionGroup);
+      expect(hook.expression).toBe(mapping.expression);
+      expect(markup).toContain(`data-presence-state="${mapping.state}"`);
+      expect(markup).toContain(
+        `data-live2d-motion-group="${mapping.motionGroup}"`,
+      );
+      expect(markup).toContain(
+        `data-live2d-expression="${mapping.expression}"`,
+      );
+      expect(markup).toContain(mapping.statusText);
+    }
+  });
+
+  it("renders the floating presence from an injected presence state", () => {
+    const markup = renderToStaticMarkup(
+      <App
+        initialSettings={completedSettings}
+        initialPresenceState="waiting_for_approval"
+      />,
+    );
+
+    expect(markup).toContain("Waiting for approval");
+    expect(markup).toContain('data-presence-state="waiting_for_approval"');
+    expect(markup).toContain('data-live2d-motion-group="approval"');
+    expect(markup).toContain('data-live2d-expression="concerned"');
+  });
+
+  it("recognizes valid URL presence states for visual smoke checks", () => {
+    expect(isAvatarPresenceState("speaking")).toBe(true);
+    expect(isAvatarPresenceState("waiting_for_approval")).toBe(true);
+    expect(isAvatarPresenceState("unknown")).toBe(false);
+    expect(isAvatarPresenceState(null)).toBe(false);
   });
 
   it("renders presence state through the shared source boundary", () => {
@@ -52,7 +143,8 @@ describe("desktop app shell", () => {
 
     expect(markup).toContain("Listening");
     expect(markup).toContain('data-presence-state="listening"');
-    expect(markup).toContain('data-renderer-hint="attentive"');
+    expect(markup).toContain('data-live2d-motion-group="tap_body"');
+    expect(markup).toContain('data-live2d-expression="attentive"');
   });
 
   it("falls back to idle presence for invalid state input", () => {
@@ -105,6 +197,16 @@ describe("desktop app shell", () => {
 
     expect(markup).toContain(controlSurfaceEntries[0].description);
     expect(markup).toContain("Launch at login");
+  });
+
+  it("keeps the menu bar control surface interactive when the shell ignores pointer events", () => {
+    const styles = readFileSync(
+      resolve(process.cwd(), "src/styles.css"),
+      "utf8",
+    );
+
+    expect(styles).toMatch(/\.presence-shell\s*{[^}]*pointer-events:\s*none;/s);
+    expect(styles).toMatch(/\.control-surface\s*{[^}]*pointer-events:\s*auto;/s);
   });
 
   it("renders local data and trust foundation settings", () => {
