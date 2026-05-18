@@ -44,6 +44,14 @@ docs/
 - Use Tailwind and shadcn/ui for settings, task tray, dialogs, forms, and control surfaces.
 - Keep the avatar rendering surface custom.
 
+## Product Experience
+
+- Use `docs/architecture/product-experience-direction.md` as the baseline for UI-visible work after Milestone 004.
+- Plato should be an original philosopher mascot with weird, memorable, friendly character direction.
+- The app should establish reusable design tokens and interaction rules before task tray, agent engine, and capability surfaces expand the UI.
+- Treat placeholder-looking visible surfaces as unfinished once Milestone 005 begins.
+- Keep startup sound and click-to-enable audio explicit and user-controlled.
+
 ## Local Data
 
 - Use SQLite as the durable local source of truth.

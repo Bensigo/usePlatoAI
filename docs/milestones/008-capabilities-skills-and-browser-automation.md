@@ -1,4 +1,4 @@
-# Milestone 007: Capabilities, Skills, And Browser Automation
+# Milestone 008: Capabilities, Skills, And Browser Automation
 
 ## Source PRD
 
@@ -48,8 +48,8 @@ This milestone may touch:
 
 ## Blocked By
 
-- Milestone 005: Task Tray And Parallel Work
-- Milestone 006: Provider And Agent Engine Harness
+- Milestone 006: Task Tray And Parallel Work
+- Milestone 007: Provider And Agent Engine Harness
 
 ## Notes
 
