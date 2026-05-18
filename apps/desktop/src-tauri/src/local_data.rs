@@ -1260,6 +1260,12 @@ pub(crate) fn validate_provider_metadata(value: &Value) -> Result<(), String> {
 fn reject_raw_transcript_material(value: &Value) -> Result<(), String> {
     match value {
         Value::Object(entries) => {
+            if is_message_turn_object(entries) {
+                return Err(
+                    "memory payload must not include raw transcript message objects".to_string(),
+                );
+            }
+
             for (key, value) in entries {
                 if is_raw_transcript_field_name(key) {
                     return Err(format!(
@@ -1284,12 +1290,25 @@ fn reject_raw_transcript_material(value: &Value) -> Result<(), String> {
     }
 }
 
+fn is_message_turn_object(entries: &serde_json::Map<String, Value>) -> bool {
+    let has_participant_field = entries
+        .keys()
+        .any(|key| is_message_participant_field_name(key));
+    let has_text_payload_field = entries.keys().any(|key| is_message_text_field_name(key));
+
+    has_participant_field && has_text_payload_field
+}
+
+fn is_message_participant_field_name(key: &str) -> bool {
+    ["role", "speaker"].contains(&normalize_json_key(key).as_str())
+}
+
+fn is_message_text_field_name(key: &str) -> bool {
+    ["text", "message", "body", "utterance"].contains(&normalize_json_key(key).as_str())
+}
+
 fn is_raw_transcript_field_name(key: &str) -> bool {
-    let normalized_key = key
-        .chars()
-        .filter(|character| character.is_ascii_alphanumeric())
-        .collect::<String>()
-        .to_ascii_lowercase();
+    let normalized_key = normalize_json_key(key);
 
     [
         "transcript",
@@ -1304,6 +1323,13 @@ fn is_raw_transcript_field_name(key: &str) -> bool {
         "content",
     ]
     .contains(&normalized_key.as_str())
+}
+
+fn normalize_json_key(key: &str) -> String {
+    key.chars()
+        .filter(|character| character.is_ascii_alphanumeric())
+        .collect::<String>()
+        .to_ascii_lowercase()
 }
 
 fn reject_raw_transcript_text(field_name: &str, value: &str) -> Result<(), String> {
@@ -1640,6 +1666,39 @@ mod tests {
         assert_eq!(
             service
                 .read_memory_record("memory-messages")
+                .expect("read rejected memory"),
+            None
+        );
+        assert!(!service
+            .contains_plaintext(raw_turn)
+            .expect("scan persisted local data"));
+    }
+
+    #[test]
+    fn memory_writes_reject_bare_role_text_transcript_arrays() {
+        let service = LocalDataService::in_memory().expect("create in-memory service");
+        let raw_turn = "Exact user sentence that should not be stored";
+        let memory = LocalMemoryInput {
+            memory_id: "memory-role-text-array".to_string(),
+            memory_kind: LocalMemoryKind::Summary,
+            summary: "User prefers short implementation updates.".to_string(),
+            preference_key: None,
+            preference_value: None,
+            source_kind: "conversation-summary".to_string(),
+            metadata: json!([
+                { "role": "user", "text": raw_turn },
+                { "role": "assistant", "text": "Exact assistant reply" }
+            ]),
+        };
+
+        let error = service
+            .upsert_memory_record(&memory)
+            .expect_err("bare role-text transcript arrays are rejected");
+
+        assert!(error.contains("raw transcript"));
+        assert_eq!(
+            service
+                .read_memory_record("memory-role-text-array")
                 .expect("read rejected memory"),
             None
         );
