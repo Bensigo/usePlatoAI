@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   App,
+  ConfigPanel,
   ControlSurfacePanel,
   DismissedPresence,
   FirstRunOnboarding,
@@ -255,7 +256,7 @@ describe("desktop app shell", () => {
     expect(markup).toContain("Show Plato presence");
   });
 
-  it("renders every menu bar placeholder entry", () => {
+  it("renders the persistent top Plato control entries", () => {
     const markup = renderToStaticMarkup(
       <App initialSettings={completedSettings} />,
     );
@@ -263,19 +264,22 @@ describe("desktop app shell", () => {
     expect(controlSurfaceEntries.map((entry) => entry.id)).toEqual([
       "voice",
       "settings",
-      "tasks",
+      "config",
       "memory",
-      "permissions",
-      "providers",
       "soul",
+      "trust",
     ]);
 
     for (const entry of controlSurfaceEntries) {
       expect(markup).toContain(entry.label);
+      expect(markup).toContain(entry.state);
     }
 
+    expect(markup).toContain("Top Plato control surface");
+    expect(markup).toContain("Bottom Plato presence area");
     expect(markup).toContain(controlSurfaceEntries[0].description);
     expect(markup).toContain("Start listening");
+    expect(markup).not.toContain("Tasks");
   });
 
   it("renders explicit voice controls and text fallback without credentials", () => {
@@ -288,6 +292,16 @@ describe("desktop app shell", () => {
     expect(markup).toContain("Text fallback");
     expect(markup).toContain("Ready for voice or text.");
     expect(markup).not.toContain("OpenAI credential");
+  });
+
+  it("can open a specific top control for visual smoke captures", () => {
+    const markup = renderToStaticMarkup(
+      <App initialSettings={completedSettings} initialActiveEntry="config" />,
+    );
+
+    expect(markup).toContain("Local config");
+    expect(markup).toContain("Local configuration status");
+    expect(markup).toContain('data-control-state="active"');
   });
 
   it("persists, edits, deletes, and disables local memory through the app store boundary", async () => {
@@ -678,7 +692,7 @@ describe("desktop app shell", () => {
       />,
     );
 
-    expect(markup).toContain("Soul editing");
+    expect(markup).toContain("Soul editor");
     expect(markup).toContain("Soul markdown");
     expect(markup).toContain("Save soul");
     expect(markup).not.toContain("Placeholder panel");
@@ -736,7 +750,7 @@ describe("desktop app shell", () => {
   it("renders local data and trust foundation settings", () => {
     const markup = renderToStaticMarkup(
       <ControlSurfacePanel
-        activeEntry="settings"
+        activeEntry="trust"
         settings={completedSettings}
         onSettingsChange={async () => undefined}
       />,
@@ -761,6 +775,18 @@ describe("desktop app shell", () => {
     expect(markup).toContain("OpenAI");
     expect(markup).toContain("Execution authority");
     expect(markup).toContain("Ask first");
+  });
+
+  it("renders local configuration as a top control destination", () => {
+    const markup = renderToStaticMarkup(
+      <ConfigPanel settings={completedSettings} />,
+    );
+
+    expect(markup).toContain("Local configuration status");
+    expect(markup).toContain("Onboarding");
+    expect(markup).toContain("Launch");
+    expect(markup).toContain("Provider");
+    expect(markup).toContain("Configuration stays local-first");
   });
 
   it("renders a memory browser with edit, delete, and disable controls", () => {
@@ -792,7 +818,7 @@ describe("desktop app shell", () => {
     expect(markup).toContain("Delete");
   });
 
-  it("renders a placeholder panel for every menu bar entry", () => {
+  it("renders a control panel for every top Plato entry", () => {
     for (const entry of controlSurfaceEntries) {
       const markup = renderToStaticMarkup(
         <ControlSurfacePanel activeEntry={entry.id} />,
