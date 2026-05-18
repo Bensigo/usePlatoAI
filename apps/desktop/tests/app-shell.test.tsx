@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
@@ -154,6 +157,16 @@ describe("desktop app shell", () => {
 
     expect(markup).toContain(controlSurfaceEntries[0].description);
     expect(markup).toContain("Launch at login");
+  });
+
+  it("keeps the menu bar control surface interactive when the shell ignores pointer events", () => {
+    const styles = readFileSync(
+      resolve(process.cwd(), "src/styles.css"),
+      "utf8",
+    );
+
+    expect(styles).toMatch(/\.presence-shell\s*{[^}]*pointer-events:\s*none;/s);
+    expect(styles).toMatch(/\.control-surface\s*{[^}]*pointer-events:\s*auto;/s);
   });
 
   it("renders local data and trust foundation settings", () => {

@@ -379,6 +379,7 @@ h1 {
   width: min(100%, 560px);
   display: grid;
   overflow: hidden;
+  pointer-events: auto;
 }
 
 .control-surface[hidden] {
