@@ -747,6 +747,22 @@ describe("desktop app shell", () => {
     expect(styles).toMatch(/\.control-surface\s*{[^}]*pointer-events:\s*auto;/s);
   });
 
+  it("keeps the fixed Tauri window size from clipping the shell zones", () => {
+    const styles = readFileSync(
+      resolve(process.cwd(), "src/styles.css"),
+      "utf8",
+    );
+
+    expect(styles).toContain("@media (max-width: 360px) and (max-height: 600px)");
+    expect(styles).toMatch(/\.control-surface\s*{[^}]*max-height:\s*258px;/s);
+    expect(styles).toMatch(
+      /\.control-nav\s*{[^}]*grid-template-columns:\s*repeat\(3, minmax\(0, 1fr\)\);/s,
+    );
+    expect(styles).toMatch(
+      /\.voice-controls\s*{[^}]*grid-template-columns:\s*repeat\(3, minmax\(0, 1fr\)\);/s,
+    );
+  });
+
   it("renders local data and trust foundation settings", () => {
     const markup = renderToStaticMarkup(
       <ControlSurfacePanel
