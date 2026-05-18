@@ -7,6 +7,13 @@ mod provider_credentials;
 mod secret_store;
 mod soul;
 
+const CONTROL_SURFACE_TRAY_TARGETS: &[&str] =
+    &["voice", "settings", "config", "memory", "soul", "trust"];
+
+fn is_control_surface_tray_target(target: &str) -> bool {
+    CONTROL_SURFACE_TRAY_TARGETS.contains(&target)
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CompanionSettings {
@@ -278,18 +285,15 @@ pub fn run() {
                 Emitter, Manager,
             };
 
+            let voice = MenuItem::with_id(app, "voice", "Voice", true, None::<&str>)?;
             let settings = MenuItem::with_id(app, "settings", "Settings", true, None::<&str>)?;
-            let tasks = MenuItem::with_id(app, "tasks", "Tasks", true, None::<&str>)?;
+            let config = MenuItem::with_id(app, "config", "Config", true, None::<&str>)?;
             let memory = MenuItem::with_id(app, "memory", "Memory", true, None::<&str>)?;
-            let permissions =
-                MenuItem::with_id(app, "permissions", "Permissions", true, None::<&str>)?;
-            let providers = MenuItem::with_id(app, "providers", "Providers", true, None::<&str>)?;
-            let soul = MenuItem::with_id(app, "soul", "Soul editing", true, None::<&str>)?;
+            let soul = MenuItem::with_id(app, "soul", "Soul", true, None::<&str>)?;
+            let trust = MenuItem::with_id(app, "trust", "Provider/trust", true, None::<&str>)?;
 
-            let menu = Menu::with_items(
-                app,
-                &[&settings, &tasks, &memory, &permissions, &providers, &soul],
-            )?;
+            let menu =
+                Menu::with_items(app, &[&voice, &settings, &config, &memory, &soul, &trust])?;
 
             TrayIconBuilder::with_id("plato-control-surface")
                 .tooltip("usePlatoAI controls")
@@ -299,10 +303,7 @@ pub fn run() {
                 .on_menu_event(|app, event| {
                     let target = event.id.as_ref();
 
-                    if matches!(
-                        target,
-                        "settings" | "tasks" | "memory" | "permissions" | "providers" | "soul"
-                    ) {
+                    if is_control_surface_tray_target(target) {
                         if let Some(window) = app.get_webview_window("main") {
                             let _ = window.unminimize();
                             let _ = window.show();
@@ -335,6 +336,17 @@ mod tests {
             std::process::id(),
             std::thread::current().name().unwrap_or("test")
         ))
+    }
+
+    #[test]
+    fn tray_targets_match_redesigned_control_surface_ids() {
+        for target in ["voice", "settings", "config", "memory", "soul", "trust"] {
+            assert!(is_control_surface_tray_target(target));
+        }
+
+        for stale_target in ["tasks", "permissions", "providers"] {
+            assert!(!is_control_surface_tray_target(stale_target));
+        }
     }
 
     #[test]
