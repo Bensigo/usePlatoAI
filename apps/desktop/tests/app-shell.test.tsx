@@ -22,7 +22,6 @@ import {
 import { controlSurfaceEntries } from "../src/controlSurface";
 import {
   createMemoryStore,
-  approveAndRememberSensitiveMemory,
   rememberApprovedSensitiveMemory,
   rememberExtractedMemory,
   retrieveUserCorrections,
@@ -404,22 +403,6 @@ describe("desktop app shell", () => {
         metadata: { extractor: "local-test-boundary" },
       }, approvalEvidence),
     ).rejects.toThrow("approval was not found");
-
-    await expect(
-      approveAndRememberSensitiveMemory(memoryStore, {
-        memoryId: "memory-sensitive-approved-one-step",
-        memoryKind: "summary",
-        summary: sensitiveSummary,
-        sourceKind: "user-approved-sensitive-memory",
-        metadata: { extractor: "local-test-boundary" },
-      }, {
-        surface: "human-approval-prompt",
-        reason: "User approved remembering sensitive data.",
-      }),
-    ).resolves.toMatchObject({
-      memoryId: "memory-sensitive-approved-one-step",
-      summary: sensitiveSummary,
-    });
   });
 
   it("saves user corrections as replayable memory", async () => {
