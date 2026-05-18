@@ -122,8 +122,9 @@ fn remember_local_memory(
 fn remember_approved_sensitive_local_memory(
     app: AppHandle,
     memory: local_data::LocalMemoryInput,
+    approval_evidence: local_data::SensitiveMemoryApprovalEvidence,
 ) -> Result<local_data::LocalMemoryRecord, String> {
-    local_data_service(&app)?.upsert_approved_sensitive_memory_record(&memory)
+    local_data_service(&app)?.upsert_approved_sensitive_memory_record(&memory, &approval_evidence)
 }
 
 #[tauri::command]

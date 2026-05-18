@@ -383,6 +383,9 @@ describe("desktop app shell", () => {
         summary: sensitiveSummary,
         sourceKind: "user-approved-sensitive-memory",
         metadata: { extractor: "local-test-boundary" },
+      }, {
+        approvalId: "approval-sensitive-memory-1",
+        approvalToken: "trusted-token-from-approval-flow",
       }),
     ).resolves.toMatchObject({
       memoryId: "memory-sensitive-approved",
