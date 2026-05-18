@@ -195,7 +195,9 @@ export function createMemoryStore(
     async remember(memory) {
       return rememberMemory(memory, { allowSensitiveData: false });
     },
-    async approveSensitiveMemoryWrite() {
+    async approveSensitiveMemoryWrite(request) {
+      validateSensitiveMemoryApprovalMetadata(request.metadata);
+
       approvalSequence += 1;
       const approvalEvidence = {
         approvalId: `approval-sensitive-memory-${approvalSequence}`,
@@ -332,6 +334,39 @@ export function createTauriMemoryStore(): MemoryStore {
 
 function isTauriRuntime() {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+}
+
+function validateSensitiveMemoryApprovalMetadata(value: unknown): void {
+  if (!isRecord(value)) {
+    throw new Error("sensitive memory approval metadata must be an object");
+  }
+
+  for (const requiredKey of ["surface", "reason"]) {
+    const fieldValue = value[requiredKey];
+    if (typeof fieldValue !== "string") {
+      throw new Error(
+        `sensitive memory approval metadata \`${requiredKey}\` must be a non-empty string`,
+      );
+    }
+    if (!fieldValue.trim()) {
+      throw new Error(
+        `sensitive memory approval metadata \`${requiredKey}\` must not be empty`,
+      );
+    }
+    if (fieldValue.length > 240) {
+      throw new Error(
+        `sensitive memory approval metadata \`${requiredKey}\` is too long`,
+      );
+    }
+  }
+
+  for (const key of Object.keys(value)) {
+    if (key !== "surface" && key !== "reason") {
+      throw new Error(
+        `sensitive memory approval metadata must not include \`${key}\``,
+      );
+    }
+  }
 }
 
 function containsSensitiveValue(value: unknown): boolean {
