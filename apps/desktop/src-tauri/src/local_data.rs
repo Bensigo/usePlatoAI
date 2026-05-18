@@ -566,7 +566,22 @@ impl LocalDataService {
         &self,
         memory: &LocalMemoryInput,
     ) -> Result<LocalMemoryRecord, String> {
-        validate_memory_input(memory)?;
+        self.upsert_memory_record_with_sensitive_approval(memory, false)
+    }
+
+    pub fn upsert_approved_sensitive_memory_record(
+        &self,
+        memory: &LocalMemoryInput,
+    ) -> Result<LocalMemoryRecord, String> {
+        self.upsert_memory_record_with_sensitive_approval(memory, true)
+    }
+
+    fn upsert_memory_record_with_sensitive_approval(
+        &self,
+        memory: &LocalMemoryInput,
+        allow_sensitive_data: bool,
+    ) -> Result<LocalMemoryRecord, String> {
+        validate_memory_input(memory, allow_sensitive_data)?;
         let existing_memory = self.read_memory_record(&memory.memory_id)?;
         let memory_mode = self
             .read_companion_settings()?
@@ -1248,7 +1263,10 @@ fn memory_record_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<LocalMemo
     })
 }
 
-fn validate_memory_input(memory: &LocalMemoryInput) -> Result<(), String> {
+fn validate_memory_input(
+    memory: &LocalMemoryInput,
+    allow_sensitive_data: bool,
+) -> Result<(), String> {
     if memory.memory_id.trim().is_empty() {
         return Err("memory id is required".to_string());
     }
@@ -1256,7 +1274,7 @@ fn validate_memory_input(memory: &LocalMemoryInput) -> Result<(), String> {
         return Err("memory summary is required".to_string());
     }
     reject_raw_transcript_text("summary", &memory.summary)?;
-    reject_unapproved_sensitive_memory(memory)?;
+    reject_unapproved_sensitive_memory(memory, allow_sensitive_data)?;
     if memory.source_kind.trim().is_empty() {
         return Err("memory source kind is required".to_string());
     }
@@ -1334,28 +1352,15 @@ fn reject_raw_transcript_material(value: &Value) -> Result<(), String> {
     }
 }
 
-fn reject_unapproved_sensitive_memory(memory: &LocalMemoryInput) -> Result<(), String> {
-    if !memory_contains_sensitive_data(memory) || has_explicit_sensitive_memory_approval(memory) {
+fn reject_unapproved_sensitive_memory(
+    memory: &LocalMemoryInput,
+    allow_sensitive_data: bool,
+) -> Result<(), String> {
+    if !memory_contains_sensitive_data(memory) || allow_sensitive_data {
         return Ok(());
     }
 
-    Err("memory payload contains sensitive data; explicit approval is required".to_string())
-}
-
-fn has_explicit_sensitive_memory_approval(memory: &LocalMemoryInput) -> bool {
-    memory
-        .metadata
-        .as_object()
-        .map(|metadata| {
-            matches!(
-                metadata.get("sensitiveDataApproved"),
-                Some(Value::Bool(true))
-            ) || matches!(
-                metadata.get("approvedSensitiveData"),
-                Some(Value::Bool(true))
-            )
-        })
-        .unwrap_or(false)
+    Err("memory payload contains sensitive data; trusted approval is required".to_string())
 }
 
 fn memory_contains_sensitive_data(memory: &LocalMemoryInput) -> bool {
@@ -2058,7 +2063,7 @@ mod tests {
     }
 
     #[test]
-    fn memory_writes_reject_sensitive_data_without_explicit_approval() {
+    fn memory_writes_reject_sensitive_data_without_trusted_approval() {
         let service = LocalDataService::in_memory().expect("create in-memory service");
         let sensitive_summary = "User API key = sk_test_1234567890abcdef";
         let memory = LocalMemoryInput {
@@ -2075,7 +2080,7 @@ mod tests {
             .upsert_memory_record(&memory)
             .expect_err("sensitive memory is rejected without approval");
 
-        assert!(error.contains("explicit approval"));
+        assert!(error.contains("trusted approval"));
         assert_eq!(
             service
                 .read_memory_record("memory-sensitive-api-key")
@@ -2088,7 +2093,40 @@ mod tests {
     }
 
     #[test]
-    fn memory_writes_allow_sensitive_data_with_explicit_approval() {
+    fn memory_writes_reject_self_declared_sensitive_approval() {
+        let service = LocalDataService::in_memory().expect("create in-memory service");
+        let sensitive_summary = "User API key = sk_test_1234567890abcdef";
+        let memory = LocalMemoryInput {
+            memory_id: "memory-self-approved-api-key".to_string(),
+            memory_kind: LocalMemoryKind::Summary,
+            summary: sensitive_summary.to_string(),
+            preference_key: None,
+            preference_value: None,
+            source_kind: "conversation-summary".to_string(),
+            metadata: json!({
+                "extractor": "local-test-boundary",
+                "sensitiveDataApproved": true
+            }),
+        };
+
+        let error = service
+            .upsert_memory_record(&memory)
+            .expect_err("self-declared approval is rejected");
+
+        assert!(error.contains("trusted approval"));
+        assert_eq!(
+            service
+                .read_memory_record("memory-self-approved-api-key")
+                .expect("read rejected sensitive memory"),
+            None
+        );
+        assert!(!service
+            .contains_plaintext(sensitive_summary)
+            .expect("scan persisted local data"));
+    }
+
+    #[test]
+    fn trusted_approval_path_allows_sensitive_data() {
         let service = LocalDataService::in_memory().expect("create in-memory service");
         let sensitive_summary = "User API key = sk_test_1234567890abcdef";
         let memory = LocalMemoryInput {
@@ -2098,15 +2136,12 @@ mod tests {
             preference_key: None,
             preference_value: None,
             source_kind: "user-approved-sensitive-memory".to_string(),
-            metadata: json!({
-                "extractor": "local-test-boundary",
-                "sensitiveDataApproved": true
-            }),
+            metadata: json!({ "extractor": "local-test-boundary" }),
         };
 
         let saved = service
-            .upsert_memory_record(&memory)
-            .expect("approved sensitive memory is persisted");
+            .upsert_approved_sensitive_memory_record(&memory)
+            .expect("trusted approved sensitive memory is persisted");
 
         assert_eq!(saved.summary, sensitive_summary);
         assert!(service

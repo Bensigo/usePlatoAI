@@ -22,6 +22,7 @@ import {
 import { controlSurfaceEntries } from "../src/controlSurface";
 import {
   createMemoryStore,
+  rememberApprovedSensitiveMemory,
   rememberExtractedMemory,
   retrieveUserCorrections,
   saveUserCorrectionMemory,
@@ -319,7 +320,7 @@ describe("desktop app shell", () => {
     });
   });
 
-  it("skips sensitive extracted memories unless the user explicitly approves saving them", async () => {
+  it("requires trusted approval before saving sensitive memory", async () => {
     const memoryStore = createMemoryStore();
     const sensitiveSummary = "User API key = sk_test_1234567890abcdef";
 
@@ -342,18 +343,44 @@ describe("desktop app shell", () => {
         sourceKind: "conversation-summary",
         metadata: { extractor: "local-test-boundary" },
       }),
-    ).rejects.toThrow("explicit approval is required");
+    ).rejects.toThrow("trusted approval is required");
 
     await expect(
       rememberExtractedMemory(memoryStore, {
-        memoryId: "memory-sensitive-approved",
+        memoryId: "memory-sensitive-self-approved",
         memoryKind: "summary",
         summary: sensitiveSummary,
-        sourceKind: "user-approved-sensitive-memory",
+        sourceKind: "conversation-summary",
         metadata: {
           extractor: "local-test-boundary",
           sensitiveDataApproved: true,
         },
+      }),
+    ).resolves.toBeNull();
+    await expect(
+      memoryStore.read("memory-sensitive-self-approved"),
+    ).resolves.toBeNull();
+
+    await expect(
+      memoryStore.remember({
+        memoryId: "memory-sensitive-self-approved-direct",
+        memoryKind: "summary",
+        summary: sensitiveSummary,
+        sourceKind: "conversation-summary",
+        metadata: {
+          extractor: "local-test-boundary",
+          approvedSensitiveData: true,
+        },
+      }),
+    ).rejects.toThrow("trusted approval is required");
+
+    await expect(
+      rememberApprovedSensitiveMemory(memoryStore, {
+        memoryId: "memory-sensitive-approved",
+        memoryKind: "summary",
+        summary: sensitiveSummary,
+        sourceKind: "user-approved-sensitive-memory",
+        metadata: { extractor: "local-test-boundary" },
       }),
     ).resolves.toMatchObject({
       memoryId: "memory-sensitive-approved",

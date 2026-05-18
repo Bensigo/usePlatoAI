@@ -23,6 +23,9 @@ export type LocalMemoryRetrievalQuery = {
 
 export type MemoryStore = {
   remember: (memory: LocalMemoryInput) => Promise<LocalMemoryRecord>;
+  rememberApprovedSensitive: (
+    memory: LocalMemoryInput,
+  ) => Promise<LocalMemoryRecord>;
   read: (memoryId: string) => Promise<LocalMemoryRecord | null>;
   readPreference: (preferenceKey: string) => Promise<LocalMemoryRecord | null>;
   retrieve: (query: LocalMemoryRetrievalQuery) => Promise<LocalMemoryRecord[]>;
@@ -70,19 +73,6 @@ const sensitiveTextPatterns = [
   /\b\d{3}-\d{2}-\d{4}\b/,
 ];
 
-export function isExplicitSensitiveMemoryApproval(
-  memory: LocalMemoryInput,
-): boolean {
-  if (!isRecord(memory.metadata)) {
-    return false;
-  }
-
-  return (
-    memory.metadata.sensitiveDataApproved === true ||
-    memory.metadata.approvedSensitiveData === true
-  );
-}
-
 export function containsSensitiveMemoryData(memory: LocalMemoryInput): boolean {
   return (
     containsSensitiveText(memory.summary) ||
@@ -95,14 +85,18 @@ export async function rememberExtractedMemory(
   store: MemoryStore,
   memory: LocalMemoryInput,
 ): Promise<LocalMemoryRecord | null> {
-  if (
-    containsSensitiveMemoryData(memory) &&
-    !isExplicitSensitiveMemoryApproval(memory)
-  ) {
+  if (containsSensitiveMemoryData(memory)) {
     return null;
   }
 
   return store.remember(memory);
+}
+
+export async function rememberApprovedSensitiveMemory(
+  store: MemoryStore,
+  memory: LocalMemoryInput,
+): Promise<LocalMemoryRecord> {
+  return store.rememberApprovedSensitive(memory);
 }
 
 export async function saveUserCorrectionMemory(
@@ -140,31 +134,41 @@ export function createMemoryStore(
   const records = new Map(initialRecords.map((record) => [record.memoryId, record]));
   let isMemoryEnabled = initialEnabled;
 
+  async function rememberMemory(
+    memory: LocalMemoryInput,
+    options: { allowSensitiveData: boolean },
+  ) {
+    const now = new Date(0).toISOString();
+    const existing = records.get(memory.memoryId);
+
+    if (!existing && !isMemoryEnabled) {
+      throw new Error("memory is disabled; new memory writes are paused");
+    }
+
+    if (
+      containsSensitiveMemoryData(memory) &&
+      !options.allowSensitiveData
+    ) {
+      throw new Error(
+        "memory payload contains sensitive data; trusted approval is required",
+      );
+    }
+
+    const record: LocalMemoryRecord = {
+      ...memory,
+      createdAt: existing?.createdAt ?? now,
+      updatedAt: now,
+    };
+    records.set(record.memoryId, record);
+    return record;
+  }
+
   return {
     async remember(memory) {
-      const now = new Date(0).toISOString();
-      const existing = records.get(memory.memoryId);
-
-      if (!existing && !isMemoryEnabled) {
-        throw new Error("memory is disabled; new memory writes are paused");
-      }
-
-      if (
-        containsSensitiveMemoryData(memory) &&
-        !isExplicitSensitiveMemoryApproval(memory)
-      ) {
-        throw new Error(
-          "memory payload contains sensitive data; explicit approval is required",
-        );
-      }
-
-      const record: LocalMemoryRecord = {
-        ...memory,
-        createdAt: existing?.createdAt ?? now,
-        updatedAt: now,
-      };
-      records.set(record.memoryId, record);
-      return record;
+      return rememberMemory(memory, { allowSensitiveData: false });
+    },
+    async rememberApprovedSensitive(memory) {
+      return rememberMemory(memory, { allowSensitiveData: true });
     },
     async read(memoryId) {
       return records.get(memoryId) ?? null;
@@ -215,6 +219,16 @@ export function createTauriMemoryStore(): MemoryStore {
 
       const { invoke } = await import("@tauri-apps/api/core");
       return invoke<LocalMemoryRecord>("remember_local_memory", { memory });
+    },
+    async rememberApprovedSensitive(memory) {
+      if (!isTauriRuntime()) {
+        return fallbackStore.rememberApprovedSensitive(memory);
+      }
+
+      const { invoke } = await import("@tauri-apps/api/core");
+      return invoke<LocalMemoryRecord>("remember_approved_sensitive_local_memory", {
+        memory,
+      });
     },
     async read(memoryId) {
       if (!isTauriRuntime()) {
