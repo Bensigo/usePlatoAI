@@ -26,13 +26,47 @@ This milestone may touch:
 
 ## Acceptance Criteria
 
-- [ ] Plato loads soul/personality guidance from a local editable markdown file.
-- [ ] The desktop app provides a non-technical soul editor.
-- [ ] Users can view, edit, delete, and disable memory.
-- [ ] Memory stores summaries and preferences, not permanent raw transcripts by default.
-- [ ] Sensitive data is excluded from normal memory unless explicitly approved by the user.
-- [ ] A user correction can be saved and later reflected in a response or setting.
-- [ ] `soul.md` cannot override permissions, execution authority, provider configuration, or memory deletion rules.
+- [x] Plato loads soul/personality guidance from a local editable markdown file.
+- [x] The desktop app provides a non-technical soul editor.
+- [x] Users can view, edit, delete, and disable memory.
+- [x] Memory stores summaries and preferences, not permanent raw transcripts by default.
+- [x] Sensitive data is excluded from normal memory unless explicitly approved by the user.
+- [x] A user correction can be saved and later reflected in a response or setting.
+- [x] `soul.md` cannot override permissions, execution authority, provider configuration, or memory deletion rules.
+
+## Closeout Evidence
+
+Milestone 004 is complete on merged `main` as of the issue #135 closeout pass. No incomplete acceptance criteria were found, so no follow-up implementation issue was created.
+
+Merged PR evidence:
+
+- [PR #81](https://github.com/Bensigo/usePlatoAI/pull/81) loads local `soul.md` guidance with a protected policy boundary.
+- [PR #87](https://github.com/Bensigo/usePlatoAI/pull/87) wires local soul guidance into the companion behavior prompt path.
+- [PR #99](https://github.com/Bensigo/usePlatoAI/pull/99) adds the non-technical soul editor and save path.
+- [PR #84](https://github.com/Bensigo/usePlatoAI/pull/84) adds SQLite-backed memory summaries/preferences and the TypeScript memory boundary.
+- [PR #98](https://github.com/Bensigo/usePlatoAI/pull/98) adds memory browser controls for viewing, editing, deleting, and disabling memory.
+- [PR #92](https://github.com/Bensigo/usePlatoAI/pull/92) and [PR #97](https://github.com/Bensigo/usePlatoAI/pull/97) harden normal memory writes against raw transcript payloads.
+- [PR #132](https://github.com/Bensigo/usePlatoAI/pull/132) consolidates sensitive memory exclusion, trusted approval evidence, and correction-memory prompt behavior.
+- [PR #134](https://github.com/Bensigo/usePlatoAI/pull/134) closes the sensitive-memory approval self-minting gap.
+
+Verification evidence from the closeout audit:
+
+```bash
+pnpm --filter @useplatoai/desktop test -- tests/memory.test.ts tests/soulGuidance.test.ts tests/app-shell.test.tsx
+cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml soul
+cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml memory
+```
+
+Additional issue #135 verification confirmed the relevant code and tests are present on `main` in:
+
+- `apps/desktop/src-tauri/src/soul.rs`
+- `apps/desktop/src/soulGuidance.ts`
+- `apps/desktop/src/memory.ts`
+- `apps/desktop/src/voiceInteraction.ts`
+- `apps/desktop/src/App.tsx`
+- `apps/desktop/tests/memory.test.ts`
+- `apps/desktop/tests/soulGuidance.test.ts`
+- `apps/desktop/tests/app-shell.test.tsx`
 
 ## Test Plan
 
