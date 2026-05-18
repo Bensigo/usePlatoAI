@@ -20,6 +20,13 @@ export type SensitiveMemoryApprovalEvidence = {
   approvalToken: string;
 };
 
+export type SensitiveMemoryApprovalRecord = SensitiveMemoryApprovalEvidence & {
+  approvedMemoryId: string;
+  approvedSourceKind: string;
+  approvedPayloadHash: string;
+  usedAt?: string | null;
+};
+
 export type LocalMemoryRetrievalQuery = {
   query?: string | null;
   memoryKind?: LocalMemoryKind | null;
@@ -106,6 +113,19 @@ export async function rememberApprovedSensitiveMemory(
   return store.rememberApprovedSensitive(memory, approvalEvidence);
 }
 
+export async function createSensitiveMemoryApprovalRecord(
+  memory: LocalMemoryInput,
+  approvalEvidence: SensitiveMemoryApprovalEvidence,
+): Promise<SensitiveMemoryApprovalRecord> {
+  return {
+    ...approvalEvidence,
+    approvedMemoryId: memory.memoryId,
+    approvedSourceKind: memory.sourceKind,
+    approvedPayloadHash: await sensitiveMemoryApprovalPayloadHash(memory),
+    usedAt: null,
+  };
+}
+
 export async function saveUserCorrectionMemory(
   store: MemoryStore,
   correction: UserCorrectionInput,
@@ -137,8 +157,15 @@ export async function retrieveUserCorrections(
 export function createMemoryStore(
   initialRecords: LocalMemoryRecord[] = [],
   initialEnabled = true,
+  initialSensitiveMemoryApprovals: SensitiveMemoryApprovalRecord[] = [],
 ): MemoryStore {
   const records = new Map(initialRecords.map((record) => [record.memoryId, record]));
+  const sensitiveMemoryApprovals = new Map(
+    initialSensitiveMemoryApprovals.map((approval) => [
+      approval.approvalId,
+      { ...approval },
+    ]),
+  );
   let isMemoryEnabled = initialEnabled;
 
   async function rememberMemory(
@@ -175,11 +202,14 @@ export function createMemoryStore(
       return rememberMemory(memory, { allowSensitiveData: false });
     },
     async rememberApprovedSensitive(memory, approvalEvidence) {
-      if (!approvalEvidence.approvalId.trim() || !approvalEvidence.approvalToken.trim()) {
-        throw new Error("trusted approval evidence is required");
-      }
-
-      return rememberMemory(memory, { allowSensitiveData: true });
+      const approval = await consumeSensitiveMemoryApproval(
+        sensitiveMemoryApprovals,
+        approvalEvidence,
+        memory,
+      );
+      const record = await rememberMemory(memory, { allowSensitiveData: true });
+      approval.usedAt = new Date(0).toISOString();
+      return record;
     },
     async read(memoryId) {
       return records.get(memoryId) ?? null;
@@ -284,6 +314,91 @@ export function createTauriMemoryStore(): MemoryStore {
 
 function isTauriRuntime() {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+}
+
+async function consumeSensitiveMemoryApproval(
+  approvals: Map<string, SensitiveMemoryApprovalRecord>,
+  approvalEvidence: SensitiveMemoryApprovalEvidence,
+  memory: LocalMemoryInput,
+): Promise<SensitiveMemoryApprovalRecord> {
+  if (!approvalEvidence.approvalId.trim()) {
+    throw new Error("sensitive memory approval id is required");
+  }
+  if (!approvalEvidence.approvalToken.trim()) {
+    throw new Error("sensitive memory approval token is required");
+  }
+
+  const approval = approvals.get(approvalEvidence.approvalId);
+  if (!approval) {
+    throw new Error("trusted sensitive memory approval was not found");
+  }
+  if (approval.approvalToken !== approvalEvidence.approvalToken) {
+    throw new Error("trusted sensitive memory approval token is invalid");
+  }
+  if (approval.usedAt) {
+    throw new Error("trusted sensitive memory approval has already been used");
+  }
+  if (approval.approvedMemoryId !== memory.memoryId) {
+    throw new Error(
+      "trusted sensitive memory approval is not valid for this memory id",
+    );
+  }
+  if (approval.approvedSourceKind !== memory.sourceKind) {
+    throw new Error(
+      "trusted sensitive memory approval is not valid for this memory source",
+    );
+  }
+
+  const actualPayloadHash = await sensitiveMemoryApprovalPayloadHash(memory);
+  if (approval.approvedPayloadHash !== actualPayloadHash) {
+    throw new Error(
+      "trusted sensitive memory approval is not valid for this memory payload",
+    );
+  }
+
+  return approval;
+}
+
+async function sensitiveMemoryApprovalPayloadHash(
+  memory: LocalMemoryInput,
+): Promise<string> {
+  const canonicalPayload = canonicalJson({
+    memoryId: memory.memoryId,
+    memoryKind: memory.memoryKind,
+    summary: memory.summary,
+    preferenceKey: memory.preferenceKey ?? null,
+    preferenceValue: memory.preferenceValue ?? null,
+    sourceKind: memory.sourceKind,
+    metadata: memory.metadata,
+  });
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(canonicalPayload),
+  );
+
+  return [...new Uint8Array(digest)]
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+function canonicalJson(value: unknown): string {
+  return JSON.stringify(toCanonicalJsonValue(value));
+}
+
+function toCanonicalJsonValue(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(toCanonicalJsonValue);
+  }
+
+  if (isRecord(value)) {
+    return Object.fromEntries(
+      Object.keys(value)
+        .sort()
+        .map((key) => [key, toCanonicalJsonValue(value[key])]),
+    );
+  }
+
+  return value ?? null;
 }
 
 function containsSensitiveValue(value: unknown): boolean {
