@@ -563,6 +563,177 @@ h1 {
   line-height: 1.45;
 }
 
+.centered-chat-panel {
+  position: fixed;
+  z-index: 12;
+  top: 50%;
+  left: 50%;
+  width: min(calc(100vw - 32px), 560px);
+  max-height: min(calc(100vh - 104px), 620px);
+  display: grid;
+  gap: var(--plato-space-md);
+  overflow: auto;
+  padding: var(--plato-space-lg);
+  border: 1px solid rgb(255 255 255 / 64%);
+  border-radius: var(--plato-radius-panel);
+  background: rgb(248 250 252 / 78%);
+  box-shadow:
+    0 28px 72px rgb(15 23 42 / 22%),
+    inset 0 1px 0 rgb(255 255 255 / 78%);
+  backdrop-filter: blur(24px) saturate(150%);
+  color: var(--plato-color-text);
+  pointer-events: auto;
+  transform: translate(-50%, -50%);
+}
+
+.centered-chat-header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: var(--plato-space-md);
+}
+
+.centered-chat-header h2 {
+  margin: 3px 0 0;
+  font-size: 1rem;
+  line-height: 1.2;
+  letter-spacing: 0;
+}
+
+.centered-chat-header button {
+  width: 30px;
+  height: 30px;
+  flex: 0 0 auto;
+  border: 1px solid rgb(203 213 225 / 84%);
+  border-radius: var(--plato-radius-control);
+  background: rgb(255 255 255 / 74%);
+  color: var(--plato-color-text-muted);
+  font-size: 0.82rem;
+  font-weight: 900;
+}
+
+.centered-chat-transcript,
+.centered-chat-thread,
+.current-task-panel {
+  display: grid;
+  gap: var(--plato-space-sm);
+  border: 1px solid rgb(203 213 225 / 72%);
+  border-radius: var(--plato-radius-control);
+  padding: var(--plato-space-md);
+  background: rgb(255 255 255 / 58%);
+}
+
+.centered-chat-transcript strong,
+.chat-message strong,
+.centered-chat-form span,
+.current-task-panel strong {
+  color: #64748b;
+  font-size: 0.7rem;
+  font-weight: 900;
+  line-height: 1.1;
+  text-transform: uppercase;
+}
+
+.centered-chat-transcript p,
+.chat-message p,
+.current-task-panel p {
+  margin: 0;
+  color: var(--plato-color-text);
+  font-size: 0.8rem;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.centered-chat-thread {
+  max-height: 180px;
+  overflow: auto;
+}
+
+.chat-message {
+  display: grid;
+  gap: 4px;
+  max-width: 88%;
+  border-radius: var(--plato-radius-control);
+  padding: 9px 10px;
+}
+
+.user-message {
+  justify-self: end;
+  background: var(--plato-color-companion-soft);
+}
+
+.plato-message {
+  justify-self: start;
+  background: #f8fafc;
+}
+
+.centered-chat-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--plato-space-sm);
+  align-items: end;
+}
+
+.centered-chat-form label {
+  display: grid;
+  min-width: 0;
+  gap: 6px;
+}
+
+.centered-chat-form textarea {
+  width: 100%;
+  min-width: 0;
+  resize: vertical;
+  border: 1px solid var(--plato-color-border);
+  border-radius: var(--plato-radius-control);
+  padding: 9px;
+  background: rgb(255 255 255 / 82%);
+  color: var(--plato-color-text);
+  font: inherit;
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
+.centered-chat-form button,
+.current-task-actions button {
+  min-height: 34px;
+  border: 1px solid var(--plato-color-border);
+  border-radius: var(--plato-radius-control);
+  background: var(--plato-color-surface-raised);
+  color: var(--plato-color-text);
+  font-size: 0.76rem;
+  font-weight: 850;
+}
+
+.centered-chat-form button {
+  min-width: 72px;
+  border-color: var(--plato-color-companion);
+  background: var(--plato-color-companion);
+  color: #ffffff;
+}
+
+.centered-chat-form button:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
+.current-task-panel {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.current-task-actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  justify-content: end;
+  gap: 7px;
+}
+
+.approval-actions button:first-child {
+  border-color: var(--plato-color-companion);
+  color: var(--plato-color-companion);
+}
+
 .control-note {
   margin-bottom: 0;
   padding-top: 8px;
@@ -1365,6 +1536,12 @@ h1 {
     width: min(calc(100vw - 20px), 420px);
   }
 
+  .centered-chat-panel {
+    width: min(calc(100vw - 20px), 420px);
+    max-height: min(calc(100vh - 84px), 560px);
+    padding: var(--plato-space-md);
+  }
+
   .control-nav {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -1389,9 +1566,15 @@ h1 {
 
   .voice-status,
   .voice-actions,
+  .centered-chat-form,
+  .current-task-panel,
   .memory-layout,
   .memory-toolbar {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .current-task-actions {
+    justify-content: start;
   }
 }
 
