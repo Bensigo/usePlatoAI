@@ -65,7 +65,7 @@ fn place_default_presence_window(window: &WebviewWindow) -> tauri::Result<()> {
 
 #[cfg(target_os = "macos")]
 fn configure_active_space_following(window: &WebviewWindow) -> tauri::Result<()> {
-    use objc2_app_kit::{NSWindow, NSWindowAnimationBehavior, NSWindowCollectionBehavior};
+    use objc2_app_kit::{NSWindow, NSWindowAnimationBehavior};
 
     let ns_window = window.ns_window()?;
 
@@ -73,14 +73,21 @@ fn configure_active_space_following(window: &WebviewWindow) -> tauri::Result<()>
         let ns_window: &NSWindow = &*ns_window.cast();
         let behavior = ns_window.collectionBehavior();
 
-        ns_window.setCollectionBehavior(
-            (behavior | NSWindowCollectionBehavior::MoveToActiveSpace)
-                - NSWindowCollectionBehavior::CanJoinAllSpaces,
-        );
+        ns_window.setCollectionBehavior(active_space_collection_behavior(behavior));
         ns_window.setAnimationBehavior(NSWindowAnimationBehavior::UtilityWindow);
     }
 
     Ok(())
+}
+
+#[cfg(target_os = "macos")]
+fn active_space_collection_behavior(
+    behavior: objc2_app_kit::NSWindowCollectionBehavior,
+) -> objc2_app_kit::NSWindowCollectionBehavior {
+    use objc2_app_kit::NSWindowCollectionBehavior;
+
+    (behavior | NSWindowCollectionBehavior::MoveToActiveSpace)
+        - NSWindowCollectionBehavior::CanJoinAllSpaces
 }
 
 #[cfg(not(target_os = "macos"))]
@@ -140,5 +147,20 @@ mod tests {
 
         assert_eq!(placement.y, 43);
         assert_eq!(placement.anchor, PresenceAnchor::BottomRight);
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn active_space_behavior_moves_to_active_space_without_joining_all_spaces() {
+        use objc2_app_kit::NSWindowCollectionBehavior;
+
+        let behavior = active_space_collection_behavior(
+            NSWindowCollectionBehavior::CanJoinAllSpaces
+                | NSWindowCollectionBehavior::FullScreenAuxiliary,
+        );
+
+        assert!(behavior.contains(NSWindowCollectionBehavior::MoveToActiveSpace));
+        assert!(!behavior.contains(NSWindowCollectionBehavior::CanJoinAllSpaces));
+        assert!(behavior.contains(NSWindowCollectionBehavior::FullScreenAuxiliary));
     }
 }
