@@ -20,6 +20,7 @@ import {
   isActiveCorrectionPromptTransition,
   isActionableCurrentTaskState,
   renderedPresenceStateFor,
+  shouldShowCenteredChatPanelOpener,
 } from "../src/App";
 import {
   audioActivationSnapshotForState,
@@ -751,6 +752,25 @@ describe("desktop app shell", () => {
     expect(markup).toContain("presence-sound-wave");
     expect(markup).toContain("Listening");
     expect(markup).not.toContain("Listening through local mock voice");
+  });
+
+  it("keeps paused task controls reachable while voice is idle", () => {
+    const markup = renderToStaticMarkup(
+      <App
+        initialSettings={completedSettings}
+        initialPresenceState="task_paused"
+      />,
+    );
+
+    expect(
+      shouldShowCenteredChatPanelOpener({
+        voiceInteractionSessionState: "idle",
+        currentTaskState: presenceStateSnapshot("task_paused"),
+      }),
+    ).toBe(true);
+    expect(markup).toContain("Open current task controls: Task paused");
+    expect(markup).toContain("Task paused");
+    expect(markup).not.toContain("presence-sound-wave");
   });
 
   it("renders thinking and speaking bubble states with distinct indicators", () => {

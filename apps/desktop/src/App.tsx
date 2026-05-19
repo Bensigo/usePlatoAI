@@ -202,6 +202,28 @@ export function currentTaskPresenceStateForAction(
   return "idle";
 }
 
+export function isCurrentTaskControlState(state: string) {
+  return (
+    state === "task_running" ||
+    state === "task_paused" ||
+    state === "waiting_for_approval" ||
+    state === "waitingApproval"
+  );
+}
+
+export function shouldShowCenteredChatPanelOpener({
+  voiceInteractionSessionState,
+  currentTaskState,
+}: {
+  voiceInteractionSessionState: VoiceSessionState;
+  currentTaskState: PresenceStateSnapshot;
+}) {
+  return (
+    voiceInteractionSessionState !== "idle" ||
+    isCurrentTaskControlState(currentTaskState.state)
+  );
+}
+
 export function DismissedPresence({ onRestore }: { onRestore: () => void }) {
   return (
     <section className="restore-card" aria-label="Plato presence hidden">
@@ -1920,9 +1942,10 @@ export function App({
   });
   const avatarPresenceState = avatarPresenceStateFor(renderedPresenceState);
   const avatarSurfaceHook = getLive2DAvatarSurfaceHook(avatarPresenceState);
-  const shouldShowCenteredPanelOpener =
-    voiceInteraction.sessionState !== "idle" ||
-    isActionableCurrentTaskState(presence.state);
+  const showCenteredChatPanelOpener = shouldShowCenteredChatPanelOpener({
+    voiceInteractionSessionState: voiceInteraction.sessionState,
+    currentTaskState: presence,
+  });
 
   useEffect(() => {
     if (initialSettings) {
@@ -2144,16 +2167,16 @@ export function App({
               <Live2DAvatarSurface presenceState={avatarPresenceState} />
             </button>
 
-            {shouldShowCenteredPanelOpener ? (
+            {showCenteredChatPanelOpener ? (
               <PresenceListeningBubble
                 state={avatarPresenceState}
                 label={
-                  voiceInteraction.sessionState === "idle"
+                  isCurrentTaskControlState(presence.state)
                     ? presence.label
                     : undefined
                 }
                 ariaLabel={
-                  voiceInteraction.sessionState === "idle"
+                  isCurrentTaskControlState(presence.state)
                     ? `Open current task controls: ${presence.label}`
                     : undefined
                 }
