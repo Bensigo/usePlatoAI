@@ -885,6 +885,136 @@ export function VoiceInteractionPanel({
   );
 }
 
+export function CenteredChatPanel({
+  voiceInteraction,
+  presenceState,
+  onDismiss,
+  onTextFallbackChange,
+  onSubmitTextFallback,
+  onPauseCurrentTask,
+  onCancelCurrentTask,
+  onApproveCurrentTask,
+  onRejectCurrentTask,
+}: {
+  voiceInteraction: VoiceInteractionSnapshot;
+  presenceState: AvatarPresenceState;
+  onDismiss: () => void;
+  onTextFallbackChange?: (value: string) => void;
+  onSubmitTextFallback?: () => void;
+  onPauseCurrentTask?: () => void;
+  onCancelCurrentTask?: () => void;
+  onApproveCurrentTask?: () => void;
+  onRejectCurrentTask?: () => void;
+}) {
+  const isWorkRunning = voiceInteraction.sessionState !== "idle";
+  const isWaitingForApproval = presenceState === "waitingApproval";
+  const showsCurrentTask = isWorkRunning || isWaitingForApproval;
+  const transcript = voiceInteraction.transcript || "No voice input yet.";
+  const latestUserMessage =
+    voiceInteraction.submittedFallbackText || voiceInteraction.transcript;
+
+  function submitTextFallback(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    onSubmitTextFallback?.();
+  }
+
+  return (
+    <section
+      className="centered-chat-panel"
+      aria-label="Centered Plato chat panel"
+    >
+      <header className="centered-chat-header">
+        <div>
+          <p className="status-label">Current interaction</p>
+          <h2>Chat with Plato</h2>
+        </div>
+        <button
+          type="button"
+          onClick={onDismiss}
+          aria-label="Dismiss chat panel"
+        >
+          x
+        </button>
+      </header>
+
+      <section
+        className="centered-chat-transcript"
+        aria-label="Transcript review"
+      >
+        <strong>Transcript</strong>
+        <p>{transcript}</p>
+      </section>
+
+      <section
+        className="centered-chat-thread"
+        aria-label="Text chat with Plato"
+      >
+        {latestUserMessage ? (
+          <article className="chat-message user-message">
+            <strong>You</strong>
+            <p>{latestUserMessage}</p>
+          </article>
+        ) : null}
+        <article className="chat-message plato-message">
+          <strong>Plato</strong>
+          <p>{voiceInteraction.response || "Ready for voice or text."}</p>
+        </article>
+      </section>
+
+      <form className="centered-chat-form" onSubmit={submitTextFallback}>
+        <label>
+          <span>Text chat</span>
+          <textarea
+            value={voiceInteraction.fallbackText}
+            rows={3}
+            placeholder="Type to Plato"
+            onChange={(event) =>
+              onTextFallbackChange?.(event.currentTarget.value)
+            }
+          />
+        </label>
+        <button type="submit">Send</button>
+      </form>
+
+      {showsCurrentTask ? (
+        <section
+          className="current-task-panel"
+          aria-label="Current task controls"
+        >
+          <div>
+            <strong>Current task</strong>
+            <p>
+              {isWaitingForApproval
+                ? "Waiting for approval"
+                : voiceInteraction.sessionState}
+            </p>
+          </div>
+          {isWorkRunning ? (
+            <div className="current-task-actions">
+              <button type="button" onClick={onPauseCurrentTask}>
+                Pause
+              </button>
+              <button type="button" onClick={onCancelCurrentTask}>
+                Cancel
+              </button>
+            </div>
+          ) : null}
+          {isWaitingForApproval ? (
+            <div className="current-task-actions approval-actions">
+              <button type="button" onClick={onApproveCurrentTask}>
+                Approve
+              </button>
+              <button type="button" onClick={onRejectCurrentTask}>
+                Reject
+              </button>
+            </div>
+          ) : null}
+        </section>
+      ) : null}
+    </section>
+  );
+}
+
 export function PresenceListeningBubble({
   state,
   onOpenControls,
@@ -1481,6 +1611,7 @@ export function App({
   const [isSettingsLoaded, setIsSettingsLoaded] = useState(
     () => initialSettings !== undefined,
   );
+  const [isChatPanelOpen, setIsChatPanelOpen] = useState(false);
   const [voiceInteraction, setVoiceInteraction] =
     useState<VoiceInteractionSnapshot>(defaultVoiceInteractionSnapshot);
   const [soulGuidance, setSoulGuidance] =
@@ -1595,6 +1726,10 @@ export function App({
     setActiveEntry("voice");
   }
 
+  function openCenteredChatPanel() {
+    setIsChatPanelOpen(true);
+  }
+
   function activateVoiceListening() {
     if (
       canStartVoiceInteractionWithAudio(audioActivation) ||
@@ -1652,6 +1787,24 @@ export function App({
     );
     scheduleVoiceState(700, "speaking", "text");
     scheduleVoiceState(1800, "idle", "text");
+  }
+
+  function approveCurrentTask() {
+    setVoiceInteraction((current) => ({
+      ...current,
+      response: "Approved. Continuing the current task.",
+    }));
+  }
+
+  function rejectCurrentTask() {
+    clearVoiceTimers();
+    correctionPromptRequestId.current += 1;
+    setVoiceInteraction((current) => ({
+      ...current,
+      sessionState: "idle",
+      response: "Rejected. Current task stopped.",
+      companionPrompt: null,
+    }));
   }
 
   const renderedPresenceState = renderedPresenceStateFor({
@@ -1828,6 +1981,22 @@ export function App({
         />
       </section>
 
+      {isChatPanelOpen ? (
+        <CenteredChatPanel
+          voiceInteraction={voiceInteraction}
+          presenceState={avatarPresenceState}
+          onDismiss={() => setIsChatPanelOpen(false)}
+          onTextFallbackChange={(fallbackText) =>
+            setVoiceInteraction((current) => ({ ...current, fallbackText }))
+          }
+          onSubmitTextFallback={submitTextFallback}
+          onPauseCurrentTask={stopVoiceInteraction}
+          onCancelCurrentTask={stopVoiceInteraction}
+          onApproveCurrentTask={approveCurrentTask}
+          onRejectCurrentTask={rejectCurrentTask}
+        />
+      ) : null}
+
       <section className="companion-presence-zone" aria-label="Bottom Plato presence area">
         {isDismissed ? (
           <DismissedPresence onRestore={() => setIsDismissed(false)} />
@@ -1869,7 +2038,7 @@ export function App({
             {voiceInteraction.sessionState !== "idle" ? (
               <PresenceListeningBubble
                 state={avatarPresenceState}
-                onOpenControls={openVoiceControls}
+                onOpenControls={openCenteredChatPanel}
               />
             ) : null}
 

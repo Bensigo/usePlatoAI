@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 import {
   App,
   AudioActivationStatus,
+  CenteredChatPanel,
   ConfigPanel,
   ControlSurfacePanel,
   DismissedPresence,
@@ -747,6 +748,51 @@ describe("desktop app shell", () => {
     expect(markup).not.toContain("Listening through local mock voice");
   });
 
+  it("renders a centered chat panel with transcript and running-task controls", () => {
+    const markup = renderToStaticMarkup(
+      <CenteredChatPanel
+        presenceState="listening"
+        voiceInteraction={{
+          ...defaultVoiceInteractionSnapshot,
+          sessionState: "listening",
+          transcript: "Listening through local mock voice...",
+          fallbackText: "Can you review this?",
+          response: "Ready for voice or text.",
+        }}
+        onDismiss={() => undefined}
+      />,
+    );
+
+    expect(markup).toContain("Centered Plato chat panel");
+    expect(markup).toContain("Chat with Plato");
+    expect(markup).toContain("Transcript");
+    expect(markup).toContain("Listening through local mock voice...");
+    expect(markup).toContain("Text chat");
+    expect(markup).toContain("Current task");
+    expect(markup).toContain("listening");
+    expect(markup).toContain("Pause");
+    expect(markup).toContain("Cancel");
+    expect(markup).not.toContain("Settings");
+    expect(markup).not.toContain("Memory control");
+    expect(markup).not.toContain("Provider");
+  });
+
+  it("shows approval controls only while the centered panel waits for approval", () => {
+    const markup = renderToStaticMarkup(
+      <CenteredChatPanel
+        presenceState="waitingApproval"
+        voiceInteraction={defaultVoiceInteractionSnapshot}
+        onDismiss={() => undefined}
+      />,
+    );
+
+    expect(markup).toContain("Waiting for approval");
+    expect(markup).toContain("Approve");
+    expect(markup).toContain("Reject");
+    expect(markup).not.toContain("Pause");
+    expect(markup).not.toContain("Cancel");
+  });
+
   it("keeps the compact bubble styling native and animated", () => {
     const styles = readFileSync(
       resolve(process.cwd(), "src/styles.css"),
@@ -757,6 +803,20 @@ describe("desktop app shell", () => {
     expect(styles).toContain("backdrop-filter: blur(20px) saturate(145%)");
     expect(styles).toContain("@keyframes presence-wave");
     expect(styles).toContain("@keyframes avatar-click-acknowledge");
+  });
+
+  it("keeps the centered chat panel liquid-glass and non-modal", () => {
+    const styles = readFileSync(
+      resolve(process.cwd(), "src/styles.css"),
+      "utf8",
+    );
+
+    expect(styles).toContain(".centered-chat-panel");
+    expect(styles).toContain("backdrop-filter: blur(24px) saturate(150%)");
+    expect(styles).toMatch(
+      /\.centered-chat-panel\s*{[^}]*pointer-events:\s*auto;/s,
+    );
+    expect(styles).not.toContain(".centered-chat-backdrop");
   });
 
   it("maps voice session state into companion presence labels", () => {
