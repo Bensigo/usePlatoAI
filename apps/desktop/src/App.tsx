@@ -175,6 +175,10 @@ export function renderedPresenceStateFor({
 
 export type CurrentTaskPanelAction = "pause" | "cancel" | "approve" | "reject";
 
+export function isActionableCurrentTaskState(state: string) {
+  return state === "task_running" || state === "waiting_for_approval";
+}
+
 export function currentTaskPresenceStateForAction(
   action: CurrentTaskPanelAction,
 ) {
@@ -1034,12 +1038,16 @@ export function CenteredChatPanel({
 
 export function PresenceListeningBubble({
   state,
+  label: overrideLabel,
+  ariaLabel,
   onOpenControls,
 }: {
   state: AvatarPresenceState;
+  label?: string;
+  ariaLabel?: string;
   onOpenControls?: () => void;
 }) {
-  const label = getLive2DAvatarSurfaceHook(state).label;
+  const label = overrideLabel ?? getLive2DAvatarSurfaceHook(state).label;
   const hasSoundWave = state === "listening" || state === "speaking";
 
   return (
@@ -1047,7 +1055,7 @@ export function PresenceListeningBubble({
       className="presence-listening-bubble"
       type="button"
       onClick={onOpenControls}
-      aria-label={`Open voice controls: ${label}`}
+      aria-label={ariaLabel ?? `Open voice controls: ${label}`}
     >
       <span className="presence-bubble-label">{label}</span>
       {hasSoundWave ? (
@@ -1863,6 +1871,9 @@ export function App({
   });
   const avatarPresenceState = avatarPresenceStateFor(renderedPresenceState);
   const avatarSurfaceHook = getLive2DAvatarSurfaceHook(avatarPresenceState);
+  const shouldShowCenteredPanelOpener =
+    voiceInteraction.sessionState !== "idle" ||
+    isActionableCurrentTaskState(presence.state);
 
   useEffect(() => {
     if (initialSettings) {
@@ -2083,9 +2094,19 @@ export function App({
               <Live2DAvatarSurface presenceState={avatarPresenceState} />
             </button>
 
-            {voiceInteraction.sessionState !== "idle" ? (
+            {shouldShowCenteredPanelOpener ? (
               <PresenceListeningBubble
                 state={avatarPresenceState}
+                label={
+                  voiceInteraction.sessionState === "idle"
+                    ? presence.label
+                    : undefined
+                }
+                ariaLabel={
+                  voiceInteraction.sessionState === "idle"
+                    ? `Open current task controls: ${presence.label}`
+                    : undefined
+                }
                 onOpenControls={openCenteredChatPanel}
               />
             ) : null}
