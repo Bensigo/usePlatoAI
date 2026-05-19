@@ -15,9 +15,12 @@ import {
   SoulEditorPanel,
   VoiceInteractionPanel,
   isActiveCorrectionPromptTransition,
+  renderedPresenceStateFor,
 } from "../src/App";
 import {
   Live2DAvatarSurface,
+  avatarPresenceStateFrom,
+  avatarPresenceStates,
   getLive2DAvatarSurfaceHook,
   isAvatarPresenceState,
   type AvatarPresenceState,
@@ -134,47 +137,70 @@ describe("desktop app shell", () => {
   });
 
   it("maps renderer-independent presence states to Live2D surface hooks", () => {
+    expect(avatarPresenceStates).toEqual([
+      "appearing",
+      "idle",
+      "listening",
+      "thinking",
+      "speaking",
+      "waitingApproval",
+      "muted",
+      "error",
+    ]);
+
     const expectedMappings: Array<{
       state: AvatarPresenceState;
       statusText: string;
       motionGroup: string;
       expression: string;
-      spriteFrameIndex: number;
     }> = [
+      {
+        state: "appearing",
+        statusText: "Coming online",
+        motionGroup: "appear",
+        expression: "bright",
+      },
       {
         state: "idle",
         statusText: "Idle presence",
         motionGroup: "idle",
         expression: "neutral",
-        spriteFrameIndex: 0,
       },
       {
         state: "listening",
         statusText: "Listening now",
         motionGroup: "tap_body",
         expression: "attentive",
-        spriteFrameIndex: 1,
       },
       {
         state: "thinking",
         statusText: "Thinking through it",
         motionGroup: "thinking",
         expression: "focused",
-        spriteFrameIndex: 2,
       },
       {
         state: "speaking",
         statusText: "Speaking",
         motionGroup: "speak",
         expression: "talking",
-        spriteFrameIndex: 3,
       },
       {
-        state: "waiting_for_approval",
+        state: "waitingApproval",
         statusText: "Waiting for approval",
         motionGroup: "approval",
         expression: "concerned",
-        spriteFrameIndex: 4,
+      },
+      {
+        state: "muted",
+        statusText: "Muted",
+        motionGroup: "quiet",
+        expression: "soft",
+      },
+      {
+        state: "error",
+        statusText: "Needs repair",
+        motionGroup: "error",
+        expression: "strained",
       },
     ];
 
@@ -185,42 +211,35 @@ describe("desktop app shell", () => {
       );
 
       expect(hook.statusText).toBe(mapping.statusText);
+      expect(hook.assetSrc).toBe(`/avatar/plato/${mapping.state}.png`);
       expect(hook.motionGroup).toBe(mapping.motionGroup);
       expect(hook.expression).toBe(mapping.expression);
-      expect(hook.spriteFrame).toMatchObject({
-        name: mapping.state,
-        index: mapping.spriteFrameIndex,
-        count: 5,
-      });
-      expect(hook.spriteFrame.src).toContain(
-        "plato-realistic-generated-sprite.png",
-      );
       expect(markup).toContain(`data-presence-state="${mapping.state}"`);
+      expect(markup).toContain(`src="/avatar/plato/${mapping.state}.png"`);
       expect(markup).toContain(
         `data-live2d-motion-group="${mapping.motionGroup}"`,
       );
       expect(markup).toContain(
         `data-live2d-expression="${mapping.expression}"`,
       );
-      expect(markup).toContain(`data-sprite-frame="${mapping.state}"`);
       expect(markup).toContain(
-        `data-sprite-frame-index="${mapping.spriteFrameIndex}"`,
+        `data-avatar-asset="/avatar/plato/${mapping.state}.png"`,
       );
-      expect(markup).toContain("live2d-avatar-sprite");
-      expect(markup).toContain("plato-realistic-generated-sprite.png");
+      expect(markup).toContain("plato-avatar-asset");
       expect(markup).toContain(mapping.statusText);
+      expect(markup).not.toContain("live2d-avatar-head");
+      expect(markup).not.toContain("live2d-avatar-body");
     }
   });
 
-  it("renders the visible avatar with the generated sprite asset instead of CSS face/body parts", () => {
+  it("renders the visible avatar with generated state assets instead of CSS face/body parts", () => {
     const markup = renderToStaticMarkup(
       <Live2DAvatarSurface presenceState="listening" />,
     );
 
-    expect(markup).toContain("live2d-avatar-sprite");
-    expect(markup).toContain("plato-realistic-generated-sprite.png");
-    expect(markup).toContain('data-sprite-frame="listening"');
-    expect(markup).toContain('data-sprite-frame-index="1"');
+    expect(markup).toContain("plato-avatar-asset");
+    expect(markup).toContain("/avatar/plato/listening.png");
+    expect(markup).toContain('data-avatar-asset="/avatar/plato/listening.png"');
     expect(markup).not.toContain("live2d-avatar-hair");
     expect(markup).not.toContain("live2d-avatar-head");
     expect(markup).not.toContain("live2d-avatar-eye");
@@ -232,21 +251,37 @@ describe("desktop app shell", () => {
     const markup = renderToStaticMarkup(
       <App
         initialSettings={completedSettings}
-        initialPresenceState="waiting_for_approval"
+        initialPresenceState="waitingApproval"
       />,
     );
 
     expect(markup).toContain("Waiting for approval");
-    expect(markup).toContain('data-presence-state="waiting_for_approval"');
+    expect(markup).toContain('data-presence-state="waitingApproval"');
     expect(markup).toContain('data-live2d-motion-group="approval"');
     expect(markup).toContain('data-live2d-expression="concerned"');
   });
 
   it("recognizes valid URL presence states for visual smoke checks", () => {
+    expect(isAvatarPresenceState("appearing")).toBe(true);
     expect(isAvatarPresenceState("speaking")).toBe(true);
-    expect(isAvatarPresenceState("waiting_for_approval")).toBe(true);
+    expect(isAvatarPresenceState("waitingApproval")).toBe(true);
+    expect(isAvatarPresenceState("muted")).toBe(true);
+    expect(isAvatarPresenceState("error")).toBe(true);
     expect(isAvatarPresenceState("unknown")).toBe(false);
     expect(isAvatarPresenceState(null)).toBe(false);
+    expect(avatarPresenceStateFrom("waiting_for_approval")).toBe(
+      "waitingApproval",
+    );
+    expect(avatarPresenceStateFrom("unknown")).toBeUndefined();
+  });
+
+  it("renders Plato with a direct clickable audio affordance", () => {
+    const markup = renderToStaticMarkup(
+      <App initialSettings={completedSettings} />,
+    );
+
+    expect(markup).toContain("Start voice interaction with Plato");
+    expect(markup).toContain("avatar-action");
   });
 
   it("renders presence state through the shared source boundary", () => {
@@ -262,6 +297,37 @@ describe("desktop app shell", () => {
     expect(markup).toContain('data-presence-state="listening"');
     expect(markup).toContain('data-live2d-motion-group="tap_body"');
     expect(markup).toContain('data-live2d-expression="attentive"');
+  });
+
+  it("does not let passive mute hide active product presence states", () => {
+    expect(
+      renderedPresenceStateFor({
+        voiceOutputPresenceState: "muted",
+        voiceInteractionSessionState: "idle",
+        sharedPresenceState: "waiting_for_approval",
+      }),
+    ).toBe("waiting_for_approval");
+    expect(
+      renderedPresenceStateFor({
+        voiceOutputPresenceState: "muted",
+        voiceInteractionSessionState: "idle",
+        sharedPresenceState: "task_running",
+      }),
+    ).toBe("task_running");
+    expect(
+      renderedPresenceStateFor({
+        voiceOutputPresenceState: "muted",
+        voiceInteractionSessionState: "idle",
+        sharedPresenceState: "idle",
+      }),
+    ).toBe("muted");
+    expect(
+      renderedPresenceStateFor({
+        voiceOutputPresenceState: "speaking",
+        voiceInteractionSessionState: "idle",
+        sharedPresenceState: "waiting_for_approval",
+      }),
+    ).toBe("speaking");
   });
 
   it("falls back to idle presence for invalid state input", () => {
@@ -968,13 +1034,13 @@ describe("desktop app shell", () => {
 
     expect(nextSession.isMuted).toBe(true);
     expect(nextSession.phase).toBe("text_fallback");
-    expect(nextSession.presenceState).toBe("idle");
+    expect(nextSession.presenceState).toBe("muted");
     expect(nextSession.spokenText).toBeNull();
     expect(nextSession.textFallback).toBe(mockVoiceResponse);
     expect(nextSession.statusLabel).toBe("Voice muted - text fallback visible");
   });
 
-  it("mutes in-progress mocked speech and returns presence to idle", () => {
+  it("mutes in-progress mocked speech and returns presence to muted", () => {
     const speakingSession = startMockSpeech(
       createVoiceOutputSession(),
       mockVoiceResponse,
@@ -983,9 +1049,35 @@ describe("desktop app shell", () => {
 
     expect(mutedSession.isMuted).toBe(true);
     expect(mutedSession.phase).toBe("text_fallback");
-    expect(mutedSession.presenceState).toBe("idle");
+    expect(mutedSession.presenceState).toBe("muted");
     expect(mutedSession.spokenText).toBeNull();
     expect(mutedSession.textFallback).toBe(mockVoiceResponse);
+  });
+
+  it("returns muted voice output to idle presence after unmuting", () => {
+    const mutedSession = setVoiceOutputMuted(createVoiceOutputSession(), true);
+    const unmutedSession = setVoiceOutputMuted(mutedSession, false);
+
+    expect(unmutedSession.isMuted).toBe(false);
+    expect(unmutedSession.presenceState).toBe("idle");
+    expect(unmutedSession.statusLabel).toBe("Voice ready");
+  });
+
+  it("preserves muted presence when stopping muted text fallback", () => {
+    const mutedSession = startMockSpeech(
+      setVoiceOutputMuted(createVoiceOutputSession(), true),
+      mockVoiceResponse,
+    );
+    const stoppedSession = stopMockSpeech(mutedSession);
+
+    expect(mutedSession.isMuted).toBe(true);
+    expect(mutedSession.phase).toBe("text_fallback");
+    expect(stoppedSession.isMuted).toBe(true);
+    expect(stoppedSession.phase).toBe("text_fallback");
+    expect(stoppedSession.presenceState).toBe("muted");
+    expect(stoppedSession.statusLabel).toBe(
+      "Voice muted - text fallback visible",
+    );
   });
 
   it("stops mocked speech and returns presence to idle", () => {

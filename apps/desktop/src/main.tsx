@@ -2,7 +2,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
 import { App } from "./App";
-import { isAvatarPresenceState } from "./avatarSurface";
+import { avatarPresenceStateFrom } from "./avatarSurface";
 import { isControlSurfaceId } from "./controlSurface";
 import { defaultCompanionSettings } from "./settings";
 
@@ -14,9 +14,7 @@ if (!root) {
 
 const searchParams = new URLSearchParams(window.location.search);
 const urlPresenceState = searchParams.get("presenceState");
-const initialPresenceState = isAvatarPresenceState(urlPresenceState)
-  ? urlPresenceState
-  : undefined;
+const initialPresenceState = avatarPresenceStateFrom(urlPresenceState);
 const urlControlSurface = searchParams.get("controlSurface");
 const initialActiveEntry = isControlSurfaceId(urlControlSurface)
   ? urlControlSurface

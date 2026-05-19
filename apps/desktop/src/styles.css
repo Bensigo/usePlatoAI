@@ -175,10 +175,11 @@ button {
 }
 
 .live2d-avatar-surface {
-  width: 154px;
+  width: 172px;
   display: grid;
   justify-items: center;
   margin: 0;
+  --avatar-state-color: var(--plato-state-idle);
   filter: var(--plato-elevation-avatar);
 }
 
@@ -208,26 +209,65 @@ button {
 
 .live2d-avatar-stage {
   position: relative;
-  width: 154px;
-  height: 308px;
+  width: 172px;
+  height: 186px;
   overflow: hidden;
   background: transparent;
   transform-origin: 50% 100%;
   animation: avatar-idle-breathe var(--plato-motion-idle) infinite;
 }
 
-.live2d-avatar-sprite {
+.plato-avatar-asset {
   position: absolute;
-  inset: 0 auto 0 0;
-  width: 500%;
+  inset: 0;
+  display: block;
+  width: 100%;
   height: 100%;
-  max-width: none;
-  object-fit: fill;
-  pointer-events: none;
-  transform: translateX(
-    calc(var(--plato-avatar-sprite-frame-index, 0) * -20%)
-  );
+  object-fit: contain;
+  object-position: center bottom;
   user-select: none;
+  -webkit-user-drag: none;
+}
+
+.live2d-avatar-stage::after {
+  position: absolute;
+  left: 15%;
+  right: 15%;
+  bottom: 0;
+  height: 12px;
+  border-radius: 999px;
+  background: rgb(15 23 42 / 14%);
+  filter: blur(8px);
+  content: "";
+  z-index: -1;
+}
+
+.live2d-avatar-surface[data-presence-state="appearing"] {
+  --avatar-state-color: var(--plato-color-companion);
+}
+
+.live2d-avatar-surface[data-presence-state="listening"] {
+  --avatar-state-color: var(--plato-state-listening);
+}
+
+.live2d-avatar-surface[data-presence-state="thinking"] {
+  --avatar-state-color: var(--plato-state-thinking);
+}
+
+.live2d-avatar-surface[data-presence-state="speaking"] {
+  --avatar-state-color: var(--plato-state-speaking);
+}
+
+.live2d-avatar-surface[data-presence-state="waitingApproval"] {
+  --avatar-state-color: var(--plato-state-waiting-approval);
+}
+
+.live2d-avatar-surface[data-presence-state="muted"] {
+  --avatar-state-color: var(--plato-state-muted);
+}
+
+.live2d-avatar-surface[data-presence-state="error"] {
+  --avatar-state-color: var(--plato-state-error);
 }
 
 .live2d-avatar-caption {
@@ -256,13 +296,32 @@ button {
   animation-duration: var(--plato-motion-listening);
 }
 
+.live2d-avatar-surface[data-presence-state="thinking"] .live2d-avatar-stage {
+  transform: rotate(-2deg);
+}
+
 .live2d-avatar-surface[data-presence-state="speaking"] .live2d-avatar-stage {
   animation-duration: var(--plato-motion-speaking);
 }
 
-.live2d-avatar-surface[data-presence-state="waiting_for_approval"]
+.live2d-avatar-surface[data-presence-state="waitingApproval"]
   .live2d-avatar-stage {
   animation-duration: var(--plato-motion-waiting-approval);
+}
+
+.live2d-avatar-surface[data-presence-state="muted"] .live2d-avatar-stage {
+  animation-duration: var(--plato-motion-waiting-approval);
+  opacity: 0.86;
+}
+
+.live2d-avatar-surface[data-presence-state="error"] .live2d-avatar-stage {
+  animation-duration: var(--plato-motion-speaking);
+  transform: rotate(2deg);
+}
+
+.live2d-avatar-surface[data-presence-state="appearing"] .live2d-avatar-stage {
+  animation-duration: var(--plato-motion-speaking);
+  transform: translateY(-4px);
 }
 
 .presence-listening-bubble {
@@ -1123,12 +1182,12 @@ h1 {
   }
 
   .live2d-avatar-surface {
-    width: 132px;
+    width: 144px;
   }
 
   .live2d-avatar-stage {
-    width: 132px;
-    height: 264px;
+    width: 144px;
+    height: 156px;
     transform-origin: 50% 100%;
   }
 

@@ -1,6 +1,6 @@
 export type VoiceOutputPhase = "idle" | "speaking" | "text_fallback";
 
-export type CompanionPresenceState = "idle" | "speaking";
+export type CompanionPresenceState = "idle" | "speaking" | "muted";
 
 export type VoiceOutputSession = {
   isMuted: boolean;
@@ -33,8 +33,13 @@ export function setVoiceOutputMuted(
     return {
       ...session,
       isMuted,
+      presenceState:
+        session.presenceState === "muted" ? "idle" : session.presenceState,
       statusLabel:
-        session.phase === "text_fallback" ? "Voice ready" : session.statusLabel,
+        session.phase === "text_fallback" ||
+        session.statusLabel === "Voice muted - text fallback visible"
+          ? "Voice ready"
+          : session.statusLabel,
     };
   }
 
@@ -42,7 +47,7 @@ export function setVoiceOutputMuted(
     ...session,
     isMuted,
     phase: session.phase === "speaking" ? "text_fallback" : session.phase,
-    presenceState: session.phase === "speaking" ? "idle" : session.presenceState,
+    presenceState: "muted",
     spokenText: session.phase === "speaking" ? null : session.spokenText,
     textFallback:
       session.spokenText ?? session.textFallback ?? "Text fallback ready",
@@ -58,7 +63,7 @@ export function startMockSpeech(
     return {
       ...session,
       phase: "text_fallback",
-      presenceState: "idle",
+      presenceState: "muted",
       spokenText: null,
       textFallback: text,
       statusLabel: "Voice muted - text fallback visible",
@@ -79,7 +84,7 @@ export function stopMockSpeech(session: VoiceOutputSession): VoiceOutputSession 
   if (session.phase !== "speaking") {
     return {
       ...session,
-      presenceState: "idle",
+      presenceState: session.isMuted ? "muted" : "idle",
       statusLabel: session.isMuted
         ? "Voice muted - text fallback visible"
         : "Voice ready",

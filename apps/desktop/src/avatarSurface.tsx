@@ -1,26 +1,39 @@
-import type { CSSProperties } from "react";
+export const avatarPresenceStates = [
+  "appearing",
+  "idle",
+  "listening",
+  "thinking",
+  "speaking",
+  "waitingApproval",
+  "muted",
+  "error",
+] as const;
 
-import platoGeneratedSpriteUrl from "./assets/plato-realistic-generated-sprite.png";
-
-export type AvatarPresenceState =
-  | "idle"
-  | "listening"
-  | "thinking"
-  | "speaking"
-  | "waiting_for_approval";
+export type AvatarPresenceState = (typeof avatarPresenceStates)[number];
 
 export type Live2DAvatarSurfaceHook = {
   state: AvatarPresenceState;
   label: string;
   statusText: string;
-  motionGroup: "idle" | "tap_body" | "thinking" | "speak" | "approval";
-  expression: "neutral" | "attentive" | "focused" | "talking" | "concerned";
-  spriteFrame: {
-    src: string;
-    name: AvatarPresenceState;
-    index: 0 | 1 | 2 | 3 | 4;
-    count: 5;
-  };
+  assetSrc: string;
+  motionGroup:
+    | "appear"
+    | "idle"
+    | "tap_body"
+    | "thinking"
+    | "speak"
+    | "approval"
+    | "quiet"
+    | "error";
+  expression:
+    | "bright"
+    | "neutral"
+    | "attentive"
+    | "focused"
+    | "talking"
+    | "concerned"
+    | "soft"
+    | "strained";
   parameterHints: {
     eyeOpen: number;
     mouthOpen: number;
@@ -29,31 +42,31 @@ export type Live2DAvatarSurfaceHook = {
   };
 };
 
-const generatedSpriteFrameCount = 5;
-
-function generatedSpriteFrame(
-  name: AvatarPresenceState,
-  index: 0 | 1 | 2 | 3 | 4,
-): Live2DAvatarSurfaceHook["spriteFrame"] {
-  return {
-    src: platoGeneratedSpriteUrl,
-    name,
-    index,
-    count: generatedSpriteFrameCount,
-  };
-}
-
 export const live2dAvatarSurfaceHooks: Record<
   AvatarPresenceState,
   Live2DAvatarSurfaceHook
 > = {
+  appearing: {
+    state: "appearing",
+    label: "Appearing",
+    statusText: "Coming online",
+    assetSrc: "/avatar/plato/appearing.png",
+    motionGroup: "appear",
+    expression: "bright",
+    parameterHints: {
+      eyeOpen: 1,
+      mouthOpen: 0.16,
+      bodyAngleX: 0,
+      bodyAngleY: -4,
+    },
+  },
   idle: {
     state: "idle",
     label: "Idle",
     statusText: "Idle presence",
+    assetSrc: "/avatar/plato/idle.png",
     motionGroup: "idle",
     expression: "neutral",
-    spriteFrame: generatedSpriteFrame("idle", 0),
     parameterHints: {
       eyeOpen: 0.82,
       mouthOpen: 0,
@@ -65,9 +78,9 @@ export const live2dAvatarSurfaceHooks: Record<
     state: "listening",
     label: "Listening",
     statusText: "Listening now",
+    assetSrc: "/avatar/plato/listening.png",
     motionGroup: "tap_body",
     expression: "attentive",
-    spriteFrame: generatedSpriteFrame("listening", 1),
     parameterHints: {
       eyeOpen: 1,
       mouthOpen: 0.08,
@@ -79,9 +92,9 @@ export const live2dAvatarSurfaceHooks: Record<
     state: "thinking",
     label: "Thinking",
     statusText: "Thinking through it",
+    assetSrc: "/avatar/plato/thinking.png",
     motionGroup: "thinking",
     expression: "focused",
-    spriteFrame: generatedSpriteFrame("thinking", 2),
     parameterHints: {
       eyeOpen: 0.6,
       mouthOpen: 0,
@@ -93,9 +106,9 @@ export const live2dAvatarSurfaceHooks: Record<
     state: "speaking",
     label: "Speaking",
     statusText: "Speaking",
+    assetSrc: "/avatar/plato/speaking.png",
     motionGroup: "speak",
     expression: "talking",
-    spriteFrame: generatedSpriteFrame("speaking", 3),
     parameterHints: {
       eyeOpen: 0.9,
       mouthOpen: 0.72,
@@ -103,13 +116,13 @@ export const live2dAvatarSurfaceHooks: Record<
       bodyAngleY: 0,
     },
   },
-  waiting_for_approval: {
-    state: "waiting_for_approval",
+  waitingApproval: {
+    state: "waitingApproval",
     label: "Waiting for approval",
     statusText: "Waiting for approval",
+    assetSrc: "/avatar/plato/waitingApproval.png",
     motionGroup: "approval",
     expression: "concerned",
-    spriteFrame: generatedSpriteFrame("waiting_for_approval", 4),
     parameterHints: {
       eyeOpen: 0.72,
       mouthOpen: 0.18,
@@ -117,12 +130,53 @@ export const live2dAvatarSurfaceHooks: Record<
       bodyAngleY: 2,
     },
   },
+  muted: {
+    state: "muted",
+    label: "Muted",
+    statusText: "Muted",
+    assetSrc: "/avatar/plato/muted.png",
+    motionGroup: "quiet",
+    expression: "soft",
+    parameterHints: {
+      eyeOpen: 0.68,
+      mouthOpen: 0,
+      bodyAngleX: 0,
+      bodyAngleY: 3,
+    },
+  },
+  error: {
+    state: "error",
+    label: "Error",
+    statusText: "Needs repair",
+    assetSrc: "/avatar/plato/error.png",
+    motionGroup: "error",
+    expression: "strained",
+    parameterHints: {
+      eyeOpen: 0.5,
+      mouthOpen: 0.22,
+      bodyAngleX: -4,
+      bodyAngleY: 0,
+    },
+  },
 };
 
 export function isAvatarPresenceState(
   value: string | null,
 ): value is AvatarPresenceState {
-  return value !== null && value in live2dAvatarSurfaceHooks;
+  return (
+    value !== null &&
+    avatarPresenceStates.some((presenceState) => presenceState === value)
+  );
+}
+
+export function avatarPresenceStateFrom(
+  value: string | null,
+): AvatarPresenceState | undefined {
+  if (value === "waiting_for_approval") {
+    return "waitingApproval";
+  }
+
+  return isAvatarPresenceState(value) ? value : undefined;
 }
 
 export function getLive2DAvatarSurfaceHook(
@@ -144,22 +198,13 @@ export function Live2DAvatarSurface({
       data-presence-state={hook.state}
       data-live2d-motion-group={hook.motionGroup}
       data-live2d-expression={hook.expression}
-      data-sprite-frame={hook.spriteFrame.name}
-      data-sprite-frame-index={hook.spriteFrame.index}
+      data-avatar-asset={hook.assetSrc}
       aria-label={`Plato avatar surface: ${hook.statusText}`}
     >
-      <div
-        className="live2d-avatar-stage"
-        aria-hidden="true"
-        style={
-          {
-            "--plato-avatar-sprite-frame-index": hook.spriteFrame.index,
-          } as CSSProperties
-        }
-      >
+      <div className="live2d-avatar-stage" aria-hidden="true">
         <img
-          className="live2d-avatar-sprite"
-          src={hook.spriteFrame.src}
+          className="plato-avatar-asset"
+          src={hook.assetSrc}
           alt=""
           draggable={false}
         />
