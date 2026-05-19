@@ -175,7 +175,7 @@ button {
 }
 
 .live2d-avatar-surface {
-  width: 172px;
+  width: 196px;
   display: grid;
   justify-items: center;
   margin: 0;
@@ -209,8 +209,8 @@ button {
 
 .live2d-avatar-stage {
   position: relative;
-  width: 172px;
-  height: 186px;
+  width: 196px;
+  height: 250px;
   overflow: hidden;
   background: transparent;
   transform-origin: 50% 100%;
@@ -1547,12 +1547,12 @@ h1 {
   }
 
   .live2d-avatar-surface {
-    width: 144px;
+    width: 156px;
   }
 
   .live2d-avatar-stage {
-    width: 144px;
-    height: 156px;
+    width: 156px;
+    height: 204px;
     transform-origin: 50% 100%;
   }
 
@@ -1634,7 +1634,7 @@ h1 {
 
   .live2d-avatar-stage {
     width: 118px;
-    height: 160px;
+    height: 176px;
     transform: scale(0.76);
   }
 

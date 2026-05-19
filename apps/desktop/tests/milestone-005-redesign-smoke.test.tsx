@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 import { renderToStaticMarkup } from "react-dom/server";
@@ -46,6 +46,21 @@ const sampleMemoryRecord: LocalMemoryRecord = {
   createdAt: "2026-05-19T00:00:00.000Z",
   updatedAt: "2026-05-19T00:00:00.000Z",
 };
+
+function pngHeaderStats(filePath: string) {
+  const data = readFileSync(filePath);
+  expect(data.subarray(0, 8)).toEqual(
+    Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
+  );
+
+  return {
+    width: data.readUInt32BE(16),
+    height: data.readUInt32BE(20),
+    bitDepth: data[24],
+    colorType: data[25],
+    byteLength: data.byteLength,
+  };
+}
 
 describe("Milestone 005 redesign smoke coverage", () => {
   it("renders the main shell, top Plato navigation, and each redesigned control surface", () => {
@@ -145,6 +160,14 @@ describe("Milestone 005 redesign smoke coverage", () => {
       expect(markup).toContain(`data-avatar-asset="${hook.assetSrc}"`);
       expect(markup).toContain(hook.statusText);
       expect(markup).not.toContain('src=""');
+
+      const stats = pngHeaderStats(publicAssetPath);
+
+      expect(stats.width).toBe(384);
+      expect(stats.height).toBe(760);
+      expect(stats.bitDepth).toBe(8);
+      expect(stats.colorType).toBe(6);
+      expect(stats.byteLength).toBeGreaterThan(300_000);
     }
   });
 
