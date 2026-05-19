@@ -78,6 +78,7 @@ import {
   presenceLabelForState,
   textFallbackResponseSnapshot,
   textFallbackThinkingSnapshot,
+  voiceSessionStateFrom,
 } from "../src/voiceInteraction";
 import {
   componentStateRules,
@@ -742,9 +743,28 @@ describe("desktop app shell", () => {
     );
 
     expect(markup).toContain("Open voice controls: Listening");
+    expect(markup).toContain('data-presence-bubble-state="listening"');
     expect(markup).toContain("presence-sound-wave");
     expect(markup).toContain("Listening");
     expect(markup).not.toContain("Listening through local mock voice");
+  });
+
+  it("renders thinking and speaking bubble states with distinct indicators", () => {
+    const thinkingMarkup = renderToStaticMarkup(
+      <PresenceListeningBubble state="thinking" />,
+    );
+    const speakingMarkup = renderToStaticMarkup(
+      <PresenceListeningBubble state="speaking" />,
+    );
+
+    expect(thinkingMarkup).toContain("Open voice controls: Thinking");
+    expect(thinkingMarkup).toContain('data-presence-bubble-state="thinking"');
+    expect(thinkingMarkup).toContain("presence-thinking-indicator");
+    expect(thinkingMarkup).not.toContain("presence-sound-wave");
+    expect(speakingMarkup).toContain("Open voice controls: Speaking");
+    expect(speakingMarkup).toContain('data-presence-bubble-state="speaking"');
+    expect(speakingMarkup).toContain("presence-sound-wave");
+    expect(speakingMarkup).not.toContain("presence-thinking-indicator");
   });
 
   it("keeps the compact bubble styling native and animated", () => {
@@ -756,7 +776,10 @@ describe("desktop app shell", () => {
     expect(styles).toContain(".presence-listening-bubble");
     expect(styles).toContain("backdrop-filter: blur(20px) saturate(145%)");
     expect(styles).toContain("@keyframes presence-wave");
+    expect(styles).toContain("@keyframes presence-thinking-pulse");
     expect(styles).toContain("@keyframes avatar-click-acknowledge");
+    expect(styles).toContain("@keyframes avatar-thinking-focus");
+    expect(styles).toContain("@keyframes avatar-speaking-talk");
   });
 
   it("maps voice session state into companion presence labels", () => {
@@ -765,6 +788,64 @@ describe("desktop app shell", () => {
     expect(presenceLabelForState("thinking")).toBe("Thinking");
     expect(presenceLabelForState("speaking")).toBe("Speaking");
     expect(presenceLabelForState("idle")).toBe("Idle presence");
+    expect(voiceSessionStateFrom("thinking")).toBe("thinking");
+    expect(voiceSessionStateFrom("speaking")).toBe("speaking");
+    expect(voiceSessionStateFrom("unknown")).toBeUndefined();
+  });
+
+  it("drives thinking and speaking avatar states from the voice loop", () => {
+    const thinkingState = renderedPresenceStateFor({
+      audioActivationState: "active",
+      voiceOutputPresenceState: "idle",
+      voiceInteractionSessionState: "thinking",
+      sharedPresenceState: "idle",
+    });
+    const speakingState = renderedPresenceStateFor({
+      audioActivationState: "active",
+      voiceOutputPresenceState: "idle",
+      voiceInteractionSessionState: "speaking",
+      sharedPresenceState: "idle",
+    });
+
+    expect(thinkingState).toBe("thinking");
+    expect(speakingState).toBe("speaking");
+    expect(getLive2DAvatarSurfaceHook(avatarPresenceStateFrom(thinkingState)!))
+      .toMatchObject({
+        state: "thinking",
+        motionGroup: "thinking",
+        expression: "focused",
+      });
+    expect(getLive2DAvatarSurfaceHook(avatarPresenceStateFrom(speakingState)!))
+      .toMatchObject({
+        state: "speaking",
+        motionGroup: "speak",
+        expression: "talking",
+      });
+  });
+
+  it("renders initial voice session state for browser visual smoke checks", () => {
+    const thinkingMarkup = renderToStaticMarkup(
+      <App
+        initialSettings={completedSettings}
+        initialAudioActivationState="active"
+        initialVoiceSessionState="thinking"
+      />,
+    );
+    const speakingMarkup = renderToStaticMarkup(
+      <App
+        initialSettings={completedSettings}
+        initialAudioActivationState="active"
+        initialVoiceSessionState="speaking"
+      />,
+    );
+
+    expect(thinkingMarkup).toContain('data-presence-state="thinking"');
+    expect(thinkingMarkup).toContain('data-presence-bubble-state="thinking"');
+    expect(thinkingMarkup).toContain("presence-thinking-indicator");
+    expect(thinkingMarkup).not.toContain("presence-sound-wave");
+    expect(speakingMarkup).toContain('data-presence-state="speaking"');
+    expect(speakingMarkup).toContain('data-presence-bubble-state="speaking"');
+    expect(speakingMarkup).toContain("presence-sound-wave");
   });
 
   it("progresses mock voice and text fallback snapshots", () => {

@@ -6,6 +6,7 @@ import { audioActivationStateFrom } from "./audioActivation";
 import { avatarPresenceStateFrom } from "./avatarSurface";
 import { isControlSurfaceId } from "./controlSurface";
 import { defaultCompanionSettings } from "./settings";
+import { voiceSessionStateFrom } from "./voiceInteraction";
 
 const root = document.getElementById("root");
 
@@ -23,6 +24,9 @@ const initialActiveEntry = isControlSurfaceId(urlControlSurface)
 const initialAudioActivationState = audioActivationStateFrom(
   searchParams.get("audioState"),
 );
+const initialVoiceSessionState = voiceSessionStateFrom(
+  searchParams.get("voiceState"),
+);
 const initialSettings =
   !("__TAURI_INTERNALS__" in window) &&
   searchParams.get("onboardingComplete") === "true"
@@ -38,6 +42,7 @@ createRoot(root).render(
       initialActiveEntry={initialActiveEntry}
       initialAudioActivationState={initialAudioActivationState}
       initialPresenceState={initialPresenceState}
+      initialVoiceSessionState={initialVoiceSessionState}
       initialSettings={initialSettings}
     />
   </StrictMode>,

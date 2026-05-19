@@ -894,11 +894,13 @@ export function PresenceListeningBubble({
 }) {
   const label = getLive2DAvatarSurfaceHook(state).label;
   const hasSoundWave = state === "listening" || state === "speaking";
+  const hasThinkingIndicator = state === "thinking";
 
   return (
     <button
       className="presence-listening-bubble"
       type="button"
+      data-presence-bubble-state={state}
       onClick={onOpenControls}
       aria-label={`Open voice controls: ${label}`}
     >
@@ -906,6 +908,12 @@ export function PresenceListeningBubble({
       {hasSoundWave ? (
         <span className="presence-sound-wave" aria-hidden="true">
           <span />
+          <span />
+          <span />
+          <span />
+        </span>
+      ) : hasThinkingIndicator ? (
+        <span className="presence-thinking-indicator" aria-hidden="true">
           <span />
           <span />
           <span />
@@ -1430,11 +1438,13 @@ export function App({
   memoryStore,
   presenceStateSource,
   initialAudioActivationState,
+  initialVoiceSessionState,
 }: {
   initialSettings?: CompanionSettings;
   initialActiveEntry?: ControlSurfaceId;
   initialPresenceState?: AvatarPresenceState;
   initialAudioActivationState?: AudioActivationState;
+  initialVoiceSessionState?: VoiceSessionState;
   settingsStore?: SettingsStore;
   trustFoundationStore?: TrustFoundationStore;
   soulGuidanceStore?: SoulGuidanceStore;
@@ -1482,7 +1492,14 @@ export function App({
     () => initialSettings !== undefined,
   );
   const [voiceInteraction, setVoiceInteraction] =
-    useState<VoiceInteractionSnapshot>(defaultVoiceInteractionSnapshot);
+    useState<VoiceInteractionSnapshot>(() =>
+      initialVoiceSessionState
+        ? nextMockVoiceSnapshot(
+            defaultVoiceInteractionSnapshot,
+            initialVoiceSessionState,
+          )
+        : defaultVoiceInteractionSnapshot,
+    );
   const [soulGuidance, setSoulGuidance] =
     useState<SoulGuidance>(fallbackSoulGuidance);
   const voiceTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
