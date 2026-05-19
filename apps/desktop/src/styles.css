@@ -1157,6 +1157,92 @@ h1 {
   }
 }
 
+@media (max-width: 360px) and (max-height: 600px) {
+  .control-surface {
+    top: max(10px, env(safe-area-inset-top));
+    max-height: 258px;
+  }
+
+  .control-nav {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 5px;
+    padding: 8px;
+  }
+
+  .control-nav button {
+    min-height: 42px;
+    padding: 5px 4px;
+    font-size: 0.68rem;
+    line-height: 1.1;
+  }
+
+  .control-nav button small {
+    font-size: 0.58rem;
+  }
+
+  .control-panel {
+    min-height: 0;
+    max-height: 148px;
+    padding: 9px 12px 12px;
+  }
+
+  .control-panel h2 {
+    margin-bottom: 4px;
+    font-size: 0.86rem;
+  }
+
+  .control-panel p {
+    margin-bottom: 6px;
+    font-size: 0.74rem;
+    line-height: 1.35;
+  }
+
+  .companion-presence-zone {
+    min-height: 250px;
+  }
+
+  .presence-card,
+  .restore-card {
+    right: max(10px, env(safe-area-inset-right));
+    bottom: max(10px, env(safe-area-inset-bottom));
+  }
+
+  .live2d-avatar-surface {
+    width: 118px;
+  }
+
+  .live2d-avatar-stage {
+    width: 118px;
+    height: 160px;
+    transform: scale(0.76);
+  }
+
+  .live2d-avatar-caption small,
+  .voice-fallback {
+    display: none;
+  }
+
+  .voice-output-panel {
+    gap: 6px;
+    padding-top: 8px;
+  }
+
+  .voice-status-row {
+    font-size: 0.68rem;
+  }
+
+  .voice-controls {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 4px;
+  }
+
+  .voice-controls button {
+    min-height: 30px;
+    padding: 3px;
+    font-size: 0.58rem;
+  }
+}
+
 .sr-only {
   position: absolute;
   width: 1px;
