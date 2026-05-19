@@ -54,6 +54,7 @@ The design goal is strong direction, not final polish. The app should stop looki
 - Run TypeScript checks and relevant unit tests.
 - Run avatar/companion state mapping tests.
 - Run UI smoke tests for the shell, top navigation, memory/soul surfaces, settings/config, and audio activation path where practical.
+- Use `docs/visual-evidence/milestone-005-checklist.md` as the visual evidence checklist and smoke coverage matrix for Milestone 005 implementation PRs.
 - Manually verify startup audio behavior, click-to-enable audio, mute/active states, and all required Plato visual states.
 - Capture visual evidence for each major surface and state.
 
