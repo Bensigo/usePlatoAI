@@ -24,6 +24,8 @@ import {
 } from "./avatarSurface";
 import {
   createMemoryPresenceStateSource,
+  type CompanionPresenceState,
+  type PresenceStateSnapshot,
   type PresenceStateSource,
 } from "./presenceState";
 import {
@@ -169,6 +171,22 @@ export function renderedPresenceStateFor({
   }
 
   return activePresenceState;
+}
+
+export type CurrentTaskPanelAction = "pause" | "cancel" | "approve" | "reject";
+
+export function currentTaskPresenceStateForAction(
+  action: CurrentTaskPanelAction,
+) {
+  if (action === "approve") {
+    return "task_running";
+  }
+
+  if (action === "pause") {
+    return "task_paused";
+  }
+
+  return "idle";
 }
 
 export function DismissedPresence({ onRestore }: { onRestore: () => void }) {
@@ -887,7 +905,7 @@ export function VoiceInteractionPanel({
 
 export function CenteredChatPanel({
   voiceInteraction,
-  presenceState,
+  currentTaskState,
   onDismiss,
   onTextFallbackChange,
   onSubmitTextFallback,
@@ -897,7 +915,7 @@ export function CenteredChatPanel({
   onRejectCurrentTask,
 }: {
   voiceInteraction: VoiceInteractionSnapshot;
-  presenceState: AvatarPresenceState;
+  currentTaskState: PresenceStateSnapshot;
   onDismiss: () => void;
   onTextFallbackChange?: (value: string) => void;
   onSubmitTextFallback?: () => void;
@@ -906,9 +924,12 @@ export function CenteredChatPanel({
   onApproveCurrentTask?: () => void;
   onRejectCurrentTask?: () => void;
 }) {
-  const isWorkRunning = voiceInteraction.sessionState !== "idle";
-  const isWaitingForApproval = presenceState === "waitingApproval";
-  const showsCurrentTask = isWorkRunning || isWaitingForApproval;
+  const isWorkRunning = currentTaskState.state === "task_running";
+  const isWaitingForApproval =
+    currentTaskState.state === "waiting_for_approval" ||
+    currentTaskState.state === "waitingApproval";
+  const isWorkPaused = currentTaskState.state === "task_paused";
+  const showsCurrentTask = isWorkRunning || isWaitingForApproval || isWorkPaused;
   const transcript = voiceInteraction.transcript || "No voice input yet.";
   const latestUserMessage =
     voiceInteraction.submittedFallbackText || voiceInteraction.transcript;
@@ -983,11 +1004,7 @@ export function CenteredChatPanel({
         >
           <div>
             <strong>Current task</strong>
-            <p>
-              {isWaitingForApproval
-                ? "Waiting for approval"
-                : voiceInteraction.sessionState}
-            </p>
+            <p>{currentTaskState.label}</p>
           </div>
           {isWorkRunning ? (
             <div className="current-task-actions">
@@ -1563,7 +1580,7 @@ export function App({
 }: {
   initialSettings?: CompanionSettings;
   initialActiveEntry?: ControlSurfaceId;
-  initialPresenceState?: AvatarPresenceState;
+  initialPresenceState?: CompanionPresenceState;
   initialAudioActivationState?: AudioActivationState;
   settingsStore?: SettingsStore;
   trustFoundationStore?: TrustFoundationStore;
@@ -1769,6 +1786,31 @@ export function App({
     }));
   }
 
+  function pauseCurrentTask() {
+    companionPresenceStateSource.setState(
+      currentTaskPresenceStateForAction("pause"),
+    );
+    setVoiceInteraction((current) => ({
+      ...current,
+      response: "Paused the current task.",
+      companionPrompt: null,
+    }));
+  }
+
+  function cancelCurrentTask() {
+    clearVoiceTimers();
+    correctionPromptRequestId.current += 1;
+    companionPresenceStateSource.setState(
+      currentTaskPresenceStateForAction("cancel"),
+    );
+    setVoiceInteraction((current) => ({
+      ...current,
+      sessionState: "idle",
+      response: "Cancelled the current task.",
+      companionPrompt: null,
+    }));
+  }
+
   function submitTextFallback() {
     const fallbackText = voiceInteraction.fallbackText.trim();
 
@@ -1790,6 +1832,9 @@ export function App({
   }
 
   function approveCurrentTask() {
+    companionPresenceStateSource.setState(
+      currentTaskPresenceStateForAction("approve"),
+    );
     setVoiceInteraction((current) => ({
       ...current,
       response: "Approved. Continuing the current task.",
@@ -1799,6 +1844,9 @@ export function App({
   function rejectCurrentTask() {
     clearVoiceTimers();
     correctionPromptRequestId.current += 1;
+    companionPresenceStateSource.setState(
+      currentTaskPresenceStateForAction("reject"),
+    );
     setVoiceInteraction((current) => ({
       ...current,
       sessionState: "idle",
@@ -1984,14 +2032,14 @@ export function App({
       {isChatPanelOpen ? (
         <CenteredChatPanel
           voiceInteraction={voiceInteraction}
-          presenceState={avatarPresenceState}
+          currentTaskState={presence}
           onDismiss={() => setIsChatPanelOpen(false)}
           onTextFallbackChange={(fallbackText) =>
             setVoiceInteraction((current) => ({ ...current, fallbackText }))
           }
           onSubmitTextFallback={submitTextFallback}
-          onPauseCurrentTask={stopVoiceInteraction}
-          onCancelCurrentTask={stopVoiceInteraction}
+          onPauseCurrentTask={pauseCurrentTask}
+          onCancelCurrentTask={cancelCurrentTask}
           onApproveCurrentTask={approveCurrentTask}
           onRejectCurrentTask={rejectCurrentTask}
         />

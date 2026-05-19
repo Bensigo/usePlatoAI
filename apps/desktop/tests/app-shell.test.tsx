@@ -17,6 +17,7 @@ import {
   SoulEditorPanel,
   VoiceInteractionPanel,
   isActiveCorrectionPromptTransition,
+  currentTaskPresenceStateForAction,
   renderedPresenceStateFor,
 } from "../src/App";
 import {
@@ -377,6 +378,7 @@ describe("desktop app shell", () => {
       "Waiting for approval",
     );
     expect(presenceStateSnapshot("task_running").label).toBe("Task running");
+    expect(presenceStateSnapshot("task_paused").label).toBe("Task paused");
   });
 
   it("renders a restore path for the dismissed presence state", () => {
@@ -751,10 +753,9 @@ describe("desktop app shell", () => {
   it("renders a centered chat panel with transcript and running-task controls", () => {
     const markup = renderToStaticMarkup(
       <CenteredChatPanel
-        presenceState="listening"
+        currentTaskState={presenceStateSnapshot("task_running")}
         voiceInteraction={{
           ...defaultVoiceInteractionSnapshot,
-          sessionState: "listening",
           transcript: "Listening through local mock voice...",
           fallbackText: "Can you review this?",
           response: "Ready for voice or text.",
@@ -769,7 +770,7 @@ describe("desktop app shell", () => {
     expect(markup).toContain("Listening through local mock voice...");
     expect(markup).toContain("Text chat");
     expect(markup).toContain("Current task");
-    expect(markup).toContain("listening");
+    expect(markup).toContain("Task running");
     expect(markup).toContain("Pause");
     expect(markup).toContain("Cancel");
     expect(markup).not.toContain("Settings");
@@ -780,7 +781,7 @@ describe("desktop app shell", () => {
   it("shows approval controls only while the centered panel waits for approval", () => {
     const markup = renderToStaticMarkup(
       <CenteredChatPanel
-        presenceState="waitingApproval"
+        currentTaskState={presenceStateSnapshot("waiting_for_approval")}
         voiceInteraction={defaultVoiceInteractionSnapshot}
         onDismiss={() => undefined}
       />,
@@ -791,6 +792,34 @@ describe("desktop app shell", () => {
     expect(markup).toContain("Reject");
     expect(markup).not.toContain("Pause");
     expect(markup).not.toContain("Cancel");
+  });
+
+  it("does not show centered current-task controls from voice activity alone", () => {
+    const markup = renderToStaticMarkup(
+      <CenteredChatPanel
+        currentTaskState={presenceStateSnapshot("idle")}
+        voiceInteraction={{
+          ...defaultVoiceInteractionSnapshot,
+          sessionState: "listening",
+          transcript: "Listening through local mock voice...",
+        }}
+        onDismiss={() => undefined}
+      />,
+    );
+
+    expect(markup).toContain("Listening through local mock voice...");
+    expect(markup).not.toContain("Current task");
+    expect(markup).not.toContain("Pause");
+    expect(markup).not.toContain("Cancel");
+    expect(markup).not.toContain("Approve");
+    expect(markup).not.toContain("Reject");
+  });
+
+  it("maps centered current-task actions onto shared task state", () => {
+    expect(currentTaskPresenceStateForAction("pause")).toBe("task_paused");
+    expect(currentTaskPresenceStateForAction("cancel")).toBe("idle");
+    expect(currentTaskPresenceStateForAction("approve")).toBe("task_running");
+    expect(currentTaskPresenceStateForAction("reject")).toBe("idle");
   });
 
   it("keeps the compact bubble styling native and animated", () => {
