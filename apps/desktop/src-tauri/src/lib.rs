@@ -3,6 +3,7 @@ use std::path::Path;
 use tauri::{AppHandle, Manager};
 
 mod local_data;
+mod presence_window;
 mod provider_credentials;
 mod secret_store;
 mod soul;
@@ -314,6 +315,10 @@ pub fn run() {
                     }
                 })
                 .build(app)?;
+
+            if let Some(window) = app.get_webview_window("main") {
+                presence_window::configure_floating_presence_window(&window)?;
+            }
 
             Ok(())
         })
