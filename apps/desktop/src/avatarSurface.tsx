@@ -1,3 +1,7 @@
+import type { CSSProperties } from "react";
+
+import platoGeneratedSpriteUrl from "./assets/plato-realistic-generated-sprite.png";
+
 export type AvatarPresenceState =
   | "idle"
   | "listening"
@@ -11,6 +15,12 @@ export type Live2DAvatarSurfaceHook = {
   statusText: string;
   motionGroup: "idle" | "tap_body" | "thinking" | "speak" | "approval";
   expression: "neutral" | "attentive" | "focused" | "talking" | "concerned";
+  spriteFrame: {
+    src: string;
+    name: AvatarPresenceState;
+    index: 0 | 1 | 2 | 3 | 4;
+    count: 5;
+  };
   parameterHints: {
     eyeOpen: number;
     mouthOpen: number;
@@ -18,6 +28,20 @@ export type Live2DAvatarSurfaceHook = {
     bodyAngleY: number;
   };
 };
+
+const generatedSpriteFrameCount = 5;
+
+function generatedSpriteFrame(
+  name: AvatarPresenceState,
+  index: 0 | 1 | 2 | 3 | 4,
+): Live2DAvatarSurfaceHook["spriteFrame"] {
+  return {
+    src: platoGeneratedSpriteUrl,
+    name,
+    index,
+    count: generatedSpriteFrameCount,
+  };
+}
 
 export const live2dAvatarSurfaceHooks: Record<
   AvatarPresenceState,
@@ -29,6 +53,7 @@ export const live2dAvatarSurfaceHooks: Record<
     statusText: "Idle presence",
     motionGroup: "idle",
     expression: "neutral",
+    spriteFrame: generatedSpriteFrame("idle", 0),
     parameterHints: {
       eyeOpen: 0.82,
       mouthOpen: 0,
@@ -42,6 +67,7 @@ export const live2dAvatarSurfaceHooks: Record<
     statusText: "Listening now",
     motionGroup: "tap_body",
     expression: "attentive",
+    spriteFrame: generatedSpriteFrame("listening", 1),
     parameterHints: {
       eyeOpen: 1,
       mouthOpen: 0.08,
@@ -55,6 +81,7 @@ export const live2dAvatarSurfaceHooks: Record<
     statusText: "Thinking through it",
     motionGroup: "thinking",
     expression: "focused",
+    spriteFrame: generatedSpriteFrame("thinking", 2),
     parameterHints: {
       eyeOpen: 0.6,
       mouthOpen: 0,
@@ -68,6 +95,7 @@ export const live2dAvatarSurfaceHooks: Record<
     statusText: "Speaking",
     motionGroup: "speak",
     expression: "talking",
+    spriteFrame: generatedSpriteFrame("speaking", 3),
     parameterHints: {
       eyeOpen: 0.9,
       mouthOpen: 0.72,
@@ -81,6 +109,7 @@ export const live2dAvatarSurfaceHooks: Record<
     statusText: "Waiting for approval",
     motionGroup: "approval",
     expression: "concerned",
+    spriteFrame: generatedSpriteFrame("waiting_for_approval", 4),
     parameterHints: {
       eyeOpen: 0.72,
       mouthOpen: 0.18,
@@ -115,16 +144,25 @@ export function Live2DAvatarSurface({
       data-presence-state={hook.state}
       data-live2d-motion-group={hook.motionGroup}
       data-live2d-expression={hook.expression}
+      data-sprite-frame={hook.spriteFrame.name}
+      data-sprite-frame-index={hook.spriteFrame.index}
       aria-label={`Plato avatar surface: ${hook.statusText}`}
     >
-      <div className="live2d-avatar-stage" aria-hidden="true">
-        <div className="live2d-avatar-hair" />
-        <div className="live2d-avatar-head">
-          <span className="live2d-avatar-eye live2d-avatar-eye-left" />
-          <span className="live2d-avatar-eye live2d-avatar-eye-right" />
-          <span className="live2d-avatar-mouth" />
-        </div>
-        <div className="live2d-avatar-body" />
+      <div
+        className="live2d-avatar-stage"
+        aria-hidden="true"
+        style={
+          {
+            "--plato-avatar-sprite-frame-index": hook.spriteFrame.index,
+          } as CSSProperties
+        }
+      >
+        <img
+          className="live2d-avatar-sprite"
+          src={hook.spriteFrame.src}
+          alt=""
+          draggable={false}
+        />
       </div>
       <figcaption className="live2d-avatar-caption sr-only">
         <span>{hook.label}</span>

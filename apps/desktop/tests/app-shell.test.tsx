@@ -138,36 +138,42 @@ describe("desktop app shell", () => {
       statusText: string;
       motionGroup: string;
       expression: string;
+      spriteFrameIndex: number;
     }> = [
       {
         state: "idle",
         statusText: "Idle presence",
         motionGroup: "idle",
         expression: "neutral",
+        spriteFrameIndex: 0,
       },
       {
         state: "listening",
         statusText: "Listening now",
         motionGroup: "tap_body",
         expression: "attentive",
+        spriteFrameIndex: 1,
       },
       {
         state: "thinking",
         statusText: "Thinking through it",
         motionGroup: "thinking",
         expression: "focused",
+        spriteFrameIndex: 2,
       },
       {
         state: "speaking",
         statusText: "Speaking",
         motionGroup: "speak",
         expression: "talking",
+        spriteFrameIndex: 3,
       },
       {
         state: "waiting_for_approval",
         statusText: "Waiting for approval",
         motionGroup: "approval",
         expression: "concerned",
+        spriteFrameIndex: 4,
       },
     ];
 
@@ -180,6 +186,14 @@ describe("desktop app shell", () => {
       expect(hook.statusText).toBe(mapping.statusText);
       expect(hook.motionGroup).toBe(mapping.motionGroup);
       expect(hook.expression).toBe(mapping.expression);
+      expect(hook.spriteFrame).toMatchObject({
+        name: mapping.state,
+        index: mapping.spriteFrameIndex,
+        count: 5,
+      });
+      expect(hook.spriteFrame.src).toContain(
+        "plato-realistic-generated-sprite.png",
+      );
       expect(markup).toContain(`data-presence-state="${mapping.state}"`);
       expect(markup).toContain(
         `data-live2d-motion-group="${mapping.motionGroup}"`,
@@ -187,8 +201,30 @@ describe("desktop app shell", () => {
       expect(markup).toContain(
         `data-live2d-expression="${mapping.expression}"`,
       );
+      expect(markup).toContain(`data-sprite-frame="${mapping.state}"`);
+      expect(markup).toContain(
+        `data-sprite-frame-index="${mapping.spriteFrameIndex}"`,
+      );
+      expect(markup).toContain("live2d-avatar-sprite");
+      expect(markup).toContain("plato-realistic-generated-sprite.png");
       expect(markup).toContain(mapping.statusText);
     }
+  });
+
+  it("renders the visible avatar with the generated sprite asset instead of CSS face/body parts", () => {
+    const markup = renderToStaticMarkup(
+      <Live2DAvatarSurface presenceState="listening" />,
+    );
+
+    expect(markup).toContain("live2d-avatar-sprite");
+    expect(markup).toContain("plato-realistic-generated-sprite.png");
+    expect(markup).toContain('data-sprite-frame="listening"');
+    expect(markup).toContain('data-sprite-frame-index="1"');
+    expect(markup).not.toContain("live2d-avatar-hair");
+    expect(markup).not.toContain("live2d-avatar-head");
+    expect(markup).not.toContain("live2d-avatar-eye");
+    expect(markup).not.toContain("live2d-avatar-mouth");
+    expect(markup).not.toContain("live2d-avatar-body");
   });
 
   it("renders the floating presence from an injected presence state", () => {

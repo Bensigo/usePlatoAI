@@ -196,94 +196,31 @@ button {
 }
 
 .presence-click-reaction .live2d-avatar-stage {
-  animation:
-    avatar-click-acknowledge 520ms ease-out,
-    avatar-idle-breathe var(--plato-motion-idle) infinite;
-}
-
-.presence-click-reaction .live2d-avatar-eye {
-  animation: avatar-click-blink 520ms ease-out;
+  animation: avatar-click-acknowledge 520ms ease-out;
 }
 
 .live2d-avatar-stage {
   position: relative;
   width: 154px;
-  height: 208px;
+  height: 308px;
+  overflow: hidden;
   background: transparent;
   transform-origin: 50% 100%;
   animation: avatar-idle-breathe var(--plato-motion-idle) infinite;
 }
 
-.live2d-avatar-hair {
+.live2d-avatar-sprite {
   position: absolute;
-  left: 27px;
-  top: 18px;
-  width: 100px;
-  height: 92px;
-  border-radius: 50% 50% 46% 46%;
-  background: #1f2937;
-  box-shadow:
-    -12px 18px 0 #111827,
-    12px 18px 0 #111827;
-}
-
-.live2d-avatar-head {
-  position: absolute;
-  left: 50%;
-  top: 44px;
-  width: 82px;
-  height: 76px;
-  transform: translateX(-50%);
-  border-radius: 48% 48% 44% 44%;
-  background: #ffe2d3;
-  box-shadow:
-    inset 0 -8px 12px rgb(217 119 6 / 13%),
-    0 4px 0 rgb(255 255 255 / 24%);
-}
-
-.live2d-avatar-eye,
-.live2d-avatar-mouth {
-  position: absolute;
-  display: block;
-  background: #111827;
-}
-
-.live2d-avatar-eye {
-  top: 32px;
-  width: 10px;
-  height: 15px;
-  border-radius: 50%;
-}
-
-.live2d-avatar-eye-left {
-  left: 21px;
-}
-
-.live2d-avatar-eye-right {
-  right: 21px;
-}
-
-.live2d-avatar-mouth {
-  left: 50%;
-  bottom: 15px;
-  width: 16px;
-  height: 3px;
-  transform: translateX(-50%);
-  border-radius: var(--plato-radius-pill);
-}
-
-.live2d-avatar-body {
-  position: absolute;
-  left: 50%;
-  bottom: 0;
-  width: 92px;
-  height: 92px;
-  transform: translateX(-50%);
-  border-radius: var(--plato-radius-avatar-body);
-  background: var(--plato-state-idle);
-  box-shadow:
-    inset 0 14px 0 rgb(255 255 255 / 12%),
-    inset 0 -18px 0 rgb(15 23 42 / 14%);
+  inset: 0 auto 0 0;
+  width: 500%;
+  height: 100%;
+  max-width: none;
+  object-fit: fill;
+  pointer-events: none;
+  transform: translateX(
+    calc(var(--plato-avatar-sprite-frame-index, 0) * -20%)
+  );
+  user-select: none;
 }
 
 .live2d-avatar-caption {
@@ -312,59 +249,13 @@ button {
   animation-duration: var(--plato-motion-listening);
 }
 
-.live2d-avatar-surface[data-presence-state="listening"] .live2d-avatar-body {
-  background: var(--plato-state-listening);
-}
-
-.live2d-avatar-surface[data-presence-state="listening"] .live2d-avatar-eye {
-  height: 18px;
-}
-
-.live2d-avatar-surface[data-presence-state="thinking"] .live2d-avatar-stage {
-  transform: rotate(-2deg);
-}
-
-.live2d-avatar-surface[data-presence-state="thinking"] .live2d-avatar-body {
-  background: var(--plato-state-thinking);
-}
-
-.live2d-avatar-surface[data-presence-state="thinking"] .live2d-avatar-eye {
-  height: 8px;
-  border-radius: var(--plato-radius-pill);
-}
-
 .live2d-avatar-surface[data-presence-state="speaking"] .live2d-avatar-stage {
   animation-duration: var(--plato-motion-speaking);
-}
-
-.live2d-avatar-surface[data-presence-state="speaking"] .live2d-avatar-body {
-  background: var(--plato-state-speaking);
-}
-
-.live2d-avatar-surface[data-presence-state="speaking"] .live2d-avatar-mouth {
-  width: 18px;
-  height: 13px;
-  border-radius: 50%;
 }
 
 .live2d-avatar-surface[data-presence-state="waiting_for_approval"]
   .live2d-avatar-stage {
   animation-duration: var(--plato-motion-waiting-approval);
-}
-
-.live2d-avatar-surface[data-presence-state="waiting_for_approval"]
-  .live2d-avatar-body {
-  background: var(--plato-state-waiting-approval);
-}
-
-.live2d-avatar-surface[data-presence-state="waiting_for_approval"]
-  .live2d-avatar-mouth {
-  width: 12px;
-  height: 10px;
-  border-radius: 50%;
-  background: transparent;
-  border: 2px solid #111827;
-  border-top: 0;
 }
 
 .presence-listening-bubble {
@@ -1181,8 +1072,7 @@ h1 {
 
   .live2d-avatar-stage {
     width: 132px;
-    height: 178px;
-    transform: scale(0.86);
+    height: 264px;
     transform-origin: 50% 100%;
   }
 
