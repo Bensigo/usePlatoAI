@@ -2,6 +2,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
 import { App } from "./App";
+import { audioActivationStateFrom } from "./audioActivation";
 import { avatarPresenceStateFrom } from "./avatarSurface";
 import { isControlSurfaceId } from "./controlSurface";
 import { defaultCompanionSettings } from "./settings";
@@ -19,6 +20,9 @@ const urlControlSurface = searchParams.get("controlSurface");
 const initialActiveEntry = isControlSurfaceId(urlControlSurface)
   ? urlControlSurface
   : undefined;
+const initialAudioActivationState = audioActivationStateFrom(
+  searchParams.get("audioState"),
+);
 const initialSettings =
   !("__TAURI_INTERNALS__" in window) &&
   searchParams.get("onboardingComplete") === "true"
@@ -32,6 +36,7 @@ createRoot(root).render(
   <StrictMode>
     <App
       initialActiveEntry={initialActiveEntry}
+      initialAudioActivationState={initialAudioActivationState}
       initialPresenceState={initialPresenceState}
       initialSettings={initialSettings}
     />
