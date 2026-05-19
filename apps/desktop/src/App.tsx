@@ -194,6 +194,28 @@ export function currentTaskPresenceStateForAction(
   return "idle";
 }
 
+export function isCurrentTaskControlState(state: string) {
+  return (
+    state === "task_running" ||
+    state === "task_paused" ||
+    state === "waiting_for_approval" ||
+    state === "waitingApproval"
+  );
+}
+
+export function shouldShowCenteredChatPanelOpener({
+  voiceInteractionSessionState,
+  currentTaskState,
+}: {
+  voiceInteractionSessionState: VoiceSessionState;
+  currentTaskState: PresenceStateSnapshot;
+}) {
+  return (
+    voiceInteractionSessionState !== "idle" ||
+    isCurrentTaskControlState(currentTaskState.state)
+  );
+}
+
 export function DismissedPresence({ onRestore }: { onRestore: () => void }) {
   return (
     <section className="restore-card" aria-label="Plato presence hidden">
@@ -1051,12 +1073,14 @@ export function CenteredChatPanel({
 
 export function PresenceListeningBubble({
   state,
+  label,
   onOpenControls,
 }: {
   state: AvatarPresenceState;
+  label?: string;
   onOpenControls?: () => void;
 }) {
-  const label = getLive2DAvatarSurfaceHook(state).label;
+  const bubbleLabel = label ?? getLive2DAvatarSurfaceHook(state).label;
   const hasSoundWave = state === "listening" || state === "speaking";
 
   return (
@@ -1064,9 +1088,9 @@ export function PresenceListeningBubble({
       className="presence-listening-bubble"
       type="button"
       onClick={onOpenControls}
-      aria-label={`Open voice controls: ${label}`}
+      aria-label={`Open current interaction controls: ${bubbleLabel}`}
     >
-      <span className="presence-bubble-label">{label}</span>
+      <span className="presence-bubble-label">{bubbleLabel}</span>
       {hasSoundWave ? (
         <span className="presence-sound-wave" aria-hidden="true">
           <span />
@@ -1891,6 +1915,13 @@ export function App({
   });
   const avatarPresenceState = avatarPresenceStateFor(renderedPresenceState);
   const avatarSurfaceHook = getLive2DAvatarSurfaceHook(avatarPresenceState);
+  const showCenteredChatPanelOpener = shouldShowCenteredChatPanelOpener({
+    voiceInteractionSessionState: voiceInteraction.sessionState,
+    currentTaskState: presence,
+  });
+  const centeredChatPanelOpenerLabel = isCurrentTaskControlState(presence.state)
+    ? presence.label
+    : avatarSurfaceHook.label;
 
   useEffect(() => {
     if (initialSettings) {
@@ -2112,9 +2143,10 @@ export function App({
               <Live2DAvatarSurface presenceState={avatarPresenceState} />
             </button>
 
-            {voiceInteraction.sessionState !== "idle" ? (
+            {showCenteredChatPanelOpener ? (
               <PresenceListeningBubble
                 state={avatarPresenceState}
+                label={centeredChatPanelOpenerLabel}
                 onOpenControls={openCenteredChatPanel}
               />
             ) : null}
