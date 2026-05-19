@@ -12,6 +12,7 @@ export const companionPresenceStates = [
   "muted",
   "error",
   "task_running",
+  "task_paused",
   "sleeping",
 ] as const;
 
@@ -29,6 +30,7 @@ export type PresenceRendererHint =
   | "muted"
   | "error"
   | "working"
+  | "paused"
   | "quiet";
 
 export type PresenceStateSnapshot = {
@@ -111,6 +113,11 @@ const presenceStateSnapshots: Record<
     state: "task_running",
     label: "Task running",
     rendererHint: "working",
+  },
+  task_paused: {
+    state: "task_paused",
+    label: "Task paused",
+    rendererHint: "paused",
   },
   sleeping: {
     state: "sleeping",

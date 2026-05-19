@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 import {
   App,
   AudioActivationStatus,
+  CenteredChatPanel,
   ConfigPanel,
   ControlSurfacePanel,
   DismissedPresence,
@@ -15,8 +16,11 @@ import {
   PresenceListeningBubble,
   SoulEditorPanel,
   VoiceInteractionPanel,
+  currentTaskPresenceStateForAction,
   isActiveCorrectionPromptTransition,
+  isActionableCurrentTaskState,
   renderedPresenceStateFor,
+  shouldShowCenteredChatPanelOpener,
 } from "../src/App";
 import {
   audioActivationSnapshotForState,
@@ -78,6 +82,7 @@ import {
   presenceLabelForState,
   textFallbackResponseSnapshot,
   textFallbackThinkingSnapshot,
+  voiceSessionStateFrom,
 } from "../src/voiceInteraction";
 import {
   componentStateRules,
@@ -376,6 +381,7 @@ describe("desktop app shell", () => {
       "Waiting for approval",
     );
     expect(presenceStateSnapshot("task_running").label).toBe("Task running");
+    expect(presenceStateSnapshot("task_paused").label).toBe("Task paused");
   });
 
   it("renders a restore path for the dismissed presence state", () => {
@@ -742,9 +748,175 @@ describe("desktop app shell", () => {
     );
 
     expect(markup).toContain("Open voice controls: Listening");
+    expect(markup).toContain('data-presence-bubble-state="listening"');
     expect(markup).toContain("presence-sound-wave");
     expect(markup).toContain("Listening");
     expect(markup).not.toContain("Listening through local mock voice");
+  });
+
+  it("keeps paused task controls reachable while voice is idle", () => {
+    const markup = renderToStaticMarkup(
+      <App
+        initialSettings={completedSettings}
+        initialPresenceState="task_paused"
+      />,
+    );
+
+    expect(
+      shouldShowCenteredChatPanelOpener({
+        voiceInteractionSessionState: "idle",
+        currentTaskState: presenceStateSnapshot("task_paused"),
+      }),
+    ).toBe(true);
+    expect(markup).toContain("Open current task controls: Task paused");
+    expect(markup).toContain("Task paused");
+    expect(markup).not.toContain("presence-sound-wave");
+  });
+
+  it("renders thinking and speaking bubble states with distinct indicators", () => {
+    const thinkingMarkup = renderToStaticMarkup(
+      <PresenceListeningBubble state="thinking" />,
+    );
+    const speakingMarkup = renderToStaticMarkup(
+      <PresenceListeningBubble state="speaking" />,
+    );
+
+    expect(thinkingMarkup).toContain("Open voice controls: Thinking");
+    expect(thinkingMarkup).toContain('data-presence-bubble-state="thinking"');
+    expect(thinkingMarkup).toContain("presence-thinking-indicator");
+    expect(thinkingMarkup).not.toContain("presence-sound-wave");
+    expect(speakingMarkup).toContain("Open voice controls: Speaking");
+    expect(speakingMarkup).toContain('data-presence-bubble-state="speaking"');
+    expect(speakingMarkup).toContain("presence-sound-wave");
+    expect(speakingMarkup).not.toContain("presence-thinking-indicator");
+  });
+
+  it("renders the centered panel opener for active task state while voice is idle", () => {
+    const runningMarkup = renderToStaticMarkup(
+      <App
+        initialSettings={completedSettings}
+        initialPresenceState="task_running"
+      />,
+    );
+    const approvalMarkup = renderToStaticMarkup(
+      <App
+        initialSettings={completedSettings}
+        initialPresenceState="waiting_for_approval"
+      />,
+    );
+    const legacyApprovalMarkup = renderToStaticMarkup(
+      <App
+        initialSettings={completedSettings}
+        initialPresenceState="waitingApproval"
+      />,
+    );
+
+    expect(runningMarkup).toContain("Open current task controls: Task running");
+    expect(runningMarkup).toContain("Task running");
+    expect(approvalMarkup).toContain(
+      "Open current task controls: Waiting for approval",
+    );
+    expect(legacyApprovalMarkup).toContain(
+      "Open current task controls: Waiting for approval",
+    );
+  });
+
+  it("renders a centered chat panel with transcript and running-task controls", () => {
+    const markup = renderToStaticMarkup(
+      <CenteredChatPanel
+        currentTaskState={presenceStateSnapshot("task_running")}
+        voiceInteraction={{
+          ...defaultVoiceInteractionSnapshot,
+          transcript: "Listening through local mock voice...",
+          fallbackText: "Can you review this?",
+          response: "Ready for voice or text.",
+        }}
+        onDismiss={() => undefined}
+      />,
+    );
+
+    expect(markup).toContain("Centered Plato chat panel");
+    expect(markup).toContain("Chat with Plato");
+    expect(markup).toContain("Transcript");
+    expect(markup).toContain("Listening through local mock voice...");
+    expect(markup).toContain("Text chat");
+    expect(markup).toContain("Current task");
+    expect(markup).toContain("Task running");
+    expect(markup).toContain("Pause");
+    expect(markup).toContain("Cancel");
+    expect(markup).not.toContain("Settings");
+    expect(markup).not.toContain("Memory control");
+    expect(markup).not.toContain("Provider");
+  });
+
+  it("shows approval controls only while the centered panel waits for approval", () => {
+    const markup = renderToStaticMarkup(
+      <CenteredChatPanel
+        currentTaskState={presenceStateSnapshot("waiting_for_approval")}
+        voiceInteraction={defaultVoiceInteractionSnapshot}
+        onDismiss={() => undefined}
+      />,
+    );
+
+    expect(markup).toContain("Waiting for approval");
+    expect(markup).toContain("Approve");
+    expect(markup).toContain("Reject");
+    expect(markup).not.toContain("Pause");
+    expect(markup).not.toContain("Cancel");
+  });
+
+  it("shows resume and cancel controls while the centered panel has paused work", () => {
+    const markup = renderToStaticMarkup(
+      <CenteredChatPanel
+        currentTaskState={presenceStateSnapshot("task_paused")}
+        voiceInteraction={defaultVoiceInteractionSnapshot}
+        onDismiss={() => undefined}
+      />,
+    );
+
+    expect(markup).toContain("Task paused");
+    expect(markup).toContain("Resume");
+    expect(markup).toContain("Cancel");
+    expect(markup).not.toContain("Pause");
+    expect(markup).not.toContain("Approve");
+    expect(markup).not.toContain("Reject");
+  });
+
+  it("does not show centered current-task controls from voice activity alone", () => {
+    const markup = renderToStaticMarkup(
+      <CenteredChatPanel
+        currentTaskState={presenceStateSnapshot("idle")}
+        voiceInteraction={{
+          ...defaultVoiceInteractionSnapshot,
+          sessionState: "listening",
+          transcript: "Listening through local mock voice...",
+        }}
+        onDismiss={() => undefined}
+      />,
+    );
+
+    expect(markup).toContain("Listening through local mock voice...");
+    expect(markup).not.toContain("Current task");
+    expect(markup).not.toContain("Pause");
+    expect(markup).not.toContain("Cancel");
+    expect(markup).not.toContain("Approve");
+    expect(markup).not.toContain("Reject");
+  });
+
+  it("maps centered current-task actions onto shared task state", () => {
+    expect(currentTaskPresenceStateForAction("pause")).toBe("task_paused");
+    expect(currentTaskPresenceStateForAction("resume")).toBe("task_running");
+    expect(currentTaskPresenceStateForAction("cancel")).toBe("idle");
+    expect(currentTaskPresenceStateForAction("approve")).toBe("task_running");
+    expect(currentTaskPresenceStateForAction("reject")).toBe("idle");
+  });
+
+  it("only treats actionable current-task states as centered opener triggers", () => {
+    expect(isActionableCurrentTaskState("task_running")).toBe(true);
+    expect(isActionableCurrentTaskState("waiting_for_approval")).toBe(true);
+    expect(isActionableCurrentTaskState("waitingApproval")).toBe(true);
+    expect(isActionableCurrentTaskState("task_paused")).toBe(false);
+    expect(isActionableCurrentTaskState("idle")).toBe(false);
   });
 
   it("keeps the compact bubble styling native and animated", () => {
@@ -756,7 +928,24 @@ describe("desktop app shell", () => {
     expect(styles).toContain(".presence-listening-bubble");
     expect(styles).toContain("backdrop-filter: blur(20px) saturate(145%)");
     expect(styles).toContain("@keyframes presence-wave");
+    expect(styles).toContain("@keyframes presence-thinking-pulse");
     expect(styles).toContain("@keyframes avatar-click-acknowledge");
+    expect(styles).toContain("@keyframes avatar-thinking-focus");
+    expect(styles).toContain("@keyframes avatar-speaking-talk");
+  });
+
+  it("keeps the centered chat panel liquid-glass and non-modal", () => {
+    const styles = readFileSync(
+      resolve(process.cwd(), "src/styles.css"),
+      "utf8",
+    );
+
+    expect(styles).toContain(".centered-chat-panel");
+    expect(styles).toContain("backdrop-filter: blur(24px) saturate(150%)");
+    expect(styles).toMatch(
+      /\.centered-chat-panel\s*{[^}]*pointer-events:\s*auto;/s,
+    );
+    expect(styles).not.toContain(".centered-chat-backdrop");
   });
 
   it("maps voice session state into companion presence labels", () => {
@@ -765,6 +954,64 @@ describe("desktop app shell", () => {
     expect(presenceLabelForState("thinking")).toBe("Thinking");
     expect(presenceLabelForState("speaking")).toBe("Speaking");
     expect(presenceLabelForState("idle")).toBe("Idle presence");
+    expect(voiceSessionStateFrom("thinking")).toBe("thinking");
+    expect(voiceSessionStateFrom("speaking")).toBe("speaking");
+    expect(voiceSessionStateFrom("unknown")).toBeUndefined();
+  });
+
+  it("drives thinking and speaking avatar states from the voice loop", () => {
+    const thinkingState = renderedPresenceStateFor({
+      audioActivationState: "active",
+      voiceOutputPresenceState: "idle",
+      voiceInteractionSessionState: "thinking",
+      sharedPresenceState: "idle",
+    });
+    const speakingState = renderedPresenceStateFor({
+      audioActivationState: "active",
+      voiceOutputPresenceState: "idle",
+      voiceInteractionSessionState: "speaking",
+      sharedPresenceState: "idle",
+    });
+
+    expect(thinkingState).toBe("thinking");
+    expect(speakingState).toBe("speaking");
+    expect(getLive2DAvatarSurfaceHook(avatarPresenceStateFrom(thinkingState)!))
+      .toMatchObject({
+        state: "thinking",
+        motionGroup: "thinking",
+        expression: "focused",
+      });
+    expect(getLive2DAvatarSurfaceHook(avatarPresenceStateFrom(speakingState)!))
+      .toMatchObject({
+        state: "speaking",
+        motionGroup: "speak",
+        expression: "talking",
+      });
+  });
+
+  it("renders initial voice session state for browser visual smoke checks", () => {
+    const thinkingMarkup = renderToStaticMarkup(
+      <App
+        initialSettings={completedSettings}
+        initialAudioActivationState="active"
+        initialVoiceSessionState="thinking"
+      />,
+    );
+    const speakingMarkup = renderToStaticMarkup(
+      <App
+        initialSettings={completedSettings}
+        initialAudioActivationState="active"
+        initialVoiceSessionState="speaking"
+      />,
+    );
+
+    expect(thinkingMarkup).toContain('data-presence-state="thinking"');
+    expect(thinkingMarkup).toContain('data-presence-bubble-state="thinking"');
+    expect(thinkingMarkup).toContain("presence-thinking-indicator");
+    expect(thinkingMarkup).not.toContain("presence-sound-wave");
+    expect(speakingMarkup).toContain('data-presence-state="speaking"');
+    expect(speakingMarkup).toContain('data-presence-bubble-state="speaking"');
+    expect(speakingMarkup).toContain("presence-sound-wave");
   });
 
   it("progresses mock voice and text fallback snapshots", () => {

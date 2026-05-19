@@ -37,3 +37,4 @@ Every implementation PR must include a `Visual evidence` section:
 - For UI-visible work, attach at least one screenshot or short video that shows the completed behavior.
 - For flows that depend on motion, interaction, or before/after state, prefer a short video.
 - If the change has no visual surface, write `No visual surface` and explain what verification proves the change.
+- For Milestone 005 redesign work, use `docs/visual-evidence/milestone-005-checklist.md` to decide which surfaces and Plato states the PR evidence must cover.
