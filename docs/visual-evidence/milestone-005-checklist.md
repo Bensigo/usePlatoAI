@@ -12,7 +12,7 @@ Use this checklist for Milestone 005 implementation PRs and for the milestone co
 - [x] Memory surface renders browser status, empty state, edit/delete affordances where records exist, and memory enablement state.
 - [x] Soul surface renders the local soul markdown editor and save path.
 - [x] Provider/trust surface renders local data, credential, authority, and audit/history sections.
-- [x] Plato avatar states render without blank assets for `appearing`, `idle`, `listening`, `thinking`, `speaking`, `waitingApproval`, `muted`, and `error`.
+- [x] Plato avatar states render through the non-raster Live2D-compatible surface for `appearing`, `idle`, `listening`, `thinking`, `speaking`, `waitingApproval`, `muted`, and `error`.
 - [x] Audio activation UI renders `inactive`, `active`, `muted`, `unavailable`, and `error` states.
 - [x] Voice thinking and speaking states render through the app shell for repeatable visual capture.
 

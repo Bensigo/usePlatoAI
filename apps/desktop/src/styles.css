@@ -93,7 +93,7 @@ button {
   z-index: 2;
   width: auto;
   display: grid;
-  grid-template-columns: auto auto;
+  grid-template-columns: auto auto auto;
   align-items: center;
   gap: var(--plato-space-xs);
   opacity: 0;
@@ -106,7 +106,8 @@ button {
 }
 
 .drag-handle,
-.hide-button {
+.hide-button,
+.controls-opener-button {
   border: 0;
   background: transparent;
   color: var(--plato-color-text-soft);
@@ -137,6 +138,7 @@ button {
 }
 
 .hide-button,
+.controls-opener-button,
 .restore-button {
   min-height: 28px;
   border-radius: var(--plato-radius-pill);
@@ -144,7 +146,8 @@ button {
   line-height: 1;
 }
 
-.hide-button {
+.hide-button,
+.controls-opener-button {
   width: 28px;
   height: 28px;
   font-size: 1.1rem;
@@ -152,6 +155,7 @@ button {
 
 .drag-handle:hover,
 .hide-button:hover,
+.controls-opener-button:hover,
 .restore-button:hover {
   background: var(--plato-color-control-hover);
 }
@@ -211,22 +215,85 @@ button {
   position: relative;
   width: 172px;
   height: 186px;
-  overflow: hidden;
+  display: grid;
+  place-items: center;
+  overflow: visible;
   background: transparent;
   transform-origin: 50% 100%;
   animation: avatar-idle-breathe var(--plato-motion-idle) infinite;
 }
 
-.plato-avatar-asset {
+.live2d-presence-mark {
   position: absolute;
-  inset: 0;
+  inset: 8px 10px 18px;
+  display: grid;
+  place-items: center;
+  transform: rotate(calc(var(--plato-avatar-body-angle-x, 0) * 1deg));
+}
+
+.live2d-presence-core,
+.live2d-presence-ring,
+.live2d-presence-meter {
+  position: absolute;
   display: block;
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-  object-position: center bottom;
-  user-select: none;
-  -webkit-user-drag: none;
+  pointer-events: none;
+}
+
+.live2d-presence-core {
+  width: 58%;
+  aspect-ratio: 1;
+  border: 2px solid color-mix(in srgb, var(--avatar-state-color) 74%, white);
+  border-radius: 44% 56% 52% 48%;
+  background:
+    radial-gradient(
+      circle at 50% 38%,
+      rgb(255 255 255 / 92%) 0 9%,
+      transparent 10%
+    ),
+    color-mix(in srgb, var(--avatar-state-color) 16%, white);
+  box-shadow:
+    0 16px 30px rgb(15 23 42 / 14%),
+    inset 0 0 0 10px rgb(255 255 255 / 38%);
+  transform: translateY(10px);
+  animation: avatar-core-presence var(--plato-motion-idle) ease-in-out infinite;
+}
+
+.live2d-presence-ring {
+  width: 82%;
+  aspect-ratio: 1;
+  border: 1px solid color-mix(in srgb, var(--avatar-state-color) 44%, transparent);
+  border-radius: 48% 52% 46% 54%;
+}
+
+.live2d-presence-ring-primary {
+  animation: avatar-presence-ring 2.8s ease-in-out infinite;
+}
+
+.live2d-presence-ring-secondary {
+  width: 66%;
+  border-color: color-mix(in srgb, var(--avatar-state-color) 28%, transparent);
+  transform: rotate(24deg);
+  animation: avatar-presence-ring 3.4s ease-in-out infinite reverse;
+}
+
+.live2d-presence-meter {
+  bottom: 12%;
+  width: 6px;
+  height: 30px;
+  border-radius: var(--plato-radius-pill);
+  background: var(--avatar-state-color);
+  opacity: 0.74;
+  transform-origin: 50% 100%;
+}
+
+.live2d-presence-meter-left {
+  left: 29%;
+  animation: avatar-meter-left 1.8s ease-in-out infinite;
+}
+
+.live2d-presence-meter-right {
+  right: 29%;
+  animation: avatar-meter-right 1.8s ease-in-out infinite;
 }
 
 .live2d-avatar-stage::after {
@@ -314,9 +381,17 @@ button {
   opacity: 0.86;
 }
 
+.live2d-avatar-surface[data-presence-state="muted"] .live2d-presence-meter {
+  transform: scaleY(0.36);
+}
+
 .live2d-avatar-surface[data-presence-state="error"] .live2d-avatar-stage {
   animation-duration: var(--plato-motion-speaking);
   transform: rotate(2deg);
+}
+
+.live2d-avatar-surface[data-presence-state="error"] .live2d-presence-core {
+  border-style: dashed;
 }
 
 .live2d-avatar-surface[data-presence-state="appearing"] .live2d-avatar-stage {
@@ -473,6 +548,33 @@ h1 {
   display: grid;
   overflow: hidden;
   pointer-events: auto;
+}
+
+.control-surface-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--plato-space-sm);
+  padding: 8px var(--plato-space-md);
+  border-bottom: 1px solid #dde3ec;
+  background: rgb(255 255 255 / 68%);
+}
+
+.control-surface-header span {
+  color: var(--plato-color-text-muted);
+  font-size: var(--plato-font-caption);
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.control-surface-header button {
+  width: 28px;
+  height: 28px;
+  border: 1px solid #cbd5e1;
+  border-radius: var(--plato-radius-control);
+  background: var(--plato-color-surface-raised);
+  color: var(--plato-color-text-muted);
+  font-weight: 900;
 }
 
 .control-nav {
@@ -1012,7 +1114,7 @@ h1 {
   width: 100%;
   display: grid;
   gap: var(--plato-space-sm);
-  padding-top: var(--plato-space-md);
+  padding: var(--plato-space-md) var(--plato-space-lg) var(--plato-space-lg);
   border-top: 1px solid #e5e7eb;
 }
 
@@ -1750,6 +1852,52 @@ h1 {
 
   62% {
     transform: translateY(-1px) rotate(-1deg);
+  }
+}
+
+@keyframes avatar-core-presence {
+  0%,
+  100% {
+    transform: translateY(10px) scale(1);
+  }
+
+  50% {
+    transform: translateY(4px) scale(1.04);
+  }
+}
+
+@keyframes avatar-presence-ring {
+  0%,
+  100% {
+    transform: rotate(0deg) scale(0.96);
+    opacity: 0.48;
+  }
+
+  50% {
+    transform: rotate(12deg) scale(1.04);
+    opacity: 0.82;
+  }
+}
+
+@keyframes avatar-meter-left {
+  0%,
+  100% {
+    transform: scaleY(0.58);
+  }
+
+  50% {
+    transform: scaleY(1);
+  }
+}
+
+@keyframes avatar-meter-right {
+  0%,
+  100% {
+    transform: scaleY(0.92);
+  }
+
+  50% {
+    transform: scaleY(0.42);
   }
 }
 
