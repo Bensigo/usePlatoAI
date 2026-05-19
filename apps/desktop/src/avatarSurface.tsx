@@ -198,6 +198,7 @@ export function Live2DAvatarSurface({
       data-presence-state={hook.state}
       data-live2d-motion-group={hook.motionGroup}
       data-live2d-expression={hook.expression}
+      data-avatar-asset={hook.assetSrc}
       aria-label={`Plato avatar surface: ${hook.statusText}`}
     >
       <div className="live2d-avatar-stage" aria-hidden="true">

@@ -10,6 +10,7 @@ import {
   DismissedPresence,
   FirstRunOnboarding,
   MemoryBrowserPanel,
+  PresenceListeningBubble,
   SoulEditorPanel,
   VoiceInteractionPanel,
   isActiveCorrectionPromptTransition,
@@ -89,6 +90,7 @@ describe("desktop app shell", () => {
     expect(markup).toContain("Idle presence");
     expect(markup).toContain("data-live2d-motion-group=\"idle\"");
     expect(markup).toContain("data-live2d-expression=\"neutral\"");
+    expect(markup).toContain("Start voice interaction with Plato");
     expect(markup).toContain("Drag Plato presence");
     expect(markup).toContain("Hide Plato presence");
     expect(markup).toContain("Voice output controls");
@@ -219,10 +221,29 @@ describe("desktop app shell", () => {
       expect(markup).toContain(
         `data-live2d-expression="${mapping.expression}"`,
       );
+      expect(markup).toContain(
+        `data-avatar-asset="/avatar/plato/${mapping.state}.png"`,
+      );
+      expect(markup).toContain("plato-avatar-asset");
       expect(markup).toContain(mapping.statusText);
       expect(markup).not.toContain("live2d-avatar-head");
       expect(markup).not.toContain("live2d-avatar-body");
     }
+  });
+
+  it("renders the visible avatar with generated state assets instead of CSS face/body parts", () => {
+    const markup = renderToStaticMarkup(
+      <Live2DAvatarSurface presenceState="listening" />,
+    );
+
+    expect(markup).toContain("plato-avatar-asset");
+    expect(markup).toContain("/avatar/plato/listening.png");
+    expect(markup).toContain('data-avatar-asset="/avatar/plato/listening.png"');
+    expect(markup).not.toContain("live2d-avatar-hair");
+    expect(markup).not.toContain("live2d-avatar-head");
+    expect(markup).not.toContain("live2d-avatar-eye");
+    expect(markup).not.toContain("live2d-avatar-mouth");
+    expect(markup).not.toContain("live2d-avatar-body");
   });
 
   it("renders the floating presence from an injected presence state", () => {
@@ -258,8 +279,8 @@ describe("desktop app shell", () => {
       <App initialSettings={completedSettings} />,
     );
 
-    expect(markup).toContain("Activate Plato audio");
-    expect(markup).toContain("avatar-activation-button");
+    expect(markup).toContain("Start voice interaction with Plato");
+    expect(markup).toContain("avatar-action");
   });
 
   it("renders presence state through the shared source boundary", () => {
@@ -576,6 +597,29 @@ describe("desktop app shell", () => {
     expect(markup).toContain("listening");
     expect(markup).toContain("Listening through local mock voice...");
     expect(markup).toContain("Send text");
+  });
+
+  it("renders the compact listening bubble without transcript text", () => {
+    const markup = renderToStaticMarkup(
+      <PresenceListeningBubble state="listening" />,
+    );
+
+    expect(markup).toContain("Open voice controls: Listening");
+    expect(markup).toContain("presence-sound-wave");
+    expect(markup).toContain("Listening");
+    expect(markup).not.toContain("Listening through local mock voice");
+  });
+
+  it("keeps the compact bubble styling native and animated", () => {
+    const styles = readFileSync(
+      resolve(process.cwd(), "src/styles.css"),
+      "utf8",
+    );
+
+    expect(styles).toContain(".presence-listening-bubble");
+    expect(styles).toContain("backdrop-filter: blur(20px) saturate(145%)");
+    expect(styles).toContain("@keyframes presence-wave");
+    expect(styles).toContain("@keyframes avatar-click-acknowledge");
   });
 
   it("maps voice session state into companion presence labels", () => {
