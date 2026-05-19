@@ -16,8 +16,9 @@ import {
   PresenceListeningBubble,
   SoulEditorPanel,
   VoiceInteractionPanel,
-  isActiveCorrectionPromptTransition,
   currentTaskPresenceStateForAction,
+  isActiveCorrectionPromptTransition,
+  isActionableCurrentTaskState,
   renderedPresenceStateFor,
 } from "../src/App";
 import {
@@ -750,6 +751,36 @@ describe("desktop app shell", () => {
     expect(markup).not.toContain("Listening through local mock voice");
   });
 
+  it("renders the centered panel opener for active task state while voice is idle", () => {
+    const runningMarkup = renderToStaticMarkup(
+      <App
+        initialSettings={completedSettings}
+        initialPresenceState="task_running"
+      />,
+    );
+    const approvalMarkup = renderToStaticMarkup(
+      <App
+        initialSettings={completedSettings}
+        initialPresenceState="waiting_for_approval"
+      />,
+    );
+    const legacyApprovalMarkup = renderToStaticMarkup(
+      <App
+        initialSettings={completedSettings}
+        initialPresenceState="waitingApproval"
+      />,
+    );
+
+    expect(runningMarkup).toContain("Open current task controls: Task running");
+    expect(runningMarkup).toContain("Task running");
+    expect(approvalMarkup).toContain(
+      "Open current task controls: Waiting for approval",
+    );
+    expect(legacyApprovalMarkup).toContain(
+      "Open current task controls: Waiting for approval",
+    );
+  });
+
   it("renders a centered chat panel with transcript and running-task controls", () => {
     const markup = renderToStaticMarkup(
       <CenteredChatPanel
@@ -820,6 +851,14 @@ describe("desktop app shell", () => {
     expect(currentTaskPresenceStateForAction("cancel")).toBe("idle");
     expect(currentTaskPresenceStateForAction("approve")).toBe("task_running");
     expect(currentTaskPresenceStateForAction("reject")).toBe("idle");
+  });
+
+  it("only treats actionable current-task states as centered opener triggers", () => {
+    expect(isActionableCurrentTaskState("task_running")).toBe(true);
+    expect(isActionableCurrentTaskState("waiting_for_approval")).toBe(true);
+    expect(isActionableCurrentTaskState("waitingApproval")).toBe(true);
+    expect(isActionableCurrentTaskState("task_paused")).toBe(false);
+    expect(isActionableCurrentTaskState("idle")).toBe(false);
   });
 
   it("keeps the compact bubble styling native and animated", () => {
