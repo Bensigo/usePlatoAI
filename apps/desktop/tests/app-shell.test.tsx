@@ -490,6 +490,7 @@ describe("desktop app shell", () => {
     expect(source).toContain("onStartVoiceInteraction={activateVoiceListening}");
     expect(source).toContain("canStartVoiceInteractionWithAudio(nextSnapshot)");
     expect(source).not.toContain("onStartVoiceInteraction={startVoiceInteraction}");
+    expect(source).not.toContain("startupSoundAttempted");
   });
 
   it("can render initial audio state for visual smoke captures", () => {

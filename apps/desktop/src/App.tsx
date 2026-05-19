@@ -1293,7 +1293,6 @@ export function App({
   const [soulGuidance, setSoulGuidance] =
     useState<SoulGuidance>(fallbackSoulGuidance);
   const voiceTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
-  const startupSoundAttempted = useRef(false);
   const avatarReactionTimer = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
@@ -1470,28 +1469,6 @@ export function App({
   });
   const avatarPresenceState = avatarPresenceStateFor(renderedPresenceState);
   const avatarSurfaceHook = getLive2DAvatarSurfaceHook(avatarPresenceState);
-
-  useEffect(() => {
-    if (initialAudioActivationState) {
-      return;
-    }
-
-    if (startupSoundAttempted.current) {
-      return;
-    }
-
-    startupSoundAttempted.current = true;
-
-    void playComingOnlineSound().then((result) => {
-      setAudioActivation((snapshot) => {
-        if (snapshot.state === "active" || snapshot.state === "muted") {
-          return snapshot;
-        }
-
-        return markAudioActivationResult(snapshot, result);
-      });
-    });
-  }, [initialAudioActivationState]);
 
   useEffect(() => {
     if (initialSettings) {
