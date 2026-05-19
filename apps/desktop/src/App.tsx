@@ -640,6 +640,36 @@ export function VoiceInteractionPanel({
   );
 }
 
+export function PresenceListeningBubble({
+  state,
+  onOpenControls,
+}: {
+  state: AvatarPresenceState;
+  onOpenControls?: () => void;
+}) {
+  const label = getLive2DAvatarSurfaceHook(state).label;
+  const hasSoundWave = state === "listening" || state === "speaking";
+
+  return (
+    <button
+      className="presence-listening-bubble"
+      type="button"
+      onClick={onOpenControls}
+      aria-label={`Open voice controls: ${label}`}
+    >
+      <span className="presence-bubble-label">{label}</span>
+      {hasSoundWave ? (
+        <span className="presence-sound-wave" aria-hidden="true">
+          <span />
+          <span />
+          <span />
+          <span />
+        </span>
+      ) : null}
+    </button>
+  );
+}
+
 export function TrustFoundationSettings({
   settings,
   onSettingsChange,
@@ -1121,6 +1151,7 @@ export function App({
   const [activeEntry, setActiveEntry] = useState<ControlSurfaceId>("voice");
   const [isControlSurfaceVisible, setIsControlSurfaceVisible] = useState(false);
   const [isDismissed, setIsDismissed] = useState(false);
+  const [hasAvatarClickReaction, setHasAvatarClickReaction] = useState(false);
   const [settings, setSettings] = useState<CompanionSettings>(
     () => initialSettings ?? defaultCompanionSettings,
   );
@@ -1133,6 +1164,9 @@ export function App({
   const [soulGuidance, setSoulGuidance] =
     useState<SoulGuidance>(fallbackSoulGuidance);
   const voiceTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const avatarReactionTimer = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
   const correctionPromptRequestId = useRef(0);
 
   function clearVoiceTimers() {
@@ -1221,6 +1255,28 @@ export function App({
     scheduleVoiceState(900, "thinking", "voice");
     scheduleVoiceState(1800, "speaking", "voice");
     scheduleVoiceState(3000, "idle", "voice");
+  }
+
+  function acknowledgeAvatarClick() {
+    if (avatarReactionTimer.current) {
+      clearTimeout(avatarReactionTimer.current);
+    }
+
+    setHasAvatarClickReaction(true);
+    avatarReactionTimer.current = setTimeout(() => {
+      setHasAvatarClickReaction(false);
+      avatarReactionTimer.current = null;
+    }, 520);
+  }
+
+  function openVoiceControls() {
+    setActiveEntry("voice");
+    setIsControlSurfaceVisible(true);
+  }
+
+  function activateAvatarListening() {
+    acknowledgeAvatarClick();
+    startVoiceInteraction();
   }
 
   function stopVoiceInteraction() {
@@ -1345,7 +1401,16 @@ export function App({
     };
   }, []);
 
-  useEffect(() => () => clearVoiceTimers(), []);
+  useEffect(
+    () => () => {
+      clearVoiceTimers();
+
+      if (avatarReactionTimer.current) {
+        clearTimeout(avatarReactionTimer.current);
+      }
+    },
+    [],
+  );
 
   async function completeOnboarding(updatedSettings: CompanionSettings) {
     await durableSettingsStore.save(updatedSettings);
@@ -1383,7 +1448,9 @@ export function App({
         <DismissedPresence onRestore={() => setIsDismissed(false)} />
       ) : (
         <section
-          className={`presence-card presence-${renderedPresenceState}`}
+          className={`presence-card presence-${renderedPresenceState}${
+            hasAvatarClickReaction ? " presence-click-reaction" : ""
+          }`}
           aria-label="Floating Plato presence"
         >
           <div className="presence-controls">
@@ -1405,7 +1472,21 @@ export function App({
             </button>
           </div>
 
-          <Live2DAvatarSurface presenceState={avatarPresenceState} />
+          <button
+            className="avatar-action"
+            type="button"
+            onClick={activateAvatarListening}
+            aria-label={`Start voice interaction with ${settings.companionName}`}
+          >
+            <Live2DAvatarSurface presenceState={avatarPresenceState} />
+          </button>
+
+          {voiceInteraction.sessionState !== "idle" ? (
+            <PresenceListeningBubble
+              state={avatarPresenceState}
+              onOpenControls={openVoiceControls}
+            />
+          ) : null}
 
           <div className="presence-copy sr-only">
             <p className="product-name">usePlatoAI</p>
