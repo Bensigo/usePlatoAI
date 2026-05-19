@@ -1,6 +1,3 @@
-import { existsSync } from "node:fs";
-import { resolve } from "node:path";
-
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
@@ -138,25 +135,23 @@ describe("Milestone 005 redesign smoke coverage", () => {
     expect(memoryWithRecordsMarkup).toContain("Delete");
   });
 
-  it("confirms every required Plato avatar state renders a nonblank asset-backed surface", () => {
+  it("confirms every required Plato avatar state renders through the non-raster surface", () => {
     for (const state of avatarPresenceStates) {
       const hook = getLive2DAvatarSurfaceHook(state);
       const markup = renderToStaticMarkup(
         <Live2DAvatarSurface presenceState={state} />,
       );
-      const publicAssetPath = resolve(
-        __dirname,
-        "../public",
-        hook.assetSrc.replace(/^\//, ""),
-      );
 
-      expect(existsSync(publicAssetPath)).toBe(true);
       expect(markup).toContain(`data-presence-state="${state}"`);
       expect(markup).toContain(`data-live2d-motion-group="${hook.motionGroup}"`);
       expect(markup).toContain(`data-live2d-expression="${hook.expression}"`);
-      expect(markup).toContain(`data-avatar-asset="${hook.assetSrc}"`);
+      expect(markup).toContain("live2d-presence-mark");
+      expect(markup).toContain("live2d-presence-core");
+      expect(markup).toContain("live2d-presence-meter");
       expect(markup).toContain(hook.statusText);
-      expect(markup).not.toContain('src=""');
+      expect(markup).not.toContain("<img");
+      expect(markup).not.toContain("data-avatar-asset");
+      expect(markup).not.toContain("plato-avatar-asset");
     }
   });
 

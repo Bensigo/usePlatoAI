@@ -246,35 +246,36 @@ describe("desktop app shell", () => {
       );
 
       expect(hook.statusText).toBe(mapping.statusText);
-      expect(hook.assetSrc).toBe(`/avatar/plato/${mapping.state}.png`);
       expect(hook.motionGroup).toBe(mapping.motionGroup);
       expect(hook.expression).toBe(mapping.expression);
       expect(markup).toContain(`data-presence-state="${mapping.state}"`);
-      expect(markup).toContain(`src="/avatar/plato/${mapping.state}.png"`);
       expect(markup).toContain(
         `data-live2d-motion-group="${mapping.motionGroup}"`,
       );
       expect(markup).toContain(
         `data-live2d-expression="${mapping.expression}"`,
       );
-      expect(markup).toContain(
-        `data-avatar-asset="/avatar/plato/${mapping.state}.png"`,
-      );
-      expect(markup).toContain("plato-avatar-asset");
+      expect(markup).toContain("live2d-presence-mark");
       expect(markup).toContain(mapping.statusText);
+      expect(markup).not.toContain("<img");
+      expect(markup).not.toContain("plato-avatar-asset");
       expect(markup).not.toContain("live2d-avatar-head");
       expect(markup).not.toContain("live2d-avatar-body");
     }
   });
 
-  it("renders the visible avatar with generated state assets instead of CSS face/body parts", () => {
+  it("renders the visible avatar without static raster stickers", () => {
     const markup = renderToStaticMarkup(
       <Live2DAvatarSurface presenceState="listening" />,
     );
 
-    expect(markup).toContain("plato-avatar-asset");
-    expect(markup).toContain("/avatar/plato/listening.png");
-    expect(markup).toContain('data-avatar-asset="/avatar/plato/listening.png"');
+    expect(markup).toContain("live2d-presence-mark");
+    expect(markup).toContain("live2d-presence-core");
+    expect(markup).toContain("live2d-presence-meter");
+    expect(markup).not.toContain("<img");
+    expect(markup).not.toContain("plato-avatar-asset");
+    expect(markup).not.toContain("/avatar/plato/listening.png");
+    expect(markup).not.toContain("data-avatar-asset");
     expect(markup).not.toContain("live2d-avatar-hair");
     expect(markup).not.toContain("live2d-avatar-head");
     expect(markup).not.toContain("live2d-avatar-eye");
