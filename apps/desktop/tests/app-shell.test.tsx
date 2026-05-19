@@ -19,6 +19,7 @@ import {
   currentTaskPresenceStateForAction,
   isActiveCorrectionPromptTransition,
   isActionableCurrentTaskState,
+  openControlSurfaceEntryFromEvent,
   renderedPresenceStateFor,
   shouldShowCenteredChatPanelOpener,
 } from "../src/App";
@@ -557,6 +558,44 @@ describe("desktop app shell", () => {
     expect(markup).toContain("Local config");
     expect(markup).toContain("Local configuration status");
     expect(markup).toContain('data-control-state="active"');
+  });
+
+  it("expands the control surface when a Tauri menu event opens a valid control", () => {
+    let activeEntry = "voice";
+    let areControlsExpanded = false;
+
+    const didOpen = openControlSurfaceEntryFromEvent({
+      payload: "memory",
+      setActiveEntry: (nextActiveEntry) => {
+        activeEntry = nextActiveEntry;
+      },
+      setAreControlsExpanded: (nextControlsExpanded) => {
+        areControlsExpanded = nextControlsExpanded;
+      },
+    });
+
+    expect(didOpen).toBe(true);
+    expect(activeEntry).toBe("memory");
+    expect(areControlsExpanded).toBe(true);
+  });
+
+  it("ignores invalid Tauri menu control events", () => {
+    let activeEntry = "voice";
+    let areControlsExpanded = false;
+
+    const didOpen = openControlSurfaceEntryFromEvent({
+      payload: "unknown",
+      setActiveEntry: (nextActiveEntry) => {
+        activeEntry = nextActiveEntry;
+      },
+      setAreControlsExpanded: (nextControlsExpanded) => {
+        areControlsExpanded = nextControlsExpanded;
+      },
+    });
+
+    expect(didOpen).toBe(false);
+    expect(activeEntry).toBe("voice");
+    expect(areControlsExpanded).toBe(false);
   });
 
   it("persists, edits, deletes, and disables local memory through the app store boundary", async () => {
