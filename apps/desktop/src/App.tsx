@@ -176,7 +176,11 @@ export function renderedPresenceStateFor({
 export type CurrentTaskPanelAction = "pause" | "cancel" | "approve" | "reject";
 
 export function isActionableCurrentTaskState(state: string) {
-  return state === "task_running" || state === "waiting_for_approval";
+  return (
+    state === "task_running" ||
+    state === "waiting_for_approval" ||
+    state === "waitingApproval"
+  );
 }
 
 export function currentTaskPresenceStateForAction(
