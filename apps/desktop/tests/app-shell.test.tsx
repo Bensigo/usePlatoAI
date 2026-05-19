@@ -1277,8 +1277,13 @@ describe("desktop app shell", () => {
       "utf8",
     );
 
+    expect(styles).toMatch(/\.control-surface\s*{[^}]*max-height:\s*calc\(100vh - 28px\);/s);
+    expect(styles).toMatch(/\.control-surface\s*{[^}]*overflow:\s*auto;/s);
+    expect(styles).toMatch(/\.control-surface\s*{[^}]*z-index:\s*10;/s);
     expect(styles).toContain("@media (max-width: 360px) and (max-height: 600px)");
-    expect(styles).toMatch(/\.control-surface\s*{[^}]*max-height:\s*258px;/s);
+    expect(styles).toMatch(
+      /\.control-surface\s*{[^}]*max-height:\s*calc\(100vh - 20px\);/s,
+    );
     expect(styles).toMatch(
       /\.control-nav\s*{[^}]*grid-template-columns:\s*repeat\(3, minmax\(0, 1fr\)\);/s,
     );

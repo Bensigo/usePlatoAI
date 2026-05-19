@@ -470,12 +470,14 @@ h1 {
 
 .control-surface {
   position: fixed;
+  z-index: 10;
   top: max(14px, env(safe-area-inset-top));
   left: 50%;
   width: min(calc(100vw - 28px), 720px);
+  max-height: calc(100vh - 28px);
   transform: translateX(-50%);
   display: grid;
-  overflow: hidden;
+  overflow: auto;
   pointer-events: auto;
 }
 
@@ -1612,7 +1614,7 @@ h1 {
 @media (max-width: 360px) and (max-height: 600px) {
   .control-surface {
     top: max(10px, env(safe-area-inset-top));
-    max-height: 258px;
+    max-height: calc(100vh - 20px);
   }
 
   .control-nav {
