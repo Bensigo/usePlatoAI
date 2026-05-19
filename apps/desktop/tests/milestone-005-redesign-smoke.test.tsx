@@ -48,15 +48,25 @@ const sampleMemoryRecord: LocalMemoryRecord = {
 };
 
 describe("Milestone 005 redesign smoke coverage", () => {
-  it("renders the main shell, top Plato navigation, and each redesigned control surface", () => {
+  it("renders the companion-only default shell with a compact control opener", () => {
     const shellMarkup = renderToStaticMarkup(
       <App initialSettings={completedSettings} />,
     );
 
-    expect(shellMarkup).toContain('aria-label="Top Plato control surface"');
     expect(shellMarkup).toContain('aria-label="Floating Plato presence"');
-    expect(shellMarkup).toContain('aria-label="Voice output controls"');
+    expect(shellMarkup).toContain('aria-label="Open Plato controls"');
     expect(shellMarkup).toContain("Activate audio with Plato");
+    expect(shellMarkup).not.toContain('aria-label="Top Plato control surface"');
+    expect(shellMarkup).not.toContain('aria-label="Voice output controls"');
+  });
+
+  it("renders the expanded top Plato navigation and each redesigned control surface", () => {
+    const shellMarkup = renderToStaticMarkup(
+      <App initialSettings={completedSettings} initialControlsExpanded />,
+    );
+
+    expect(shellMarkup).toContain('aria-label="Top Plato control surface"');
+    expect(shellMarkup).toContain('aria-label="Voice output controls"');
 
     for (const entry of controlSurfaceEntries) {
       expect(shellMarkup).toContain(`<span>${entry.label}</span>`);
@@ -66,6 +76,7 @@ describe("Milestone 005 redesign smoke coverage", () => {
         <App
           initialSettings={completedSettings}
           initialActiveEntry={entry.id}
+          initialControlsExpanded
         />,
       );
 
@@ -103,6 +114,7 @@ describe("Milestone 005 redesign smoke coverage", () => {
         <App
           initialSettings={completedSettings}
           initialActiveEntry={surface as (typeof controlSurfaceEntries)[number]["id"]}
+          initialControlsExpanded
         />,
       );
 

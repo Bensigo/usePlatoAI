@@ -96,7 +96,7 @@ const completedSettings: CompanionSettings = {
 };
 
 describe("desktop app shell", () => {
-  it("renders the floating Plato presence controls", () => {
+  it("renders a companion-only default desktop presence with collapsed controls", () => {
     const markup = renderToStaticMarkup(
       <App initialSettings={completedSettings} />,
     );
@@ -108,15 +108,32 @@ describe("desktop app shell", () => {
     expect(markup).toContain("data-live2d-motion-group=\"idle\"");
     expect(markup).toContain("data-live2d-expression=\"neutral\"");
     expect(markup).toContain("Activate audio with Plato");
+    expect(markup).toContain("Open Plato controls");
     expect(markup).toContain("Drag Plato presence");
     expect(markup).toContain("Hide Plato presence");
+    expect(markup).not.toContain("Top Plato control surface");
+    expect(markup).not.toContain("Voice output controls");
+    expect(markup).not.toContain("Audio waits for activation");
+    expect(markup).not.toContain("No passive listening.");
+    expect(markup).not.toContain("Voice ready");
+    expect(markup).not.toContain("Mute");
+    expect(markup).not.toContain("Stop speech");
+    expect(markup).not.toContain("Plato is hidden");
+  });
+
+  it("renders the expanded Plato controls when the compact opener is active", () => {
+    const markup = renderToStaticMarkup(
+      <App initialSettings={completedSettings} initialControlsExpanded />,
+    );
+
+    expect(markup).toContain('aria-label="Top Plato control surface"');
+    expect(markup).toContain("Collapse Plato controls");
     expect(markup).toContain("Voice output controls");
     expect(markup).toContain("Audio waits for activation");
     expect(markup).toContain("No passive listening.");
     expect(markup).toContain("Voice ready");
     expect(markup).toContain("Mute");
     expect(markup).toContain("Stop speech");
-    expect(markup).not.toContain("Plato is hidden");
   });
 
   it("injects reusable experience tokens into the visible shell", () => {
@@ -394,9 +411,9 @@ describe("desktop app shell", () => {
     expect(markup).toContain("Show Plato presence");
   });
 
-  it("renders the persistent top Plato control entries", () => {
+  it("renders the expanded top Plato control entries", () => {
     const markup = renderToStaticMarkup(
-      <App initialSettings={completedSettings} />,
+      <App initialSettings={completedSettings} initialControlsExpanded />,
     );
 
     expect(controlSurfaceEntries.map((entry) => entry.id)).toEqual([
@@ -422,7 +439,7 @@ describe("desktop app shell", () => {
 
   it("renders explicit voice controls and text fallback without credentials", () => {
     const markup = renderToStaticMarkup(
-      <App initialSettings={completedSettings} />,
+      <App initialSettings={completedSettings} initialControlsExpanded />,
     );
 
     expect(markup).toContain("Voice surface states");
@@ -510,6 +527,7 @@ describe("desktop app shell", () => {
       <App
         initialSettings={completedSettings}
         initialAudioActivationState="unavailable"
+        initialControlsExpanded
       />,
     );
 
@@ -529,7 +547,11 @@ describe("desktop app shell", () => {
 
   it("can open a specific top control for visual smoke captures", () => {
     const markup = renderToStaticMarkup(
-      <App initialSettings={completedSettings} initialActiveEntry="config" />,
+      <App
+        initialSettings={completedSettings}
+        initialActiveEntry="config"
+        initialControlsExpanded
+      />,
     );
 
     expect(markup).toContain("Local config");
@@ -1175,6 +1197,7 @@ describe("desktop app shell", () => {
       <App
         initialSettings={completedSettings}
         soulGuidanceStore={soulGuidanceStore}
+        initialControlsExpanded
       />,
     );
 

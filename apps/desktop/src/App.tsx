@@ -1630,6 +1630,7 @@ export function App({
   initialSettings,
   initialActiveEntry = "voice",
   initialPresenceState = "idle",
+  initialControlsExpanded = false,
   settingsStore,
   trustFoundationStore,
   soulGuidanceStore,
@@ -1641,6 +1642,7 @@ export function App({
   initialSettings?: CompanionSettings;
   initialActiveEntry?: ControlSurfaceId;
   initialPresenceState?: CompanionPresenceState;
+  initialControlsExpanded?: boolean;
   initialAudioActivationState?: AudioActivationState;
   initialVoiceSessionState?: VoiceSessionState;
   settingsStore?: SettingsStore;
@@ -1675,6 +1677,9 @@ export function App({
   const presence = usePresenceState(companionPresenceStateSource);
   const [activeEntry, setActiveEntry] =
     useState<ControlSurfaceId>(initialActiveEntry);
+  const [areControlsExpanded, setAreControlsExpanded] = useState(
+    initialControlsExpanded,
+  );
   const [isDismissed, setIsDismissed] = useState(false);
   const [hasAvatarClickReaction, setHasAvatarClickReaction] = useState(false);
   const [settings, setSettings] = useState<CompanionSettings>(
@@ -1809,6 +1814,7 @@ export function App({
 
   function openVoiceControls() {
     setActiveEntry("voice");
+    setAreControlsExpanded(true);
   }
 
   function openCenteredChatPanel() {
@@ -2069,48 +2075,106 @@ export function App({
     <main className="presence-shell" aria-labelledby="presence-title">
       {experienceTokenStyle}
 
-      <section
-        className="control-surface"
-        aria-label="Top Plato control surface"
-      >
-        <nav className="control-nav" aria-label="Control surface entries">
-          {controlSurfaceEntries.map((entry) => (
+      {areControlsExpanded ? (
+        <section
+          className="control-surface"
+          aria-label="Top Plato control surface"
+        >
+          <div className="control-surface-header">
+            <span>Plato controls</span>
             <button
-              key={entry.id}
               type="button"
-              className={entry.id === activeEntry ? "active" : undefined}
-              aria-pressed={entry.id === activeEntry}
-              data-control-state={
-                entry.id === activeEntry ? "active" : entry.state
-              }
-              onClick={() => setActiveEntry(entry.id)}
+              onClick={() => setAreControlsExpanded(false)}
+              aria-label="Collapse Plato controls"
             >
-              <span>{entry.label}</span>
-              <small>{entry.id === activeEntry ? "active" : entry.state}</small>
+              x
             </button>
-          ))}
-        </nav>
+          </div>
+          <nav className="control-nav" aria-label="Control surface entries">
+            {controlSurfaceEntries.map((entry) => (
+              <button
+                key={entry.id}
+                type="button"
+                className={entry.id === activeEntry ? "active" : undefined}
+                aria-pressed={entry.id === activeEntry}
+                data-control-state={
+                  entry.id === activeEntry ? "active" : entry.state
+                }
+                onClick={() => setActiveEntry(entry.id)}
+              >
+                <span>{entry.label}</span>
+                <small>
+                  {entry.id === activeEntry ? "active" : entry.state}
+                </small>
+              </button>
+            ))}
+          </nav>
 
-        <ControlSurfacePanel
-          activeEntry={activeEntry}
-          settings={settings}
-          onSettingsChange={completeOnboarding}
-          trustFoundationStore={trustFoundationStore}
-          voiceInteraction={voiceInteraction}
-          onStartVoiceInteraction={activateVoiceListening}
-          onStopVoiceInteraction={stopVoiceInteraction}
-          onMuteChange={(isMuted) =>
-            setVoiceInteraction((current) => ({ ...current, isMuted }))
-          }
-          onTextFallbackChange={(fallbackText) =>
-            setVoiceInteraction((current) => ({ ...current, fallbackText }))
-          }
-          onSubmitTextFallback={submitTextFallback}
-          soulGuidanceStore={durableSoulGuidanceStore}
-          onSoulGuidanceChange={setSoulGuidance}
-          memoryStore={durableMemoryStore}
-        />
-      </section>
+          <ControlSurfacePanel
+            activeEntry={activeEntry}
+            settings={settings}
+            onSettingsChange={completeOnboarding}
+            trustFoundationStore={trustFoundationStore}
+            voiceInteraction={voiceInteraction}
+            onStartVoiceInteraction={activateVoiceListening}
+            onStopVoiceInteraction={stopVoiceInteraction}
+            onMuteChange={(isMuted) =>
+              setVoiceInteraction((current) => ({ ...current, isMuted }))
+            }
+            onTextFallbackChange={(fallbackText) =>
+              setVoiceInteraction((current) => ({ ...current, fallbackText }))
+            }
+            onSubmitTextFallback={submitTextFallback}
+            soulGuidanceStore={durableSoulGuidanceStore}
+            onSoulGuidanceChange={setSoulGuidance}
+            memoryStore={durableMemoryStore}
+          />
+
+          <section className="voice-output-panel" aria-label="Voice output controls">
+            <AudioActivationStatus audioActivation={audioActivation} />
+            <div className="voice-status-row">
+              <span>{voiceSession.statusLabel}</span>
+              <strong>{voiceSession.isMuted ? "Muted" : "Audible"}</strong>
+            </div>
+            <p className="voice-fallback">{voiceSession.textFallback}</p>
+            <div className="voice-controls">
+              <button
+                type="button"
+                aria-pressed={voiceSession.isMuted}
+                onClick={() => {
+                  setVoiceSession((session) =>
+                    setVoiceOutputMuted(session, !session.isMuted),
+                  );
+                  setAudioActivation((snapshot) =>
+                    setAudioActivationMuted(snapshot, !voiceSession.isMuted),
+                  );
+                }}
+              >
+                {voiceSession.isMuted ? "Unmute" : "Mute"}
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  setVoiceSession((session) =>
+                    startMockSpeech(session, mockVoiceResponse),
+                  )
+                }
+              >
+                Play mock voice
+              </button>
+              <button
+                type="button"
+                disabled={voiceSession.phase !== "speaking"}
+                onClick={() =>
+                  setVoiceSession((session) => stopMockSpeech(session))
+                }
+              >
+                Stop speech
+              </button>
+            </div>
+          </section>
+        </section>
+      ) : null}
 
       {isChatPanelOpen ? (
         <CenteredChatPanel
@@ -2140,6 +2204,14 @@ export function App({
             aria-label="Floating Plato presence"
           >
             <div className="presence-controls">
+              <button
+                className="controls-opener-button"
+                type="button"
+                onClick={() => setAreControlsExpanded(true)}
+                aria-label="Open Plato controls"
+              >
+                ...
+              </button>
               <button
                 className="drag-handle"
                 type="button"
@@ -2191,49 +2263,6 @@ export function App({
               <p className="wake-name">Wake name: {settings.wakeName}</p>
             </div>
 
-            <section className="voice-output-panel" aria-label="Voice output controls">
-              <AudioActivationStatus audioActivation={audioActivation} />
-              <div className="voice-status-row">
-                <span>{voiceSession.statusLabel}</span>
-                <strong>{voiceSession.isMuted ? "Muted" : "Audible"}</strong>
-              </div>
-              <p className="voice-fallback">{voiceSession.textFallback}</p>
-              <div className="voice-controls">
-                <button
-                  type="button"
-                  aria-pressed={voiceSession.isMuted}
-                  onClick={() => {
-                    setVoiceSession((session) =>
-                      setVoiceOutputMuted(session, !session.isMuted),
-                    );
-                    setAudioActivation((snapshot) =>
-                      setAudioActivationMuted(snapshot, !voiceSession.isMuted),
-                    );
-                  }}
-                >
-                  {voiceSession.isMuted ? "Unmute" : "Mute"}
-                </button>
-                <button
-                  type="button"
-                  onClick={() =>
-                    setVoiceSession((session) =>
-                      startMockSpeech(session, mockVoiceResponse),
-                    )
-                  }
-                >
-                  Play mock voice
-                </button>
-                <button
-                  type="button"
-                  disabled={voiceSession.phase !== "speaking"}
-                  onClick={() =>
-                    setVoiceSession((session) => stopMockSpeech(session))
-                  }
-                >
-                  Stop speech
-                </button>
-              </div>
-            </section>
           </section>
         )}
       </section>
