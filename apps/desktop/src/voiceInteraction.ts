@@ -11,6 +11,21 @@ import {
 
 export type VoiceSessionState = "idle" | "listening" | "thinking" | "speaking";
 
+export function voiceSessionStateFrom(
+  value: string | null,
+): VoiceSessionState | undefined {
+  if (
+    value === "idle" ||
+    value === "listening" ||
+    value === "thinking" ||
+    value === "speaking"
+  ) {
+    return value;
+  }
+
+  return undefined;
+}
+
 export type VoiceActivationSource = "voice" | "text";
 
 export type CompanionPresenceState =
