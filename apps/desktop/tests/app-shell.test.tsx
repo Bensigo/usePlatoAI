@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   App,
+  AudioActivationStatus,
   ConfigPanel,
   ControlSurfacePanel,
   DismissedPresence,
@@ -17,6 +18,16 @@ import {
   isActiveCorrectionPromptTransition,
   renderedPresenceStateFor,
 } from "../src/App";
+import {
+  audioActivationSnapshotForState,
+  audioActivationStateFrom,
+  audioActivationStateLabel,
+  canStartVoiceInteractionWithAudio,
+  createAudioActivationSnapshot,
+  markAudioActivationResult,
+  playComingOnlineSound,
+  setAudioActivationMuted,
+} from "../src/audioActivation";
 import {
   Live2DAvatarSurface,
   avatarPresenceStateFrom,
@@ -91,10 +102,12 @@ describe("desktop app shell", () => {
     expect(markup).toContain("Idle presence");
     expect(markup).toContain("data-live2d-motion-group=\"idle\"");
     expect(markup).toContain("data-live2d-expression=\"neutral\"");
-    expect(markup).toContain("Start voice interaction with Plato");
+    expect(markup).toContain("Activate audio with Plato");
     expect(markup).toContain("Drag Plato presence");
     expect(markup).toContain("Hide Plato presence");
     expect(markup).toContain("Voice output controls");
+    expect(markup).toContain("Audio waits for activation");
+    expect(markup).toContain("No passive listening.");
     expect(markup).toContain("Voice ready");
     expect(markup).toContain("Mute");
     expect(markup).toContain("Stop speech");
@@ -280,7 +293,7 @@ describe("desktop app shell", () => {
       <App initialSettings={completedSettings} />,
     );
 
-    expect(markup).toContain("Start voice interaction with Plato");
+    expect(markup).toContain("Activate audio with Plato");
     expect(markup).toContain("avatar-action");
   });
 
@@ -302,6 +315,7 @@ describe("desktop app shell", () => {
   it("does not let passive mute hide active product presence states", () => {
     expect(
       renderedPresenceStateFor({
+        audioActivationState: "inactive",
         voiceOutputPresenceState: "muted",
         voiceInteractionSessionState: "idle",
         sharedPresenceState: "waiting_for_approval",
@@ -309,6 +323,7 @@ describe("desktop app shell", () => {
     ).toBe("waiting_for_approval");
     expect(
       renderedPresenceStateFor({
+        audioActivationState: "inactive",
         voiceOutputPresenceState: "muted",
         voiceInteractionSessionState: "idle",
         sharedPresenceState: "task_running",
@@ -316,6 +331,7 @@ describe("desktop app shell", () => {
     ).toBe("task_running");
     expect(
       renderedPresenceStateFor({
+        audioActivationState: "inactive",
         voiceOutputPresenceState: "muted",
         voiceInteractionSessionState: "idle",
         sharedPresenceState: "idle",
@@ -323,11 +339,23 @@ describe("desktop app shell", () => {
     ).toBe("muted");
     expect(
       renderedPresenceStateFor({
+        audioActivationState: "inactive",
         voiceOutputPresenceState: "speaking",
         voiceInteractionSessionState: "idle",
         sharedPresenceState: "waiting_for_approval",
       }),
     ).toBe("speaking");
+  });
+
+  it("maps explicit audio activation errors into avatar error presence", () => {
+    expect(
+      renderedPresenceStateFor({
+        audioActivationState: "error",
+        voiceOutputPresenceState: "idle",
+        voiceInteractionSessionState: "idle",
+        sharedPresenceState: "idle",
+      }),
+    ).toBe("error");
   });
 
   it("falls back to idle presence for invalid state input", () => {
@@ -399,9 +427,98 @@ describe("desktop app shell", () => {
     expect(markup).toContain("unavailable until enabled");
     expect(markup).toContain("Start listening");
     expect(markup).toContain("Mute voice output");
+    expect(markup).toContain("Muted");
+    expect(markup).toContain("Active");
+    expect(markup).toContain("Unavailable");
+    expect(markup).toContain("Error");
     expect(markup).toContain("Text fallback");
     expect(markup).toContain("Ready for voice or text.");
     expect(markup).not.toContain("OpenAI credential");
+  });
+
+  it("renders audio activation states as explicit UI states", () => {
+    const activeSnapshot = markAudioActivationResult(
+      createAudioActivationSnapshot(),
+      { ok: true },
+    );
+    const unavailableSnapshot = markAudioActivationResult(
+      createAudioActivationSnapshot(),
+      {
+        ok: false,
+        state: "unavailable",
+        message: "This runtime does not expose Web Audio.",
+      },
+    );
+    const errorSnapshot = markAudioActivationResult(
+      createAudioActivationSnapshot(),
+      {
+        ok: false,
+        state: "error",
+        message: "Audio activation failed before playback.",
+      },
+    );
+
+    expect(
+      renderToStaticMarkup(
+        <AudioActivationStatus
+          audioActivation={setAudioActivationMuted(activeSnapshot, true)}
+        />,
+      ),
+    ).toContain('data-audio-activation-state="muted"');
+    expect(
+      renderToStaticMarkup(
+        <AudioActivationStatus audioActivation={activeSnapshot} />,
+      ),
+    ).toContain('data-audio-activation-state="active"');
+    expect(
+      renderToStaticMarkup(
+        <AudioActivationStatus audioActivation={unavailableSnapshot} />,
+      ),
+    ).toContain('data-audio-activation-state="unavailable"');
+    expect(
+      renderToStaticMarkup(
+        <AudioActivationStatus audioActivation={errorSnapshot} />,
+      ),
+    ).toContain('data-audio-activation-state="error"');
+    expect(audioActivationStateLabel("inactive")).toBe("Inactive");
+    expect(audioActivationStateFrom("active")).toBe("active");
+    expect(audioActivationStateFrom("offline")).toBeUndefined();
+    expect(audioActivationSnapshotForState("error").state).toBe("error");
+    expect(canStartVoiceInteractionWithAudio(activeSnapshot)).toBe(true);
+    expect(canStartVoiceInteractionWithAudio(unavailableSnapshot)).toBe(false);
+    expect(canStartVoiceInteractionWithAudio(errorSnapshot)).toBe(false);
+  });
+
+  it("routes the visible voice start control through audio activation", () => {
+    const source = readFileSync(resolve(process.cwd(), "src/App.tsx"), "utf8");
+
+    expect(source).toContain("function activateVoiceListening()");
+    expect(source).toContain("onStartVoiceInteraction={activateVoiceListening}");
+    expect(source).toContain("canStartVoiceInteractionWithAudio(nextSnapshot)");
+    expect(source).not.toContain("onStartVoiceInteraction={startVoiceInteraction}");
+    expect(source).not.toContain("startupSoundAttempted");
+  });
+
+  it("can render initial audio state for visual smoke captures", () => {
+    const markup = renderToStaticMarkup(
+      <App
+        initialSettings={completedSettings}
+        initialAudioActivationState="unavailable"
+      />,
+    );
+
+    expect(markup).toContain('data-audio-activation-state="unavailable"');
+    expect(markup).toContain("Audio unavailable");
+  });
+
+  it("reports unavailable startup audio without throwing when Web Audio is missing", async () => {
+    await expect(
+      playComingOnlineSound({ AudioContextConstructor: undefined }),
+    ).resolves.toEqual({
+      ok: false,
+      state: "unavailable",
+      message: "This runtime does not expose Web Audio.",
+    });
   });
 
   it("can open a specific top control for visual smoke captures", () => {

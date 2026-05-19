@@ -57,6 +57,18 @@ import {
   type MemoryStore,
 } from "./memory";
 import {
+  audioActivationStateLabel,
+  audioActivationStates,
+  audioActivationSnapshotForState,
+  canStartVoiceInteractionWithAudio,
+  createAudioActivationSnapshot,
+  markAudioActivationResult,
+  playComingOnlineSound,
+  setAudioActivationMuted,
+  type AudioActivationSnapshot,
+  type AudioActivationState,
+} from "./audioActivation";
+import {
   createVoiceOutputSession,
   mockVoiceResponse,
   setVoiceOutputMuted,
@@ -129,10 +141,12 @@ export function isActiveCorrectionPromptTransition({
 }
 
 export function renderedPresenceStateFor({
+  audioActivationState = "inactive",
   voiceOutputPresenceState,
   voiceInteractionSessionState,
   sharedPresenceState,
 }: {
+  audioActivationState?: AudioActivationState;
   voiceOutputPresenceState: VoiceOutputPresenceState;
   voiceInteractionSessionState: VoiceSessionState;
   sharedPresenceState: string;
@@ -148,6 +162,10 @@ export function renderedPresenceStateFor({
 
   if (voiceOutputPresenceState === "muted" && activePresenceState === "idle") {
     return "muted";
+  }
+
+  if (audioActivationState === "error" && activePresenceState === "idle") {
+    return "error";
   }
 
   return activePresenceState;
@@ -897,6 +915,36 @@ export function PresenceListeningBubble({
   );
 }
 
+export function AudioActivationStatus({
+  audioActivation,
+}: {
+  audioActivation: AudioActivationSnapshot;
+}) {
+  return (
+    <section
+      className="audio-activation-status"
+      aria-label="Audio activation state"
+      data-audio-activation-state={audioActivation.state}
+    >
+      <div className="audio-activation-copy">
+        <span>{audioActivation.statusLabel}</span>
+        <small>{audioActivation.detail}</small>
+      </div>
+      <div className="audio-state-strip" aria-label="Audio state options">
+        {audioActivationStates.map((state) => (
+          <span
+            key={state}
+            data-audio-state={state}
+            data-current={audioActivation.state === state}
+          >
+            {audioActivationStateLabel(state)}
+          </span>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 export function TrustFoundationSettings({
   settings,
   onSettingsChange,
@@ -1381,10 +1429,12 @@ export function App({
   soulGuidanceStore,
   memoryStore,
   presenceStateSource,
+  initialAudioActivationState,
 }: {
   initialSettings?: CompanionSettings;
   initialActiveEntry?: ControlSurfaceId;
   initialPresenceState?: AvatarPresenceState;
+  initialAudioActivationState?: AudioActivationState;
   settingsStore?: SettingsStore;
   trustFoundationStore?: TrustFoundationStore;
   soulGuidanceStore?: SoulGuidanceStore;
@@ -1423,6 +1473,11 @@ export function App({
     () => initialSettings ?? defaultCompanionSettings,
   );
   const [voiceSession, setVoiceSession] = useState(createVoiceOutputSession);
+  const [audioActivation, setAudioActivation] = useState(() =>
+    initialAudioActivationState
+      ? audioActivationSnapshotForState(initialAudioActivationState)
+      : createAudioActivationSnapshot(),
+  );
   const [isSettingsLoaded, setIsSettingsLoaded] = useState(
     () => initialSettings !== undefined,
   );
@@ -1540,9 +1595,32 @@ export function App({
     setActiveEntry("voice");
   }
 
+  function activateVoiceListening() {
+    if (
+      canStartVoiceInteractionWithAudio(audioActivation) ||
+      voiceSession.isMuted
+    ) {
+      setAudioActivation((snapshot) =>
+        voiceSession.isMuted ? setAudioActivationMuted(snapshot, true) : snapshot,
+      );
+      startVoiceInteraction();
+      return;
+    }
+
+    void playComingOnlineSound().then((result) => {
+      const nextSnapshot = markAudioActivationResult(audioActivation, result);
+      setAudioActivation(nextSnapshot);
+
+      if (canStartVoiceInteractionWithAudio(nextSnapshot)) {
+        startVoiceInteraction();
+      }
+    });
+  }
+
   function activateAvatarListening() {
     acknowledgeAvatarClick();
-    startVoiceInteraction();
+    openVoiceControls();
+    activateVoiceListening();
   }
 
   function stopVoiceInteraction() {
@@ -1577,6 +1655,7 @@ export function App({
   }
 
   const renderedPresenceState = renderedPresenceStateFor({
+    audioActivationState: audioActivation.state,
     voiceOutputPresenceState: voiceSession.presenceState,
     voiceInteractionSessionState: voiceInteraction.sessionState,
     sharedPresenceState: presence.state,
@@ -1734,7 +1813,7 @@ export function App({
           onSettingsChange={completeOnboarding}
           trustFoundationStore={trustFoundationStore}
           voiceInteraction={voiceInteraction}
-          onStartVoiceInteraction={startVoiceInteraction}
+          onStartVoiceInteraction={activateVoiceListening}
           onStopVoiceInteraction={stopVoiceInteraction}
           onMuteChange={(isMuted) =>
             setVoiceInteraction((current) => ({ ...current, isMuted }))
@@ -1782,7 +1861,7 @@ export function App({
               className="avatar-action"
               type="button"
               onClick={activateAvatarListening}
-              aria-label={`Start voice interaction with ${settings.companionName}`}
+              aria-label={`Activate audio with ${settings.companionName}`}
             >
               <Live2DAvatarSurface presenceState={avatarPresenceState} />
             </button>
@@ -1802,6 +1881,7 @@ export function App({
             </div>
 
             <section className="voice-output-panel" aria-label="Voice output controls">
+              <AudioActivationStatus audioActivation={audioActivation} />
               <div className="voice-status-row">
                 <span>{voiceSession.statusLabel}</span>
                 <strong>{voiceSession.isMuted ? "Muted" : "Audible"}</strong>
@@ -1811,11 +1891,14 @@ export function App({
                 <button
                   type="button"
                   aria-pressed={voiceSession.isMuted}
-                  onClick={() =>
+                  onClick={() => {
                     setVoiceSession((session) =>
                       setVoiceOutputMuted(session, !session.isMuted),
-                    )
-                  }
+                    );
+                    setAudioActivation((snapshot) =>
+                      setAudioActivationMuted(snapshot, !voiceSession.isMuted),
+                    );
+                  }}
                 >
                   {voiceSession.isMuted ? "Unmute" : "Mute"}
                 </button>
