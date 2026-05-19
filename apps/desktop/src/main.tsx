@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 
 import { App } from "./App";
 import { isAvatarPresenceState } from "./avatarSurface";
+import { isControlSurfaceId } from "./controlSurface";
 import { defaultCompanionSettings } from "./settings";
 
 const root = document.getElementById("root");
@@ -16,6 +17,10 @@ const urlPresenceState = searchParams.get("presenceState");
 const initialPresenceState = isAvatarPresenceState(urlPresenceState)
   ? urlPresenceState
   : undefined;
+const urlControlSurface = searchParams.get("controlSurface");
+const initialActiveEntry = isControlSurfaceId(urlControlSurface)
+  ? urlControlSurface
+  : undefined;
 const initialSettings =
   !("__TAURI_INTERNALS__" in window) &&
   searchParams.get("onboardingComplete") === "true"
@@ -28,6 +33,7 @@ const initialSettings =
 createRoot(root).render(
   <StrictMode>
     <App
+      initialActiveEntry={initialActiveEntry}
       initialPresenceState={initialPresenceState}
       initialSettings={initialSettings}
     />

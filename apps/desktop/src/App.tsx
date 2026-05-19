@@ -168,13 +168,19 @@ export function ControlSurfacePanel({
   )!;
 
   return (
-    <section className="placeholder-panel" aria-live="polite">
+    <section className="control-panel" aria-live="polite">
       <p className="status-label">
-        {activeEntry === "settings"
+        {activeEntry === "trust"
+          ? "Provider and trust"
+          : activeEntry === "settings"
           ? "Local settings"
+          : activeEntry === "config"
+            ? "Local config"
           : activeEntry === "soul"
             ? "Soul editor"
-            : "Placeholder panel"}
+            : activeEntry === "memory"
+              ? "Memory control"
+              : "Voice control"}
       </p>
       <h2>{activeControl.label}</h2>
       <p>{activeControl.description}</p>
@@ -188,6 +194,10 @@ export function ControlSurfacePanel({
           onSubmitTextFallback={onSubmitTextFallback}
         />
       ) : activeEntry === "settings" && settings ? (
+        <SettingsSummary settings={settings} />
+      ) : activeEntry === "config" && settings ? (
+        <ConfigPanel settings={settings} />
+      ) : activeEntry === "trust" && settings ? (
         onSettingsChange ? (
           <TrustFoundationSettings
             settings={settings}
@@ -209,12 +219,44 @@ export function ControlSurfacePanel({
           memoryStore={memoryStore}
         />
       ) : (
-        <p className="placeholder-note">
-          This area is reachable from the macOS menu bar now. The underlying
-          feature is intentionally not implemented in this slice.
+        <p className="empty-state">
+          This surface is waiting for local state from the desktop runtime.
         </p>
       )}
     </section>
+  );
+}
+
+export function ConfigPanel({ settings }: { settings: CompanionSettings }) {
+  return (
+    <div className="config-panel">
+      <dl className="compact-facts" aria-label="Local configuration status">
+        <div>
+          <dt>Onboarding</dt>
+          <dd>{settings.onboardingComplete ? "Complete" : "Pending"}</dd>
+        </div>
+        <div>
+          <dt>Launch</dt>
+          <dd>
+            {settings.launchBehavior === "launch-at-login"
+              ? "Login"
+              : "Manual"}
+          </dd>
+        </div>
+        <div>
+          <dt>Provider</dt>
+          <dd>{providerPlaceholderLabel(settings.providerPlaceholder)}</dd>
+        </div>
+        <div>
+          <dt>Memory</dt>
+          <dd>{settings.memoryMode === "enabled" ? "Enabled" : "Paused"}</dd>
+        </div>
+      </dl>
+      <p className="control-note">
+        Configuration stays local-first. Provider credentials and execution
+        authority live under Provider/trust.
+      </p>
+    </div>
   );
 }
 
@@ -1109,6 +1151,7 @@ export function FirstRunOnboarding({
 
 export function App({
   initialSettings,
+  initialActiveEntry = "voice",
   initialPresenceState = "idle",
   settingsStore,
   trustFoundationStore,
@@ -1117,6 +1160,7 @@ export function App({
   presenceStateSource,
 }: {
   initialSettings?: CompanionSettings;
+  initialActiveEntry?: ControlSurfaceId;
   initialPresenceState?: AvatarPresenceState;
   settingsStore?: SettingsStore;
   trustFoundationStore?: TrustFoundationStore;
@@ -1148,8 +1192,8 @@ export function App({
     [memoryStore],
   );
   const presence = usePresenceState(companionPresenceStateSource);
-  const [activeEntry, setActiveEntry] = useState<ControlSurfaceId>("voice");
-  const [isControlSurfaceVisible, setIsControlSurfaceVisible] = useState(false);
+  const [activeEntry, setActiveEntry] =
+    useState<ControlSurfaceId>(initialActiveEntry);
   const [isDismissed, setIsDismissed] = useState(false);
   const [hasAvatarClickReaction, setHasAvatarClickReaction] = useState(false);
   const [settings, setSettings] = useState<CompanionSettings>(
@@ -1271,7 +1315,6 @@ export function App({
 
   function openVoiceControls() {
     setActiveEntry("voice");
-    setIsControlSurfaceVisible(true);
   }
 
   function activateAvatarListening() {
@@ -1385,7 +1428,6 @@ export function App({
         listen<ControlSurfaceId>("plato-control-surface://open", (event) => {
           if (isControlSurfaceId(event.payload)) {
             setActiveEntry(event.payload);
-            setIsControlSurfaceVisible(true);
           }
         }),
       )
@@ -1444,103 +1486,10 @@ export function App({
   return (
     <main className="presence-shell" aria-labelledby="presence-title">
       {experienceTokenStyle}
-      {isDismissed ? (
-        <DismissedPresence onRestore={() => setIsDismissed(false)} />
-      ) : (
-        <section
-          className={`presence-card presence-${renderedPresenceState}${
-            hasAvatarClickReaction ? " presence-click-reaction" : ""
-          }`}
-          aria-label="Floating Plato presence"
-        >
-          <div className="presence-controls">
-            <button
-              className="drag-handle"
-              type="button"
-              onMouseDown={startPresenceDrag}
-              aria-label="Drag Plato presence"
-            >
-              <span aria-hidden="true" />
-            </button>
-            <button
-              className="hide-button"
-              type="button"
-              onClick={() => setIsDismissed(true)}
-              aria-label="Hide Plato presence"
-            >
-              x
-            </button>
-          </div>
-
-          <button
-            className="avatar-action"
-            type="button"
-            onClick={activateAvatarListening}
-            aria-label={`Start voice interaction with ${settings.companionName}`}
-          >
-            <Live2DAvatarSurface presenceState={avatarPresenceState} />
-          </button>
-
-          {voiceInteraction.sessionState !== "idle" ? (
-            <PresenceListeningBubble
-              state={avatarPresenceState}
-              onOpenControls={openVoiceControls}
-            />
-          ) : null}
-
-          <div className="presence-copy sr-only">
-            <p className="product-name">usePlatoAI</p>
-            <h1 id="presence-title">{settings.companionName}</h1>
-            <p className="status-label">{avatarSurfaceHook.statusText}</p>
-            <p className="wake-name">Wake name: {settings.wakeName}</p>
-          </div>
-
-          <section className="voice-output-panel" aria-label="Voice output controls">
-            <div className="voice-status-row">
-              <span>{voiceSession.statusLabel}</span>
-              <strong>{voiceSession.isMuted ? "Muted" : "Audible"}</strong>
-            </div>
-            <p className="voice-fallback">{voiceSession.textFallback}</p>
-            <div className="voice-controls">
-              <button
-                type="button"
-                aria-pressed={voiceSession.isMuted}
-                onClick={() =>
-                  setVoiceSession((session) =>
-                    setVoiceOutputMuted(session, !session.isMuted),
-                  )
-                }
-              >
-                {voiceSession.isMuted ? "Unmute" : "Mute"}
-              </button>
-              <button
-                type="button"
-                onClick={() =>
-                  setVoiceSession((session) =>
-                    startMockSpeech(session, mockVoiceResponse),
-                  )
-                }
-              >
-                Play mock voice
-              </button>
-              <button
-                type="button"
-                disabled={voiceSession.phase !== "speaking"}
-                onClick={() =>
-                  setVoiceSession((session) => stopMockSpeech(session))
-                }
-              >
-                Stop speech
-              </button>
-            </div>
-          </section>
-        </section>
-      )}
 
       <section
         className="control-surface"
-        aria-label="Menu bar control surface"
-        hidden={!isControlSurfaceVisible}
+        aria-label="Top Plato control surface"
       >
         <nav className="control-nav" aria-label="Control surface entries">
           {controlSurfaceEntries.map((entry) => (
@@ -1549,9 +1498,13 @@ export function App({
               type="button"
               className={entry.id === activeEntry ? "active" : undefined}
               aria-pressed={entry.id === activeEntry}
+              data-control-state={
+                entry.id === activeEntry ? "active" : entry.state
+              }
               onClick={() => setActiveEntry(entry.id)}
             >
-              {entry.label}
+              <span>{entry.label}</span>
+              <small>{entry.id === activeEntry ? "active" : entry.state}</small>
             </button>
           ))}
         </nav>
@@ -1575,6 +1528,101 @@ export function App({
           onSoulGuidanceChange={setSoulGuidance}
           memoryStore={durableMemoryStore}
         />
+      </section>
+
+      <section className="companion-presence-zone" aria-label="Bottom Plato presence area">
+        {isDismissed ? (
+          <DismissedPresence onRestore={() => setIsDismissed(false)} />
+        ) : (
+          <section
+            className={`presence-card presence-${renderedPresenceState}${
+              hasAvatarClickReaction ? " presence-click-reaction" : ""
+            }`}
+            aria-label="Floating Plato presence"
+          >
+            <div className="presence-controls">
+              <button
+                className="drag-handle"
+                type="button"
+                onMouseDown={startPresenceDrag}
+                aria-label="Drag Plato presence"
+              >
+                <span aria-hidden="true" />
+              </button>
+              <button
+                className="hide-button"
+                type="button"
+                onClick={() => setIsDismissed(true)}
+                aria-label="Hide Plato presence"
+              >
+                x
+              </button>
+            </div>
+
+            <button
+              className="avatar-action"
+              type="button"
+              onClick={activateAvatarListening}
+              aria-label={`Start voice interaction with ${settings.companionName}`}
+            >
+              <Live2DAvatarSurface presenceState={avatarPresenceState} />
+            </button>
+
+            {voiceInteraction.sessionState !== "idle" ? (
+              <PresenceListeningBubble
+                state={avatarPresenceState}
+                onOpenControls={openVoiceControls}
+              />
+            ) : null}
+
+            <div className="presence-copy sr-only">
+              <p className="product-name">usePlatoAI</p>
+              <h1 id="presence-title">{settings.companionName}</h1>
+              <p className="status-label">{avatarSurfaceHook.statusText}</p>
+              <p className="wake-name">Wake name: {settings.wakeName}</p>
+            </div>
+
+            <section className="voice-output-panel" aria-label="Voice output controls">
+              <div className="voice-status-row">
+                <span>{voiceSession.statusLabel}</span>
+                <strong>{voiceSession.isMuted ? "Muted" : "Audible"}</strong>
+              </div>
+              <p className="voice-fallback">{voiceSession.textFallback}</p>
+              <div className="voice-controls">
+                <button
+                  type="button"
+                  aria-pressed={voiceSession.isMuted}
+                  onClick={() =>
+                    setVoiceSession((session) =>
+                      setVoiceOutputMuted(session, !session.isMuted),
+                    )
+                  }
+                >
+                  {voiceSession.isMuted ? "Unmute" : "Mute"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setVoiceSession((session) =>
+                      startMockSpeech(session, mockVoiceResponse),
+                    )
+                  }
+                >
+                  Play mock voice
+                </button>
+                <button
+                  type="button"
+                  disabled={voiceSession.phase !== "speaking"}
+                  onClick={() =>
+                    setVoiceSession((session) => stopMockSpeech(session))
+                  }
+                >
+                  Stop speech
+                </button>
+              </div>
+            </section>
+          </section>
+        )}
       </section>
     </main>
   );
