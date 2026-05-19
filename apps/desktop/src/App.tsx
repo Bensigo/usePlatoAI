@@ -24,6 +24,8 @@ import {
 } from "./avatarSurface";
 import {
   createMemoryPresenceStateSource,
+  type CompanionPresenceState,
+  type PresenceStateSnapshot,
   type PresenceStateSource,
 } from "./presenceState";
 import {
@@ -169,6 +171,35 @@ export function renderedPresenceStateFor({
   }
 
   return activePresenceState;
+}
+
+export type CurrentTaskPanelAction =
+  | "pause"
+  | "resume"
+  | "cancel"
+  | "approve"
+  | "reject";
+
+export function isActionableCurrentTaskState(state: string) {
+  return (
+    state === "task_running" ||
+    state === "waiting_for_approval" ||
+    state === "waitingApproval"
+  );
+}
+
+export function currentTaskPresenceStateForAction(
+  action: CurrentTaskPanelAction,
+) {
+  if (action === "approve" || action === "resume") {
+    return "task_running";
+  }
+
+  if (action === "pause") {
+    return "task_paused";
+  }
+
+  return "idle";
 }
 
 export function DismissedPresence({ onRestore }: { onRestore: () => void }) {
@@ -885,14 +916,159 @@ export function VoiceInteractionPanel({
   );
 }
 
+export function CenteredChatPanel({
+  voiceInteraction,
+  currentTaskState,
+  onDismiss,
+  onTextFallbackChange,
+  onSubmitTextFallback,
+  onPauseCurrentTask,
+  onResumeCurrentTask,
+  onCancelCurrentTask,
+  onApproveCurrentTask,
+  onRejectCurrentTask,
+}: {
+  voiceInteraction: VoiceInteractionSnapshot;
+  currentTaskState: PresenceStateSnapshot;
+  onDismiss: () => void;
+  onTextFallbackChange?: (value: string) => void;
+  onSubmitTextFallback?: () => void;
+  onPauseCurrentTask?: () => void;
+  onResumeCurrentTask?: () => void;
+  onCancelCurrentTask?: () => void;
+  onApproveCurrentTask?: () => void;
+  onRejectCurrentTask?: () => void;
+}) {
+  const isWorkRunning = currentTaskState.state === "task_running";
+  const isWaitingForApproval =
+    currentTaskState.state === "waiting_for_approval" ||
+    currentTaskState.state === "waitingApproval";
+  const isWorkPaused = currentTaskState.state === "task_paused";
+  const showsCurrentTask = isWorkRunning || isWaitingForApproval || isWorkPaused;
+  const transcript = voiceInteraction.transcript || "No voice input yet.";
+  const latestUserMessage =
+    voiceInteraction.submittedFallbackText || voiceInteraction.transcript;
+
+  function submitTextFallback(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    onSubmitTextFallback?.();
+  }
+
+  return (
+    <section
+      className="centered-chat-panel"
+      aria-label="Centered Plato chat panel"
+    >
+      <header className="centered-chat-header">
+        <div>
+          <p className="status-label">Current interaction</p>
+          <h2>Chat with Plato</h2>
+        </div>
+        <button
+          type="button"
+          onClick={onDismiss}
+          aria-label="Dismiss chat panel"
+        >
+          x
+        </button>
+      </header>
+
+      <section
+        className="centered-chat-transcript"
+        aria-label="Transcript review"
+      >
+        <strong>Transcript</strong>
+        <p>{transcript}</p>
+      </section>
+
+      <section
+        className="centered-chat-thread"
+        aria-label="Text chat with Plato"
+      >
+        {latestUserMessage ? (
+          <article className="chat-message user-message">
+            <strong>You</strong>
+            <p>{latestUserMessage}</p>
+          </article>
+        ) : null}
+        <article className="chat-message plato-message">
+          <strong>Plato</strong>
+          <p>{voiceInteraction.response || "Ready for voice or text."}</p>
+        </article>
+      </section>
+
+      <form className="centered-chat-form" onSubmit={submitTextFallback}>
+        <label>
+          <span>Text chat</span>
+          <textarea
+            value={voiceInteraction.fallbackText}
+            rows={3}
+            placeholder="Type to Plato"
+            onChange={(event) =>
+              onTextFallbackChange?.(event.currentTarget.value)
+            }
+          />
+        </label>
+        <button type="submit">Send</button>
+      </form>
+
+      {showsCurrentTask ? (
+        <section
+          className="current-task-panel"
+          aria-label="Current task controls"
+        >
+          <div>
+            <strong>Current task</strong>
+            <p>{currentTaskState.label}</p>
+          </div>
+          {isWorkRunning ? (
+            <div className="current-task-actions">
+              <button type="button" onClick={onPauseCurrentTask}>
+                Pause
+              </button>
+              <button type="button" onClick={onCancelCurrentTask}>
+                Cancel
+              </button>
+            </div>
+          ) : null}
+          {isWorkPaused ? (
+            <div className="current-task-actions">
+              <button type="button" onClick={onResumeCurrentTask}>
+                Resume
+              </button>
+              <button type="button" onClick={onCancelCurrentTask}>
+                Cancel
+              </button>
+            </div>
+          ) : null}
+          {isWaitingForApproval ? (
+            <div className="current-task-actions approval-actions">
+              <button type="button" onClick={onApproveCurrentTask}>
+                Approve
+              </button>
+              <button type="button" onClick={onRejectCurrentTask}>
+                Reject
+              </button>
+            </div>
+          ) : null}
+        </section>
+      ) : null}
+    </section>
+  );
+}
+
 export function PresenceListeningBubble({
   state,
+  label: overrideLabel,
+  ariaLabel,
   onOpenControls,
 }: {
   state: AvatarPresenceState;
+  label?: string;
+  ariaLabel?: string;
   onOpenControls?: () => void;
 }) {
-  const label = getLive2DAvatarSurfaceHook(state).label;
+  const label = overrideLabel ?? getLive2DAvatarSurfaceHook(state).label;
   const hasSoundWave = state === "listening" || state === "speaking";
 
   return (
@@ -900,7 +1076,7 @@ export function PresenceListeningBubble({
       className="presence-listening-bubble"
       type="button"
       onClick={onOpenControls}
-      aria-label={`Open voice controls: ${label}`}
+      aria-label={ariaLabel ?? `Open voice controls: ${label}`}
     >
       <span className="presence-bubble-label">{label}</span>
       {hasSoundWave ? (
@@ -1433,7 +1609,7 @@ export function App({
 }: {
   initialSettings?: CompanionSettings;
   initialActiveEntry?: ControlSurfaceId;
-  initialPresenceState?: AvatarPresenceState;
+  initialPresenceState?: CompanionPresenceState;
   initialAudioActivationState?: AudioActivationState;
   settingsStore?: SettingsStore;
   trustFoundationStore?: TrustFoundationStore;
@@ -1481,6 +1657,7 @@ export function App({
   const [isSettingsLoaded, setIsSettingsLoaded] = useState(
     () => initialSettings !== undefined,
   );
+  const [isChatPanelOpen, setIsChatPanelOpen] = useState(false);
   const [voiceInteraction, setVoiceInteraction] =
     useState<VoiceInteractionSnapshot>(defaultVoiceInteractionSnapshot);
   const [soulGuidance, setSoulGuidance] =
@@ -1595,6 +1772,10 @@ export function App({
     setActiveEntry("voice");
   }
 
+  function openCenteredChatPanel() {
+    setIsChatPanelOpen(true);
+  }
+
   function activateVoiceListening() {
     if (
       canStartVoiceInteractionWithAudio(audioActivation) ||
@@ -1634,6 +1815,42 @@ export function App({
     }));
   }
 
+  function pauseCurrentTask() {
+    companionPresenceStateSource.setState(
+      currentTaskPresenceStateForAction("pause"),
+    );
+    setVoiceInteraction((current) => ({
+      ...current,
+      response: "Paused the current task.",
+      companionPrompt: null,
+    }));
+  }
+
+  function resumeCurrentTask() {
+    companionPresenceStateSource.setState(
+      currentTaskPresenceStateForAction("resume"),
+    );
+    setVoiceInteraction((current) => ({
+      ...current,
+      response: "Resumed the current task.",
+      companionPrompt: null,
+    }));
+  }
+
+  function cancelCurrentTask() {
+    clearVoiceTimers();
+    correctionPromptRequestId.current += 1;
+    companionPresenceStateSource.setState(
+      currentTaskPresenceStateForAction("cancel"),
+    );
+    setVoiceInteraction((current) => ({
+      ...current,
+      sessionState: "idle",
+      response: "Cancelled the current task.",
+      companionPrompt: null,
+    }));
+  }
+
   function submitTextFallback() {
     const fallbackText = voiceInteraction.fallbackText.trim();
 
@@ -1654,6 +1871,30 @@ export function App({
     scheduleVoiceState(1800, "idle", "text");
   }
 
+  function approveCurrentTask() {
+    companionPresenceStateSource.setState(
+      currentTaskPresenceStateForAction("approve"),
+    );
+    setVoiceInteraction((current) => ({
+      ...current,
+      response: "Approved. Continuing the current task.",
+    }));
+  }
+
+  function rejectCurrentTask() {
+    clearVoiceTimers();
+    correctionPromptRequestId.current += 1;
+    companionPresenceStateSource.setState(
+      currentTaskPresenceStateForAction("reject"),
+    );
+    setVoiceInteraction((current) => ({
+      ...current,
+      sessionState: "idle",
+      response: "Rejected. Current task stopped.",
+      companionPrompt: null,
+    }));
+  }
+
   const renderedPresenceState = renderedPresenceStateFor({
     audioActivationState: audioActivation.state,
     voiceOutputPresenceState: voiceSession.presenceState,
@@ -1662,6 +1903,9 @@ export function App({
   });
   const avatarPresenceState = avatarPresenceStateFor(renderedPresenceState);
   const avatarSurfaceHook = getLive2DAvatarSurfaceHook(avatarPresenceState);
+  const shouldShowCenteredPanelOpener =
+    voiceInteraction.sessionState !== "idle" ||
+    isActionableCurrentTaskState(presence.state);
 
   useEffect(() => {
     if (initialSettings) {
@@ -1828,6 +2072,23 @@ export function App({
         />
       </section>
 
+      {isChatPanelOpen ? (
+        <CenteredChatPanel
+          voiceInteraction={voiceInteraction}
+          currentTaskState={presence}
+          onDismiss={() => setIsChatPanelOpen(false)}
+          onTextFallbackChange={(fallbackText) =>
+            setVoiceInteraction((current) => ({ ...current, fallbackText }))
+          }
+          onSubmitTextFallback={submitTextFallback}
+          onPauseCurrentTask={pauseCurrentTask}
+          onResumeCurrentTask={resumeCurrentTask}
+          onCancelCurrentTask={cancelCurrentTask}
+          onApproveCurrentTask={approveCurrentTask}
+          onRejectCurrentTask={rejectCurrentTask}
+        />
+      ) : null}
+
       <section className="companion-presence-zone" aria-label="Bottom Plato presence area">
         {isDismissed ? (
           <DismissedPresence onRestore={() => setIsDismissed(false)} />
@@ -1866,10 +2127,20 @@ export function App({
               <Live2DAvatarSurface presenceState={avatarPresenceState} />
             </button>
 
-            {voiceInteraction.sessionState !== "idle" ? (
+            {shouldShowCenteredPanelOpener ? (
               <PresenceListeningBubble
                 state={avatarPresenceState}
-                onOpenControls={openVoiceControls}
+                label={
+                  voiceInteraction.sessionState === "idle"
+                    ? presence.label
+                    : undefined
+                }
+                ariaLabel={
+                  voiceInteraction.sessionState === "idle"
+                    ? `Open current task controls: ${presence.label}`
+                    : undefined
+                }
+                onOpenControls={openCenteredChatPanel}
               />
             ) : null}
 
