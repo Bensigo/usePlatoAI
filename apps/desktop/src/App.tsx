@@ -180,6 +180,14 @@ export type CurrentTaskPanelAction =
   | "approve"
   | "reject";
 
+export function isActionableCurrentTaskState(state: string) {
+  return (
+    state === "task_running" ||
+    state === "waiting_for_approval" ||
+    state === "waitingApproval"
+  );
+}
+
 export function currentTaskPresenceStateForAction(
   action: CurrentTaskPanelAction,
 ) {
@@ -1073,27 +1081,37 @@ export function CenteredChatPanel({
 
 export function PresenceListeningBubble({
   state,
-  label,
+  label: overrideLabel,
+  ariaLabel,
   onOpenControls,
 }: {
   state: AvatarPresenceState;
   label?: string;
+  ariaLabel?: string;
   onOpenControls?: () => void;
 }) {
-  const bubbleLabel = label ?? getLive2DAvatarSurfaceHook(state).label;
+  const label = overrideLabel ?? getLive2DAvatarSurfaceHook(state).label;
   const hasSoundWave = state === "listening" || state === "speaking";
+  const hasThinkingIndicator = state === "thinking";
 
   return (
     <button
       className="presence-listening-bubble"
       type="button"
+      data-presence-bubble-state={state}
       onClick={onOpenControls}
-      aria-label={`Open current interaction controls: ${bubbleLabel}`}
+      aria-label={ariaLabel ?? `Open voice controls: ${label}`}
     >
-      <span className="presence-bubble-label">{bubbleLabel}</span>
+      <span className="presence-bubble-label">{label}</span>
       {hasSoundWave ? (
         <span className="presence-sound-wave" aria-hidden="true">
           <span />
+          <span />
+          <span />
+          <span />
+        </span>
+      ) : hasThinkingIndicator ? (
+        <span className="presence-thinking-indicator" aria-hidden="true">
           <span />
           <span />
           <span />
@@ -1618,11 +1636,13 @@ export function App({
   memoryStore,
   presenceStateSource,
   initialAudioActivationState,
+  initialVoiceSessionState,
 }: {
   initialSettings?: CompanionSettings;
   initialActiveEntry?: ControlSurfaceId;
   initialPresenceState?: CompanionPresenceState;
   initialAudioActivationState?: AudioActivationState;
+  initialVoiceSessionState?: VoiceSessionState;
   settingsStore?: SettingsStore;
   trustFoundationStore?: TrustFoundationStore;
   soulGuidanceStore?: SoulGuidanceStore;
@@ -1671,7 +1691,14 @@ export function App({
   );
   const [isChatPanelOpen, setIsChatPanelOpen] = useState(false);
   const [voiceInteraction, setVoiceInteraction] =
-    useState<VoiceInteractionSnapshot>(defaultVoiceInteractionSnapshot);
+    useState<VoiceInteractionSnapshot>(() =>
+      initialVoiceSessionState
+        ? nextMockVoiceSnapshot(
+            defaultVoiceInteractionSnapshot,
+            initialVoiceSessionState,
+          )
+        : defaultVoiceInteractionSnapshot,
+    );
   const [soulGuidance, setSoulGuidance] =
     useState<SoulGuidance>(fallbackSoulGuidance);
   const voiceTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
@@ -1919,9 +1946,6 @@ export function App({
     voiceInteractionSessionState: voiceInteraction.sessionState,
     currentTaskState: presence,
   });
-  const centeredChatPanelOpenerLabel = isCurrentTaskControlState(presence.state)
-    ? presence.label
-    : avatarSurfaceHook.label;
 
   useEffect(() => {
     if (initialSettings) {
@@ -2146,7 +2170,16 @@ export function App({
             {showCenteredChatPanelOpener ? (
               <PresenceListeningBubble
                 state={avatarPresenceState}
-                label={centeredChatPanelOpenerLabel}
+                label={
+                  isCurrentTaskControlState(presence.state)
+                    ? presence.label
+                    : undefined
+                }
+                ariaLabel={
+                  isCurrentTaskControlState(presence.state)
+                    ? `Open current task controls: ${presence.label}`
+                    : undefined
+                }
                 onOpenControls={openCenteredChatPanel}
               />
             ) : null}
