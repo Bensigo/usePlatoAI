@@ -764,10 +764,19 @@ describe("desktop app shell", () => {
         initialPresenceState="waiting_for_approval"
       />,
     );
+    const legacyApprovalMarkup = renderToStaticMarkup(
+      <App
+        initialSettings={completedSettings}
+        initialPresenceState="waitingApproval"
+      />,
+    );
 
     expect(runningMarkup).toContain("Open current task controls: Task running");
     expect(runningMarkup).toContain("Task running");
     expect(approvalMarkup).toContain(
+      "Open current task controls: Waiting for approval",
+    );
+    expect(legacyApprovalMarkup).toContain(
       "Open current task controls: Waiting for approval",
     );
   });
@@ -847,6 +856,7 @@ describe("desktop app shell", () => {
   it("only treats actionable current-task states as centered opener triggers", () => {
     expect(isActionableCurrentTaskState("task_running")).toBe(true);
     expect(isActionableCurrentTaskState("waiting_for_approval")).toBe(true);
+    expect(isActionableCurrentTaskState("waitingApproval")).toBe(true);
     expect(isActionableCurrentTaskState("task_paused")).toBe(false);
     expect(isActionableCurrentTaskState("idle")).toBe(false);
   });
