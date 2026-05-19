@@ -60,6 +60,7 @@ import {
   audioActivationStateLabel,
   audioActivationStates,
   audioActivationSnapshotForState,
+  canStartVoiceInteractionWithAudio,
   createAudioActivationSnapshot,
   markAudioActivationResult,
   playComingOnlineSound,
@@ -1402,24 +1403,32 @@ export function App({
     setActiveEntry("voice");
   }
 
-  function activateAvatarListening() {
-    acknowledgeAvatarClick();
-    openVoiceControls();
-
-    if (voiceSession.isMuted) {
-      setAudioActivation((snapshot) => setAudioActivationMuted(snapshot, true));
+  function activateVoiceListening() {
+    if (
+      canStartVoiceInteractionWithAudio(audioActivation) ||
+      voiceSession.isMuted
+    ) {
+      setAudioActivation((snapshot) =>
+        voiceSession.isMuted ? setAudioActivationMuted(snapshot, true) : snapshot,
+      );
+      startVoiceInteraction();
       return;
     }
 
     void playComingOnlineSound().then((result) => {
-      setAudioActivation((snapshot) =>
-        markAudioActivationResult(snapshot, result),
-      );
+      const nextSnapshot = markAudioActivationResult(audioActivation, result);
+      setAudioActivation(nextSnapshot);
 
-      if (result.ok) {
+      if (canStartVoiceInteractionWithAudio(nextSnapshot)) {
         startVoiceInteraction();
       }
     });
+  }
+
+  function activateAvatarListening() {
+    acknowledgeAvatarClick();
+    openVoiceControls();
+    activateVoiceListening();
   }
 
   function stopVoiceInteraction() {
@@ -1634,7 +1643,7 @@ export function App({
           onSettingsChange={completeOnboarding}
           trustFoundationStore={trustFoundationStore}
           voiceInteraction={voiceInteraction}
-          onStartVoiceInteraction={startVoiceInteraction}
+          onStartVoiceInteraction={activateVoiceListening}
           onStopVoiceInteraction={stopVoiceInteraction}
           onMuteChange={(isMuted) =>
             setVoiceInteraction((current) => ({ ...current, isMuted }))

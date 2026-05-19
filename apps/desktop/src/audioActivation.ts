@@ -113,6 +113,12 @@ export function setAudioActivationMuted(
   };
 }
 
+export function canStartVoiceInteractionWithAudio(
+  snapshot: AudioActivationSnapshot,
+) {
+  return snapshot.state === "active" || snapshot.state === "muted";
+}
+
 export function markAudioActivationResult(
   snapshot: AudioActivationSnapshot,
   result: ComingOnlineSoundResult,

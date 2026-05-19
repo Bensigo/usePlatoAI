@@ -22,6 +22,7 @@ import {
   audioActivationSnapshotForState,
   audioActivationStateFrom,
   audioActivationStateLabel,
+  canStartVoiceInteractionWithAudio,
   createAudioActivationSnapshot,
   markAudioActivationResult,
   playComingOnlineSound,
@@ -477,6 +478,18 @@ describe("desktop app shell", () => {
     expect(audioActivationStateFrom("active")).toBe("active");
     expect(audioActivationStateFrom("offline")).toBeUndefined();
     expect(audioActivationSnapshotForState("error").state).toBe("error");
+    expect(canStartVoiceInteractionWithAudio(activeSnapshot)).toBe(true);
+    expect(canStartVoiceInteractionWithAudio(unavailableSnapshot)).toBe(false);
+    expect(canStartVoiceInteractionWithAudio(errorSnapshot)).toBe(false);
+  });
+
+  it("routes the visible voice start control through audio activation", () => {
+    const source = readFileSync(resolve(process.cwd(), "src/App.tsx"), "utf8");
+
+    expect(source).toContain("function activateVoiceListening()");
+    expect(source).toContain("onStartVoiceInteraction={activateVoiceListening}");
+    expect(source).toContain("canStartVoiceInteractionWithAudio(nextSnapshot)");
+    expect(source).not.toContain("onStartVoiceInteraction={startVoiceInteraction}");
   });
 
   it("can render initial audio state for visual smoke captures", () => {
