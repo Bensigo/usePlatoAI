@@ -35,11 +35,15 @@ const initialSettings =
         onboardingComplete: true,
       }
     : undefined;
+const initialControlsExpanded =
+  !("__TAURI_INTERNALS__" in window) &&
+  searchParams.get("controlsExpanded") === "true";
 
 createRoot(root).render(
   <StrictMode>
     <App
       initialActiveEntry={initialActiveEntry}
+      initialControlsExpanded={initialControlsExpanded}
       initialAudioActivationState={initialAudioActivationState}
       initialPresenceState={initialPresenceState}
       initialVoiceSessionState={initialVoiceSessionState}
