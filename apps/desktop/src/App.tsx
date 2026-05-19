@@ -173,12 +173,17 @@ export function renderedPresenceStateFor({
   return activePresenceState;
 }
 
-export type CurrentTaskPanelAction = "pause" | "cancel" | "approve" | "reject";
+export type CurrentTaskPanelAction =
+  | "pause"
+  | "resume"
+  | "cancel"
+  | "approve"
+  | "reject";
 
 export function currentTaskPresenceStateForAction(
   action: CurrentTaskPanelAction,
 ) {
-  if (action === "approve") {
+  if (action === "approve" || action === "resume") {
     return "task_running";
   }
 
@@ -910,6 +915,7 @@ export function CenteredChatPanel({
   onTextFallbackChange,
   onSubmitTextFallback,
   onPauseCurrentTask,
+  onResumeCurrentTask,
   onCancelCurrentTask,
   onApproveCurrentTask,
   onRejectCurrentTask,
@@ -920,6 +926,7 @@ export function CenteredChatPanel({
   onTextFallbackChange?: (value: string) => void;
   onSubmitTextFallback?: () => void;
   onPauseCurrentTask?: () => void;
+  onResumeCurrentTask?: () => void;
   onCancelCurrentTask?: () => void;
   onApproveCurrentTask?: () => void;
   onRejectCurrentTask?: () => void;
@@ -1010,6 +1017,16 @@ export function CenteredChatPanel({
             <div className="current-task-actions">
               <button type="button" onClick={onPauseCurrentTask}>
                 Pause
+              </button>
+              <button type="button" onClick={onCancelCurrentTask}>
+                Cancel
+              </button>
+            </div>
+          ) : null}
+          {isWorkPaused ? (
+            <div className="current-task-actions">
+              <button type="button" onClick={onResumeCurrentTask}>
+                Resume
               </button>
               <button type="button" onClick={onCancelCurrentTask}>
                 Cancel
@@ -1797,6 +1814,17 @@ export function App({
     }));
   }
 
+  function resumeCurrentTask() {
+    companionPresenceStateSource.setState(
+      currentTaskPresenceStateForAction("resume"),
+    );
+    setVoiceInteraction((current) => ({
+      ...current,
+      response: "Resumed the current task.",
+      companionPrompt: null,
+    }));
+  }
+
   function cancelCurrentTask() {
     clearVoiceTimers();
     correctionPromptRequestId.current += 1;
@@ -2039,6 +2067,7 @@ export function App({
           }
           onSubmitTextFallback={submitTextFallback}
           onPauseCurrentTask={pauseCurrentTask}
+          onResumeCurrentTask={resumeCurrentTask}
           onCancelCurrentTask={cancelCurrentTask}
           onApproveCurrentTask={approveCurrentTask}
           onRejectCurrentTask={rejectCurrentTask}
