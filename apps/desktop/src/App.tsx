@@ -224,7 +224,7 @@ export function ControlSurfacePanel({
           onSubmitTextFallback={onSubmitTextFallback}
         />
       ) : activeEntry === "settings" && settings ? (
-        <SettingsSummary settings={settings} />
+        <SettingsPanel settings={settings} />
       ) : activeEntry === "config" && settings ? (
         <ConfigPanel settings={settings} />
       ) : activeEntry === "trust" && settings ? (
@@ -257,9 +257,93 @@ export function ControlSurfacePanel({
   );
 }
 
+type SurfaceStateTone =
+  | "configured"
+  | "missing"
+  | "offline"
+  | "error"
+  | "permission"
+  | "active"
+  | "muted"
+  | "loading"
+  | "empty"
+  | "disabled"
+  | "unavailable";
+
+function SurfaceStateStrip({
+  label,
+  states,
+}: {
+  label: string;
+  states: Array<{ label: string; value: string; tone: SurfaceStateTone }>;
+}) {
+  return (
+    <div className="surface-state-strip" aria-label={label}>
+      {states.map((state) => (
+        <span
+          className="surface-state-chip"
+          data-surface-state={state.tone}
+          key={`${state.label}-${state.value}`}
+        >
+          <strong>{state.label}</strong>
+          <span>{state.value}</span>
+        </span>
+      ))}
+    </div>
+  );
+}
+
+export function SettingsPanel({ settings }: { settings: CompanionSettings }) {
+  return (
+    <div className="settings-panel">
+      <SurfaceStateStrip
+        label="Settings surface states"
+        states={[
+          {
+            label: "Onboarding",
+            value: settings.onboardingComplete ? "configured" : "missing",
+            tone: settings.onboardingComplete ? "configured" : "missing",
+          },
+          {
+            label: "Memory",
+            value: settings.memoryMode === "enabled" ? "configured" : "disabled",
+            tone: settings.memoryMode === "enabled" ? "configured" : "disabled",
+          },
+          {
+            label: "Authority",
+            value: settings.executionAuthority,
+            tone: "permission",
+          },
+        ]}
+      />
+      <SettingsSummary settings={settings} />
+    </div>
+  );
+}
+
 export function ConfigPanel({ settings }: { settings: CompanionSettings }) {
   return (
     <div className="config-panel">
+      <SurfaceStateStrip
+        label="Config surface states"
+        states={[
+          {
+            label: "Settings",
+            value: settings.onboardingComplete ? "configured" : "missing",
+            tone: settings.onboardingComplete ? "configured" : "missing",
+          },
+          {
+            label: "Runtime",
+            value: "local",
+            tone: "configured",
+          },
+          {
+            label: "Sync",
+            value: "offline",
+            tone: "offline",
+          },
+        ]}
+      />
       <dl className="compact-facts" aria-label="Local configuration status">
         <div>
           <dt>Onboarding</dt>
@@ -353,6 +437,26 @@ export function SoulEditorPanel({
 
   return (
     <form className="soul-editor" onSubmit={saveDraft}>
+      <SurfaceStateStrip
+        label="Soul editor surface states"
+        states={[
+          {
+            label: "Draft",
+            value: isSaving ? "saving" : draft.trim() ? "configured" : "empty",
+            tone: isSaving ? "loading" : draft.trim() ? "configured" : "empty",
+          },
+          {
+            label: "Guardrail",
+            value: "permission-sensitive",
+            tone: "permission",
+          },
+          {
+            label: "File",
+            value: savedPath ? "local" : "loading",
+            tone: savedPath ? "configured" : "loading",
+          },
+        ]}
+      />
       <label>
         <span>Soul markdown</span>
         <textarea
@@ -540,6 +644,26 @@ export function MemoryBrowserPanel({
 
   return (
     <div className="memory-browser">
+      <SurfaceStateStrip
+        label="Memory surface states"
+        states={[
+          {
+            label: "Writes",
+            value: memoryEnabled ? "configured" : "disabled",
+            tone: memoryEnabled ? "configured" : "disabled",
+          },
+          {
+            label: "Records",
+            value: records.length > 0 ? "available" : "empty",
+            tone: records.length > 0 ? "configured" : "empty",
+          },
+          {
+            label: "Cloud",
+            value: "offline",
+            tone: "offline",
+          },
+        ]}
+      />
       <div className="memory-toolbar">
         <dl className="compact-facts" aria-label="Memory browser status">
           <div>
@@ -634,6 +758,7 @@ export function VoiceInteractionPanel({
   onSubmitTextFallback?: () => void;
 }) {
   const isActive = voiceInteraction.sessionState !== "idle";
+  const isError = voiceInteraction.response.toLowerCase().includes("error");
 
   function submitTextFallback(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -642,6 +767,36 @@ export function VoiceInteractionPanel({
 
   return (
     <div className="voice-panel">
+      <SurfaceStateStrip
+        label="Voice surface states"
+        states={[
+          {
+            label: "Local voice",
+            value: "configured",
+            tone: "configured",
+          },
+          {
+            label: "Cloud voice",
+            value: "missing",
+            tone: "missing",
+          },
+          {
+            label: "Output",
+            value: voiceInteraction.isMuted ? "muted" : "available",
+            tone: voiceInteraction.isMuted ? "muted" : "configured",
+          },
+          {
+            label: "Session",
+            value: isError ? "error" : isActive ? "active" : "idle",
+            tone: isError ? "error" : isActive ? "active" : "empty",
+          },
+          {
+            label: "Desktop audio",
+            value: "unavailable until enabled",
+            tone: "unavailable",
+          },
+        ]}
+      />
       <dl className="voice-status" aria-label="Voice session status">
         <div>
           <dt>Session</dt>
@@ -851,6 +1006,44 @@ export function TrustFoundationSettings({
   return (
     <div className="trust-settings">
       <SettingsSummary settings={settings} />
+
+      <SurfaceStateStrip
+        label="Provider and trust surface states"
+        states={[
+          {
+            label: "Credential",
+            value: snapshot.providerCredential.hasSecret
+              ? "configured"
+              : "missing",
+            tone: snapshot.providerCredential.hasSecret
+              ? "configured"
+              : "missing",
+          },
+          {
+            label: "Provider",
+            value:
+              snapshot.providerCredential.authStatus === "configured"
+                ? "configured"
+                : snapshot.providerCredential.authStatus,
+            tone:
+              snapshot.providerCredential.authStatus === "configured"
+                ? "configured"
+                : snapshot.providerCredential.authStatus === "error"
+                  ? "error"
+                  : "missing",
+          },
+          {
+            label: "Network",
+            value: "offline-safe",
+            tone: "offline",
+          },
+          {
+            label: "Authority",
+            value: settings.executionAuthority,
+            tone: "permission",
+          },
+        ]}
+      />
 
       <section className="trust-section" aria-labelledby="local-data-title">
         <h3 id="local-data-title">Local data</h3>

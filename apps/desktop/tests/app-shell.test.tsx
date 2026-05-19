@@ -391,6 +391,12 @@ describe("desktop app shell", () => {
       <App initialSettings={completedSettings} />,
     );
 
+    expect(markup).toContain("Voice surface states");
+    expect(markup).toContain("Local voice");
+    expect(markup).toContain("configured");
+    expect(markup).toContain("Cloud voice");
+    expect(markup).toContain("missing");
+    expect(markup).toContain("unavailable until enabled");
     expect(markup).toContain("Start listening");
     expect(markup).toContain("Mute voice output");
     expect(markup).toContain("Text fallback");
@@ -820,6 +826,10 @@ describe("desktop app shell", () => {
     );
 
     expect(markup).toContain("Soul editor");
+    expect(markup).toContain("Soul editor surface states");
+    expect(markup).toContain("Guardrail");
+    expect(markup).toContain("permission-sensitive");
+    expect(markup).toContain("Draft");
     expect(markup).toContain("Soul markdown");
     expect(markup).toContain("Save soul");
     expect(markup).not.toContain("Placeholder panel");
@@ -912,6 +922,11 @@ describe("desktop app shell", () => {
       expect(markup).toContain(label);
     }
 
+    expect(markup).toContain("Provider and trust surface states");
+    expect(markup).toContain("Credential");
+    expect(markup).toContain("missing");
+    expect(markup).toContain("offline-safe");
+    expect(markup).toContain("Authority");
     expect(markup).toContain("Memory status");
     expect(markup).toContain("local-storage-boundary");
     expect(markup).toContain("Provider credential");
@@ -925,11 +940,28 @@ describe("desktop app shell", () => {
       <ConfigPanel settings={completedSettings} />,
     );
 
+    expect(markup).toContain("Config surface states");
+    expect(markup).toContain("Settings");
+    expect(markup).toContain("configured");
+    expect(markup).toContain("Sync");
+    expect(markup).toContain("offline");
     expect(markup).toContain("Local configuration status");
     expect(markup).toContain("Onboarding");
     expect(markup).toContain("Launch");
     expect(markup).toContain("Provider");
     expect(markup).toContain("Configuration stays local-first");
+  });
+
+  it("renders saved settings with the shared surface treatment", () => {
+    const markup = renderToStaticMarkup(
+      <ControlSurfacePanel activeEntry="settings" settings={completedSettings} />,
+    );
+
+    expect(markup).toContain("Settings surface states");
+    expect(markup).toContain("Onboarding");
+    expect(markup).toContain("configured");
+    expect(markup).toContain("Authority");
+    expect(markup).toContain("Saved companion settings");
   });
 
   it("renders a memory browser with edit, delete, and disable controls", () => {
@@ -953,6 +985,11 @@ describe("desktop app shell", () => {
       />,
     );
 
+    expect(markup).toContain("Memory surface states");
+    expect(markup).toContain("Writes");
+    expect(markup).toContain("Records");
+    expect(markup).toContain("Cloud");
+    expect(markup).toContain("offline");
     expect(markup).toContain("Memory browser status");
     expect(markup).toContain("Enabled");
     expect(markup).toContain("Disable memory");
@@ -970,6 +1007,20 @@ describe("desktop app shell", () => {
       expect(markup).toContain(entry.label);
       expect(markup).toContain(entry.description);
     }
+  });
+
+  it("uses the shared state chip treatment for redesigned support surfaces", () => {
+    const styles = readFileSync(
+      resolve(process.cwd(), "src/styles.css"),
+      "utf8",
+    );
+
+    expect(styles).toContain(".surface-state-strip");
+    expect(styles).toContain(".surface-state-chip");
+    expect(styles).toContain('data-surface-state="configured"');
+    expect(styles).toContain('data-surface-state="offline"');
+    expect(styles).toContain('data-surface-state="error"');
+    expect(styles).toContain("var(--plato-color-companion-soft)");
   });
 
   it("renders the first-run onboarding choices", () => {
