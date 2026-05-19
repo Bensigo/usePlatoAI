@@ -825,6 +825,23 @@ describe("desktop app shell", () => {
     expect(markup).not.toContain("Cancel");
   });
 
+  it("shows resume and cancel controls while the centered panel has paused work", () => {
+    const markup = renderToStaticMarkup(
+      <CenteredChatPanel
+        currentTaskState={presenceStateSnapshot("task_paused")}
+        voiceInteraction={defaultVoiceInteractionSnapshot}
+        onDismiss={() => undefined}
+      />,
+    );
+
+    expect(markup).toContain("Task paused");
+    expect(markup).toContain("Resume");
+    expect(markup).toContain("Cancel");
+    expect(markup).not.toContain("Pause");
+    expect(markup).not.toContain("Approve");
+    expect(markup).not.toContain("Reject");
+  });
+
   it("does not show centered current-task controls from voice activity alone", () => {
     const markup = renderToStaticMarkup(
       <CenteredChatPanel
@@ -848,6 +865,7 @@ describe("desktop app shell", () => {
 
   it("maps centered current-task actions onto shared task state", () => {
     expect(currentTaskPresenceStateForAction("pause")).toBe("task_paused");
+    expect(currentTaskPresenceStateForAction("resume")).toBe("task_running");
     expect(currentTaskPresenceStateForAction("cancel")).toBe("idle");
     expect(currentTaskPresenceStateForAction("approve")).toBe("task_running");
     expect(currentTaskPresenceStateForAction("reject")).toBe("idle");
