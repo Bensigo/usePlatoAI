@@ -28,6 +28,7 @@ pub struct ProviderMetadata {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TaskMetadata {
     pub task_id: String,
     pub title: String,
@@ -1435,11 +1436,7 @@ fn memory_record_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<LocalMemo
 fn task_metadata_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<TaskMetadata> {
     let metadata_json: String = row.get(3)?;
     let metadata = serde_json::from_str(&metadata_json).map_err(|error| {
-        rusqlite::Error::FromSqlConversionFailure(
-            3,
-            rusqlite::types::Type::Text,
-            Box::new(error),
-        )
+        rusqlite::Error::FromSqlConversionFailure(3, rusqlite::types::Type::Text, Box::new(error))
     })?;
 
     Ok(TaskMetadata {
@@ -2164,6 +2161,27 @@ mod tests {
                 .len(),
             1
         );
+    }
+
+    #[test]
+    fn task_metadata_uses_frontend_camel_case_boundary() {
+        let task: TaskMetadata = serde_json::from_value(json!({
+            "taskId": "task-camel-case",
+            "title": "Verify task boundary",
+            "status": "running",
+            "metadata": {
+                "progress": 25,
+                "statusMessage": "Task is crossing the Tauri boundary"
+            }
+        }))
+        .expect("deserialize frontend task metadata");
+
+        assert_eq!(task.task_id, "task-camel-case");
+
+        let encoded = serde_json::to_value(&task).expect("serialize task metadata");
+
+        assert_eq!(encoded["taskId"], "task-camel-case");
+        assert!(encoded.get("task_id").is_none());
     }
 
     #[test]
