@@ -19,6 +19,7 @@ import {
   currentTaskPresenceStateForAction,
   isActiveCorrectionPromptTransition,
   isActionableCurrentTaskState,
+  openControlSurfaceEntryFromEvent,
   renderedPresenceStateFor,
   shouldShowCenteredChatPanelOpener,
 } from "../src/App";
@@ -96,7 +97,7 @@ const completedSettings: CompanionSettings = {
 };
 
 describe("desktop app shell", () => {
-  it("renders the floating Plato presence controls", () => {
+  it("renders a companion-only default desktop presence with collapsed controls", () => {
     const markup = renderToStaticMarkup(
       <App initialSettings={completedSettings} />,
     );
@@ -108,15 +109,32 @@ describe("desktop app shell", () => {
     expect(markup).toContain("data-live2d-motion-group=\"idle\"");
     expect(markup).toContain("data-live2d-expression=\"neutral\"");
     expect(markup).toContain("Activate audio with Plato");
+    expect(markup).toContain("Open Plato controls");
     expect(markup).toContain("Drag Plato presence");
     expect(markup).toContain("Hide Plato presence");
+    expect(markup).not.toContain("Top Plato control surface");
+    expect(markup).not.toContain("Voice output controls");
+    expect(markup).not.toContain("Audio waits for activation");
+    expect(markup).not.toContain("No passive listening.");
+    expect(markup).not.toContain("Voice ready");
+    expect(markup).not.toContain("Mute");
+    expect(markup).not.toContain("Stop speech");
+    expect(markup).not.toContain("Plato is hidden");
+  });
+
+  it("renders the expanded Plato controls when the compact opener is active", () => {
+    const markup = renderToStaticMarkup(
+      <App initialSettings={completedSettings} initialControlsExpanded />,
+    );
+
+    expect(markup).toContain('aria-label="Top Plato control surface"');
+    expect(markup).toContain("Collapse Plato controls");
     expect(markup).toContain("Voice output controls");
     expect(markup).toContain("Audio waits for activation");
     expect(markup).toContain("No passive listening.");
     expect(markup).toContain("Voice ready");
     expect(markup).toContain("Mute");
     expect(markup).toContain("Stop speech");
-    expect(markup).not.toContain("Plato is hidden");
   });
 
   it("injects reusable experience tokens into the visible shell", () => {
@@ -229,35 +247,36 @@ describe("desktop app shell", () => {
       );
 
       expect(hook.statusText).toBe(mapping.statusText);
-      expect(hook.assetSrc).toBe(`/avatar/plato/${mapping.state}.png`);
       expect(hook.motionGroup).toBe(mapping.motionGroup);
       expect(hook.expression).toBe(mapping.expression);
       expect(markup).toContain(`data-presence-state="${mapping.state}"`);
-      expect(markup).toContain(`src="/avatar/plato/${mapping.state}.png"`);
       expect(markup).toContain(
         `data-live2d-motion-group="${mapping.motionGroup}"`,
       );
       expect(markup).toContain(
         `data-live2d-expression="${mapping.expression}"`,
       );
-      expect(markup).toContain(
-        `data-avatar-asset="/avatar/plato/${mapping.state}.png"`,
-      );
-      expect(markup).toContain("plato-avatar-asset");
+      expect(markup).toContain("live2d-presence-mark");
       expect(markup).toContain(mapping.statusText);
+      expect(markup).not.toContain("<img");
+      expect(markup).not.toContain("plato-avatar-asset");
       expect(markup).not.toContain("live2d-avatar-head");
       expect(markup).not.toContain("live2d-avatar-body");
     }
   });
 
-  it("renders the visible avatar with generated state assets instead of CSS face/body parts", () => {
+  it("renders the visible avatar without static raster stickers", () => {
     const markup = renderToStaticMarkup(
       <Live2DAvatarSurface presenceState="listening" />,
     );
 
-    expect(markup).toContain("plato-avatar-asset");
-    expect(markup).toContain("/avatar/plato/listening.png");
-    expect(markup).toContain('data-avatar-asset="/avatar/plato/listening.png"');
+    expect(markup).toContain("live2d-presence-mark");
+    expect(markup).toContain("live2d-presence-core");
+    expect(markup).toContain("live2d-presence-meter");
+    expect(markup).not.toContain("<img");
+    expect(markup).not.toContain("plato-avatar-asset");
+    expect(markup).not.toContain("/avatar/plato/listening.png");
+    expect(markup).not.toContain("data-avatar-asset");
     expect(markup).not.toContain("live2d-avatar-hair");
     expect(markup).not.toContain("live2d-avatar-head");
     expect(markup).not.toContain("live2d-avatar-eye");
@@ -394,9 +413,9 @@ describe("desktop app shell", () => {
     expect(markup).toContain("Show Plato presence");
   });
 
-  it("renders the persistent top Plato control entries", () => {
+  it("renders the expanded top Plato control entries", () => {
     const markup = renderToStaticMarkup(
-      <App initialSettings={completedSettings} />,
+      <App initialSettings={completedSettings} initialControlsExpanded />,
     );
 
     expect(controlSurfaceEntries.map((entry) => entry.id)).toEqual([
@@ -422,7 +441,7 @@ describe("desktop app shell", () => {
 
   it("renders explicit voice controls and text fallback without credentials", () => {
     const markup = renderToStaticMarkup(
-      <App initialSettings={completedSettings} />,
+      <App initialSettings={completedSettings} initialControlsExpanded />,
     );
 
     expect(markup).toContain("Voice surface states");
@@ -510,6 +529,7 @@ describe("desktop app shell", () => {
       <App
         initialSettings={completedSettings}
         initialAudioActivationState="unavailable"
+        initialControlsExpanded
       />,
     );
 
@@ -529,12 +549,54 @@ describe("desktop app shell", () => {
 
   it("can open a specific top control for visual smoke captures", () => {
     const markup = renderToStaticMarkup(
-      <App initialSettings={completedSettings} initialActiveEntry="config" />,
+      <App
+        initialSettings={completedSettings}
+        initialActiveEntry="config"
+        initialControlsExpanded
+      />,
     );
 
     expect(markup).toContain("Local config");
     expect(markup).toContain("Local configuration status");
     expect(markup).toContain('data-control-state="active"');
+  });
+
+  it("expands the control surface when a Tauri menu event opens a valid control", () => {
+    let activeEntry = "voice";
+    let areControlsExpanded = false;
+
+    const didOpen = openControlSurfaceEntryFromEvent({
+      payload: "memory",
+      setActiveEntry: (nextActiveEntry) => {
+        activeEntry = nextActiveEntry;
+      },
+      setAreControlsExpanded: (nextControlsExpanded) => {
+        areControlsExpanded = nextControlsExpanded;
+      },
+    });
+
+    expect(didOpen).toBe(true);
+    expect(activeEntry).toBe("memory");
+    expect(areControlsExpanded).toBe(true);
+  });
+
+  it("ignores invalid Tauri menu control events", () => {
+    let activeEntry = "voice";
+    let areControlsExpanded = false;
+
+    const didOpen = openControlSurfaceEntryFromEvent({
+      payload: "unknown",
+      setActiveEntry: (nextActiveEntry) => {
+        activeEntry = nextActiveEntry;
+      },
+      setAreControlsExpanded: (nextControlsExpanded) => {
+        areControlsExpanded = nextControlsExpanded;
+      },
+    });
+
+    expect(didOpen).toBe(false);
+    expect(activeEntry).toBe("voice");
+    expect(areControlsExpanded).toBe(false);
   });
 
   it("persists, edits, deletes, and disables local memory through the app store boundary", async () => {
@@ -1175,6 +1237,7 @@ describe("desktop app shell", () => {
       <App
         initialSettings={completedSettings}
         soulGuidanceStore={soulGuidanceStore}
+        initialControlsExpanded
       />,
     );
 
@@ -1254,8 +1317,13 @@ describe("desktop app shell", () => {
       "utf8",
     );
 
+    expect(styles).toMatch(/\.control-surface\s*{[^}]*max-height:\s*calc\(100vh - 28px\);/s);
+    expect(styles).toMatch(/\.control-surface\s*{[^}]*overflow:\s*auto;/s);
+    expect(styles).toMatch(/\.control-surface\s*{[^}]*z-index:\s*10;/s);
     expect(styles).toContain("@media (max-width: 360px) and (max-height: 600px)");
-    expect(styles).toMatch(/\.control-surface\s*{[^}]*max-height:\s*258px;/s);
+    expect(styles).toMatch(
+      /\.control-surface\s*{[^}]*max-height:\s*calc\(100vh - 20px\);/s,
+    );
     expect(styles).toMatch(
       /\.control-nav\s*{[^}]*grid-template-columns:\s*repeat\(3, minmax\(0, 1fr\)\);/s,
     );
