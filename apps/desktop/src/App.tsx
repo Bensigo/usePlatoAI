@@ -2250,31 +2250,33 @@ export function App({
               </button>
             </div>
 
-            <button
-              className="avatar-action"
-              type="button"
-              onClick={activateAvatarListening}
-              aria-label={`Activate audio with ${settings.companionName}`}
-            >
-              <Live2DAvatarSurface presenceState={avatarPresenceState} />
-            </button>
+            <div className="presence-avatar-stack">
+              {showCenteredChatPanelOpener ? (
+                <PresenceListeningBubble
+                  state={avatarPresenceState}
+                  label={
+                    isCurrentTaskControlState(presence.state)
+                      ? presence.label
+                      : undefined
+                  }
+                  ariaLabel={
+                    isCurrentTaskControlState(presence.state)
+                      ? `Open current task controls: ${presence.label}`
+                      : undefined
+                  }
+                  onOpenControls={openCenteredChatPanel}
+                />
+              ) : null}
 
-            {showCenteredChatPanelOpener ? (
-              <PresenceListeningBubble
-                state={avatarPresenceState}
-                label={
-                  isCurrentTaskControlState(presence.state)
-                    ? presence.label
-                    : undefined
-                }
-                ariaLabel={
-                  isCurrentTaskControlState(presence.state)
-                    ? `Open current task controls: ${presence.label}`
-                    : undefined
-                }
-                onOpenControls={openCenteredChatPanel}
-              />
-            ) : null}
+              <button
+                className="avatar-action"
+                type="button"
+                onClick={activateAvatarListening}
+                aria-label={`Activate audio with ${settings.companionName}`}
+              >
+                <Live2DAvatarSurface presenceState={avatarPresenceState} />
+              </button>
+            </div>
 
             <div className="presence-copy sr-only">
               <p className="product-name">usePlatoAI</p>

@@ -211,6 +211,13 @@ button {
   animation: avatar-click-acknowledge 520ms ease-out;
 }
 
+.presence-avatar-stack {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  padding-top: 44px;
+}
+
 .live2d-avatar-stage {
   position: relative;
   width: 172px;
@@ -400,6 +407,9 @@ button {
 }
 
 .presence-listening-bubble {
+  position: absolute;
+  top: 0;
+  z-index: 3;
   min-width: 128px;
   max-width: 172px;
   min-height: 38px;
@@ -407,7 +417,7 @@ button {
   align-items: center;
   justify-content: center;
   gap: var(--plato-space-sm);
-  margin-top: -6px;
+  margin: 0;
   padding: 8px 12px;
   border: 1px solid rgb(255 255 255 / 62%);
   border-radius: var(--plato-radius-pill);
