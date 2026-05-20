@@ -173,6 +173,23 @@ fn delete_local_memory(app: AppHandle, memory_id: String) -> Result<bool, String
 }
 
 #[tauri::command]
+fn save_local_task(
+    app: AppHandle,
+    task: local_data::TaskMetadata,
+) -> Result<local_data::TaskMetadata, String> {
+    let local_data = local_data_service(&app)?;
+    local_data.upsert_task_metadata(&task)?;
+    local_data
+        .read_task_metadata(&task.task_id)?
+        .ok_or_else(|| format!("task `{}` was not persisted", task.task_id))
+}
+
+#[tauri::command]
+fn retrieve_local_tasks(app: AppHandle) -> Result<Vec<local_data::TaskMetadata>, String> {
+    local_data_service(&app)?.retrieve_task_metadata()
+}
+
+#[tauri::command]
 fn read_trust_foundation_snapshot(app: AppHandle) -> Result<TrustFoundationSnapshot, String> {
     let local_data = local_data_service(&app)?;
     let secret_store = provider_secret_store()?;
@@ -274,6 +291,8 @@ pub fn run() {
             read_local_memory_preference,
             retrieve_local_memories,
             delete_local_memory,
+            save_local_task,
+            retrieve_local_tasks,
             read_trust_foundation_snapshot,
             save_provider_credential,
             has_provider_credential,

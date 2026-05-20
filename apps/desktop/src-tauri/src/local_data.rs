@@ -590,6 +590,27 @@ impl LocalDataService {
             .map_err(|error| error.to_string())
     }
 
+    pub fn retrieve_task_metadata(&self) -> Result<Vec<TaskMetadata>, String> {
+        let mut statement = self
+            .connection
+            .prepare(
+                "
+                SELECT task_id, title, status, metadata_json
+                FROM task_metadata
+                ORDER BY updated_at DESC, task_id DESC
+                ",
+            )
+            .map_err(|error| error.to_string())?;
+
+        let tasks = statement
+            .query_map([], task_metadata_from_row)
+            .map_err(|error| error.to_string())?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|error| error.to_string())?;
+
+        Ok(tasks)
+    }
+
     pub fn upsert_memory_record(
         &self,
         memory: &LocalMemoryInput,
@@ -1411,6 +1432,24 @@ fn memory_record_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<LocalMemo
     })
 }
 
+fn task_metadata_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<TaskMetadata> {
+    let metadata_json: String = row.get(3)?;
+    let metadata = serde_json::from_str(&metadata_json).map_err(|error| {
+        rusqlite::Error::FromSqlConversionFailure(
+            3,
+            rusqlite::types::Type::Text,
+            Box::new(error),
+        )
+    })?;
+
+    Ok(TaskMetadata {
+        task_id: row.get(0)?,
+        title: row.get(1)?,
+        status: row.get(2)?,
+        metadata,
+    })
+}
+
 fn consume_sensitive_memory_approval(
     transaction: &Transaction<'_>,
     approval_evidence: &SensitiveMemoryApprovalEvidence,
@@ -2117,6 +2156,13 @@ mod tests {
                 .read_task_metadata("task-1")
                 .expect("read task metadata"),
             Some(task)
+        );
+        assert_eq!(
+            service
+                .retrieve_task_metadata()
+                .expect("retrieve task metadata")
+                .len(),
+            1
         );
     }
 
