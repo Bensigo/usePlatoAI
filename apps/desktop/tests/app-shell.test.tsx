@@ -1070,10 +1070,18 @@ describe("desktop app shell", () => {
     expect(thinkingMarkup).toContain('data-presence-state="thinking"');
     expect(thinkingMarkup).toContain('data-presence-bubble-state="thinking"');
     expect(thinkingMarkup).toContain("presence-thinking-indicator");
+    expect(thinkingMarkup).toContain("presence-avatar-stack");
+    expect(thinkingMarkup.indexOf("presence-listening-bubble")).toBeLessThan(
+      thinkingMarkup.indexOf("live2d-avatar-surface"),
+    );
     expect(thinkingMarkup).not.toContain("presence-sound-wave");
     expect(speakingMarkup).toContain('data-presence-state="speaking"');
     expect(speakingMarkup).toContain('data-presence-bubble-state="speaking"');
     expect(speakingMarkup).toContain("presence-sound-wave");
+    expect(speakingMarkup).toContain("presence-avatar-stack");
+    expect(speakingMarkup.indexOf("presence-listening-bubble")).toBeLessThan(
+      speakingMarkup.indexOf("live2d-avatar-surface"),
+    );
   });
 
   it("progresses mock voice and text fallback snapshots", () => {
@@ -1330,6 +1338,10 @@ describe("desktop app shell", () => {
     expect(styles).toMatch(
       /\.voice-controls\s*{[^}]*grid-template-columns:\s*repeat\(3, minmax\(0, 1fr\)\);/s,
     );
+    expect(styles).toMatch(/\.presence-avatar-stack\s*{[^}]*position:\s*relative;/s);
+    expect(styles).toMatch(/\.presence-avatar-stack\s*{[^}]*padding-top:\s*44px;/s);
+    expect(styles).toMatch(/\.presence-listening-bubble\s*{[^}]*position:\s*absolute;/s);
+    expect(styles).toMatch(/\.presence-listening-bubble\s*{[^}]*top:\s*0;/s);
   });
 
   it("renders local data and trust foundation settings", () => {

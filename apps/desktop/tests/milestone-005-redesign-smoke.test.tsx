@@ -212,6 +212,10 @@ describe("Milestone 005 redesign smoke coverage", () => {
 
       expect(markup).toContain(`data-presence-state="${sessionState}"`);
       expect(markup).toContain(`data-presence-bubble-state="${sessionState}"`);
+      expect(markup).toContain("presence-avatar-stack");
+      expect(markup.indexOf("presence-listening-bubble")).toBeLessThan(
+        markup.indexOf("live2d-avatar-surface"),
+      );
       expect(markup).toContain(
         `Open voice controls: ${getLive2DAvatarSurfaceHook(sessionState).label}`,
       );
