@@ -224,6 +224,24 @@ export function shouldShowCenteredChatPanelOpener({
   );
 }
 
+export function openControlSurfaceEntryFromEvent({
+  payload,
+  setActiveEntry,
+  setAreControlsExpanded,
+}: {
+  payload: unknown;
+  setActiveEntry: (activeEntry: ControlSurfaceId) => void;
+  setAreControlsExpanded: (areControlsExpanded: boolean) => void;
+}) {
+  if (!isControlSurfaceId(payload)) {
+    return false;
+  }
+
+  setActiveEntry(payload);
+  setAreControlsExpanded(true);
+  return true;
+}
+
 export function DismissedPresence({ onRestore }: { onRestore: () => void }) {
   return (
     <section className="restore-card" aria-label="Plato presence hidden">
@@ -2014,9 +2032,11 @@ export function App({
     import("@tauri-apps/api/event")
       .then(({ listen }) =>
         listen<ControlSurfaceId>("plato-control-surface://open", (event) => {
-          if (isControlSurfaceId(event.payload)) {
-            setActiveEntry(event.payload);
-          }
+          openControlSurfaceEntryFromEvent({
+            payload: event.payload,
+            setActiveEntry,
+            setAreControlsExpanded,
+          });
         }),
       )
       .then((unlisten) => {
