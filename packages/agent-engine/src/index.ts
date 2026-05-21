@@ -76,12 +76,12 @@ export const defaultAgentEngines = [
   {
     kind: "codex_sdk",
     displayName: "Codex SDK",
-    availability: "available",
+    availability: "unavailable",
   },
   {
     kind: "claude_agent_sdk",
     displayName: "Claude Agent SDK",
-    availability: "available",
+    availability: "unavailable",
   },
 ] as const satisfies readonly AgentEngine[];
 
