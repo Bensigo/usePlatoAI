@@ -211,6 +211,24 @@ export function currentTaskPresenceStateForAction(
   return "idle";
 }
 
+export function currentTaskPresenceStateForLocalTasks(
+  tasks: LocalTaskRecord[],
+): CompanionPresenceState {
+  if (tasks.some((task) => task.status === "waiting_for_approval")) {
+    return "waiting_for_approval";
+  }
+
+  if (tasks.some((task) => task.status === "running")) {
+    return "task_running";
+  }
+
+  if (tasks.some((task) => task.status === "paused")) {
+    return "task_paused";
+  }
+
+  return "idle";
+}
+
 export function isCurrentTaskControlState(state: string) {
   return (
     state === "task_running" ||
@@ -1997,15 +2015,19 @@ export function App({
 
   async function saveTaskSnapshot(task: LocalTaskRecord) {
     const savedTask = await durableTaskStore.save(task);
-    setTasks((currentTasks) => {
-      const otherTasks = currentTasks.filter(
+    const nextTasks = [
+      ...latestTasks.current.filter(
         (currentTask) => currentTask.taskId !== savedTask.taskId,
-      );
-      const nextTasks = [...otherTasks, savedTask];
-      latestTasks.current = nextTasks;
-      return nextTasks;
-    });
+      ),
+      savedTask,
+    ];
+
+    latestTasks.current = nextTasks;
+    setTasks(nextTasks);
     setSelectedTaskId((currentTaskId) => currentTaskId ?? savedTask.taskId);
+    companionPresenceStateSource.setState(
+      currentTaskPresenceStateForLocalTasks(nextTasks),
+    );
     return savedTask;
   }
 
@@ -2039,12 +2061,7 @@ export function App({
         applyLocalTaskTransition(task, action),
       );
 
-      if (action === "pause") {
-        companionPresenceStateSource.setState("task_paused");
-      }
-
       if (action === "resume") {
-        companionPresenceStateSource.setState("task_running");
         scheduleMockTaskSnapshot(
           {
             ...applyLocalTaskTransition(updatedTask, "advance"),
@@ -2052,10 +2069,6 @@ export function App({
           },
           700,
         );
-      }
-
-      if (action === "cancel") {
-        companionPresenceStateSource.setState("idle");
       }
     } catch {
       return;
