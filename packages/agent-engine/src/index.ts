@@ -60,6 +60,11 @@ export type ProviderAuthState =
   | LocalModelEndpointProviderAuthState
   | UnconfiguredProviderAuthState;
 
+type ClaudeAgentSdkSupportedAuthMode = Extract<
+  ProviderAuthMode,
+  "api_key" | "local_sdk_auth"
+>;
+
 export interface ProviderAuthAvailabilitySnapshot {
   mode: ProviderAuthMode;
   availability: ProviderAuthAvailability;
@@ -98,6 +103,11 @@ export const modelProviderKinds = [
   "local",
   "unknown",
 ] as const satisfies readonly ProviderKind[];
+
+export const claudeAgentSdkSupportedAuthModes = [
+  "api_key",
+  "local_sdk_auth",
+] as const satisfies readonly ClaudeAgentSdkSupportedAuthMode[];
 
 export interface ModelProvider {
   id: string;
@@ -313,6 +323,22 @@ export function createClaudeAgentSdkAgentEngineAdapter(input?: {
         };
       }
 
+      if (!isClaudeAgentSdkSupportedAuthMode(provider.authMode)) {
+        return {
+          status: "auth_missing",
+          reason:
+            "Claude Agent SDK requires Anthropic/Claude provider auth to use api_key or local_sdk_auth.",
+        };
+      }
+
+      if (provider.authState.mode !== provider.authMode) {
+        return {
+          status: "auth_missing",
+          reason:
+            "Anthropic/Claude provider auth mode does not match the configured auth state for Claude Agent SDK.",
+        };
+      }
+
       const authSnapshot = await getProviderAuthAvailabilitySnapshot(
         provider.authState,
         secretStore,
@@ -348,6 +374,14 @@ export function createClaudeAgentSdkAgentEngineAdapter(input?: {
       };
     },
   };
+}
+
+function isClaudeAgentSdkSupportedAuthMode(
+  authMode: ProviderAuthMode,
+): authMode is ClaudeAgentSdkSupportedAuthMode {
+  return claudeAgentSdkSupportedAuthModes.includes(
+    authMode as ClaudeAgentSdkSupportedAuthMode,
+  );
 }
 
 export async function createApiKeyProviderAuthState(input: {

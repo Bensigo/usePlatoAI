@@ -1,15 +1,18 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  claudeAgentSdkSupportedAuthModes,
   createAgentEngineAdapterRegistry,
   createAgentEngineCatalogFromAdapters,
   createApiKeyProviderAuthState,
   createClaudeAgentSdkAgentEngineAdapter,
   resolveAgentEngineForProvider,
+  type LocalModelEndpointProviderAuthState,
   type LocalSdkProviderAuthState,
   type ModelProvider,
   type SecretReference,
   type SecretStore,
+  type SubscriptionLocalProviderAuthState,
 } from "./index.js";
 
 class MemorySecretStore implements SecretStore {
@@ -25,6 +28,13 @@ class MemorySecretStore implements SecretStore {
 }
 
 describe("Claude Agent SDK Agent Engine adapter", () => {
+  it("whitelists the provider auth modes supported by the Claude adapter", () => {
+    expect(claudeAgentSdkSupportedAuthModes).toEqual([
+      "api_key",
+      "local_sdk_auth",
+    ]);
+  });
+
   it("registers behind the Agent Engine adapter registry", () => {
     const adapter = createClaudeAgentSdkAgentEngineAdapter({
       runtimeAvailable: true,
@@ -135,6 +145,106 @@ describe("Claude Agent SDK Agent Engine adapter", () => {
       status: "auth_missing",
       reason: "Anthropic/Claude provider auth is not ready for Claude Agent SDK.",
       authAvailability: "missing_secret",
+    });
+  });
+
+  it("accepts Anthropic API key auth when runtime and secret are ready", async () => {
+    const adapter = createClaudeAgentSdkAgentEngineAdapter({
+      runtimeAvailable: true,
+    });
+    const secretStore = new MemorySecretStore();
+    const authState = await createApiKeyProviderAuthState({
+      providerId: "anthropic",
+      providerDisplayName: "Anthropic",
+      apiKey: "anthropic-test",
+      secretStore,
+    });
+    const provider: ModelProvider = {
+      id: "anthropic",
+      displayName: "Anthropic",
+      kind: "anthropic",
+      authMode: "api_key",
+      authState,
+    };
+
+    await expect(adapter.getState(provider, secretStore)).resolves.toEqual({
+      status: "available",
+      reason:
+        "Claude Agent SDK is available for Anthropic/Claude-backed Agent Engine tasks.",
+      authAvailability: "ready",
+    });
+  });
+
+  it("rejects subscription-backed local auth even when that auth is ready", async () => {
+    const adapter = createClaudeAgentSdkAgentEngineAdapter({
+      runtimeAvailable: true,
+    });
+    const authState: SubscriptionLocalProviderAuthState = {
+      mode: "subscription_local_auth",
+      subscriptionName: "Claude Pro",
+      isAuthenticated: true,
+      accountHint: "user@example.com",
+    };
+    const provider: ModelProvider = {
+      id: "claude",
+      displayName: "Claude",
+      kind: "claude",
+      authMode: "subscription_local_auth",
+      authState,
+    };
+
+    await expect(adapter.getState(provider)).resolves.toEqual({
+      status: "auth_missing",
+      reason:
+        "Claude Agent SDK requires Anthropic/Claude provider auth to use api_key or local_sdk_auth.",
+    });
+  });
+
+  it("rejects local model endpoint auth even when that endpoint is ready", async () => {
+    const adapter = createClaudeAgentSdkAgentEngineAdapter({
+      runtimeAvailable: true,
+    });
+    const authState: LocalModelEndpointProviderAuthState = {
+      mode: "local_model_endpoint",
+      endpoint: "http://localhost:11434",
+    };
+    const provider: ModelProvider = {
+      id: "claude-local",
+      displayName: "Claude Local",
+      kind: "claude",
+      authMode: "local_model_endpoint",
+      authState,
+    };
+
+    await expect(adapter.getState(provider)).resolves.toEqual({
+      status: "auth_missing",
+      reason:
+        "Claude Agent SDK requires Anthropic/Claude provider auth to use api_key or local_sdk_auth.",
+    });
+  });
+
+  it("rejects mismatched provider auth mode and auth state before reporting availability", async () => {
+    const adapter = createClaudeAgentSdkAgentEngineAdapter({
+      runtimeAvailable: true,
+    });
+    const authState: LocalSdkProviderAuthState = {
+      mode: "local_sdk_auth",
+      sdkName: "Claude Code",
+      isAuthenticated: true,
+      accountHint: "user@example.com",
+    };
+    const provider: ModelProvider = {
+      id: "anthropic",
+      displayName: "Anthropic",
+      kind: "anthropic",
+      authMode: "api_key",
+      authState,
+    };
+
+    await expect(adapter.getState(provider)).resolves.toEqual({
+      status: "auth_missing",
+      reason:
+        "Anthropic/Claude provider auth mode does not match the configured auth state for Claude Agent SDK.",
     });
   });
 
