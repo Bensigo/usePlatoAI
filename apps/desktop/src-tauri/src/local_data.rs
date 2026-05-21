@@ -536,7 +536,20 @@ impl LocalDataService {
     }
 
     pub fn upsert_task_metadata(&self, task: &TaskMetadata) -> Result<(), String> {
+        let task = retained_task_metadata(task);
         let metadata_json = encode_json(&task.metadata)?;
+        let audit_action = task_audit_action(&task.status);
+        let approved_artifact_ids = task
+            .metadata
+            .get("approvedArtifacts")
+            .and_then(Value::as_array)
+            .map(|artifacts| {
+                artifacts
+                    .iter()
+                    .filter_map(|artifact| artifact.get("artifactId").and_then(Value::as_str))
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
 
         self.connection
             .execute(
@@ -555,11 +568,13 @@ impl LocalDataService {
 
         self.record_audit_entry(
             "task_metadata",
-            "task_metadata.upserted",
+            audit_action,
             json!({
                 "taskId": task.task_id,
                 "status": task.status,
+                "summaryRetained": task.metadata.get("summary").and_then(Value::as_str).is_some(),
                 "approvalDecision": task.metadata.get("approvalDecision").cloned().unwrap_or(Value::Null),
+                "approvedArtifactIds": approved_artifact_ids,
             }),
         )
     }
@@ -1451,6 +1466,93 @@ fn task_metadata_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<TaskMetad
     })
 }
 
+fn retained_task_metadata(task: &TaskMetadata) -> TaskMetadata {
+    let mut metadata = sanitized_task_metadata_value(task.metadata.clone());
+
+    if terminal_task_status(&task.status)
+        && !metadata
+            .get("summary")
+            .and_then(Value::as_str)
+            .is_some_and(|summary| !summary.trim().is_empty())
+    {
+        let summary = match task.status.as_str() {
+            "completed" => format!("Completed {}.", task.title),
+            "failed" => format!("Failed {}.", task.title),
+            "cancelled" => format!("Cancelled {}.", task.title),
+            _ => String::new(),
+        };
+
+        if let Value::Object(ref mut map) = metadata {
+            map.insert("summary".to_string(), Value::String(summary));
+        }
+    }
+
+    TaskMetadata {
+        task_id: task.task_id.clone(),
+        title: task.title.clone(),
+        status: task.status.clone(),
+        metadata,
+    }
+}
+
+fn sanitized_task_metadata_value(value: Value) -> Value {
+    match value {
+        Value::Object(map) => Value::Object(
+            map.into_iter()
+                .filter_map(|(key, value)| {
+                    if is_raw_task_log_field_name(&key) || is_raw_transcript_field_name(&key) {
+                        None
+                    } else {
+                        Some((key, sanitized_task_metadata_value(value)))
+                    }
+                })
+                .collect(),
+        ),
+        Value::Array(values) => Value::Array(
+            values
+                .into_iter()
+                .map(sanitized_task_metadata_value)
+                .collect(),
+        ),
+        value => value,
+    }
+}
+
+fn is_raw_task_log_field_name(key: &str) -> bool {
+    let normalized = key
+        .chars()
+        .filter(|character| character.is_ascii_alphanumeric())
+        .flat_map(char::to_lowercase)
+        .collect::<String>();
+
+    matches!(
+        normalized.as_str(),
+        "rawexecutionlog"
+            | "rawexecutionlogs"
+            | "executionlog"
+            | "executionlogs"
+            | "fulllog"
+            | "fulllogs"
+            | "rawlog"
+            | "rawlogs"
+            | "tasklog"
+            | "tasklogs"
+    )
+}
+
+fn terminal_task_status(status: &str) -> bool {
+    matches!(status, "completed" | "failed" | "cancelled")
+}
+
+fn task_audit_action(status: &str) -> &'static str {
+    match status {
+        "completed" => "task.completed",
+        "failed" => "task.failed",
+        "cancelled" => "task.cancelled",
+        _ => "task_metadata.upserted",
+    }
+}
+
 fn consume_sensitive_memory_approval(
     transaction: &Transaction<'_>,
     approval_evidence: &SensitiveMemoryApprovalEvidence,
@@ -2165,6 +2267,96 @@ mod tests {
                 .len(),
             1
         );
+    }
+
+    #[test]
+    fn task_summary_retention_strips_raw_logs_and_audits_artifacts() {
+        let service = LocalDataService::in_memory().expect("create in-memory service");
+        let raw_execution_log = "full terminal log that should not be retained";
+        let task = TaskMetadata {
+            task_id: "task-summary-1".to_string(),
+            title: "Submit browser form".to_string(),
+            status: "completed".to_string(),
+            metadata: json!({
+                "progress": 100,
+                "statusMessage": "Mock task completed after approval.",
+                "summary": "Completed Submit browser form after approval.",
+                "approvalDecision": "approved",
+                "approvedArtifacts": [
+                    {
+                        "artifactId": "task-summary-1-approved-decision",
+                        "label": "Submit mock browser form",
+                        "kind": "decision",
+                        "approvedAt": "1970-01-01T00:00:00.000Z",
+                        "approvalDecision": "approved"
+                    }
+                ],
+                "rawExecutionLog": raw_execution_log,
+                "nested": {
+                    "executionLogs": [raw_execution_log]
+                }
+            }),
+        };
+
+        service
+            .upsert_task_metadata(&task)
+            .expect("save completed task metadata");
+
+        let saved = service
+            .read_task_metadata("task-summary-1")
+            .expect("read task metadata")
+            .expect("task row");
+
+        assert_eq!(
+            saved.metadata["summary"],
+            "Completed Submit browser form after approval."
+        );
+        assert_eq!(
+            saved.metadata["approvedArtifacts"][0]["artifactId"],
+            "task-summary-1-approved-decision"
+        );
+        assert!(saved.metadata.get("rawExecutionLog").is_none());
+        assert!(saved.metadata["nested"].get("executionLogs").is_none());
+        assert!(!service
+            .contains_plaintext(raw_execution_log)
+            .expect("search local data"));
+
+        let audit_entries = service
+            .read_recent_audit_history(5)
+            .expect("read audit history");
+        assert!(audit_entries.iter().any(|entry| {
+            entry.category == "task_metadata"
+                && entry.action == "task.completed"
+                && entry.metadata["taskId"] == "task-summary-1"
+                && entry.metadata["summaryRetained"] == true
+                && entry.metadata["approvalDecision"] == "approved"
+                && entry.metadata["approvedArtifactIds"][0] == "task-summary-1-approved-decision"
+        }));
+    }
+
+    #[test]
+    fn terminal_task_metadata_gets_minimum_summary_when_missing() {
+        let service = LocalDataService::in_memory().expect("create in-memory service");
+        let failed_task = TaskMetadata {
+            task_id: "task-failed-summary".to_string(),
+            title: "Patch task tray".to_string(),
+            status: "failed".to_string(),
+            metadata: json!({
+                "progress": 58,
+                "statusMessage": "Mock dependency failed"
+            }),
+        };
+
+        service
+            .upsert_task_metadata(&failed_task)
+            .expect("save failed task metadata");
+
+        let saved = service
+            .read_task_metadata("task-failed-summary")
+            .expect("read task metadata")
+            .expect("task row");
+
+        assert_eq!(saved.metadata["summary"], "Failed Patch task tray.");
     }
 
     #[test]

@@ -307,6 +307,45 @@ button {
   line-height: 1.35;
 }
 
+.task-artifacts {
+  display: grid;
+  gap: 5px;
+}
+
+.task-artifacts ul {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.task-artifacts li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  min-height: 30px;
+  padding: 6px 8px;
+  border: var(--plato-border-control);
+  border-radius: var(--plato-radius-control);
+  background: var(--plato-color-surface-raised);
+}
+
+.task-artifacts strong,
+.task-artifacts span {
+  min-width: 0;
+  overflow: hidden;
+  font-size: var(--plato-font-control);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.task-artifacts span {
+  color: var(--plato-color-companion);
+  font-weight: 800;
+}
+
 .task-approval-detail {
   display: grid;
   gap: 4px;
