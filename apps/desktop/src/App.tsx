@@ -2110,7 +2110,7 @@ export function App({
           progress: 100,
           status: "completed",
           statusMessage: "Mock task completed after approval.",
-          summary: `Completed ${resolvedTask.title} after approval.`,
+          summary: `Completed ${resolvedTask.title} after approval; retained the approved decision reference.`,
           updatedAt: new Date().toISOString(),
         },
         1200,
