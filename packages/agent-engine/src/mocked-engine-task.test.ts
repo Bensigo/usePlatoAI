@@ -7,6 +7,7 @@ import {
   createCodexSdkAgentEngineAdapter,
   createMemoryLocalTaskRepository,
   runMockedEngineBackedTask,
+  type AgentEngineAdapter,
   type LocalTaskRecord,
   type SecretReference,
   type SecretStore,
@@ -143,6 +144,71 @@ describe("mocked engine-backed task integration", () => {
     expect(task.summary).toBe("OpenAI provider auth is not configured for Codex SDK.");
     expect(task.metadata.verification).toBe(
       "Task stopped before execution because provider auth is not ready.",
+    );
+    expect(await repository.list()).toEqual([task]);
+  });
+
+  it("persists a failed task when the selected adapter returns a failed result", async () => {
+    const secretStore = new MemorySecretStore();
+    const authState = await createApiKeyProviderAuthState({
+      providerId: "openai",
+      providerDisplayName: "OpenAI",
+      apiKey: "sk-test",
+      secretStore,
+    });
+    const adapter: AgentEngineAdapter = {
+      engine: {
+        kind: "codex_sdk",
+        displayName: "Codex SDK",
+        availability: "available",
+      },
+      async getState() {
+        return {
+          status: "available",
+          reason: "Codex SDK is available.",
+        };
+      },
+      async runMockedTask() {
+        return {
+          taskId: "task-adapter-failed",
+          status: "failed",
+          summary: "Mocked adapter execution failed.",
+          output: {
+            kind: "mocked_agent_engine_result",
+            text: "The adapter reported failure.",
+          },
+          engineKind: "codex_sdk",
+          completedAt: "2026-05-21T13:12:00.000Z",
+        };
+      },
+    };
+    const adapters = createAgentEngineAdapterRegistry([adapter]);
+    const repository = createMemoryLocalTaskRepository();
+
+    const task = await runMockedEngineBackedTask({
+      provider: {
+        id: "openai",
+        displayName: "OpenAI",
+        kind: "openai",
+        authMode: "api_key",
+        authState,
+      },
+      instruction: "Summarize the current issue.",
+      authorityMode: "ask_first",
+      requiredCapabilities: ["github"],
+      adapters,
+      catalog: createAgentEngineCatalogFromAdapters(adapters),
+      secretStore,
+      repository,
+      taskId: "task-adapter-failed",
+      now: () => new Date("2026-05-21T13:12:00.000Z"),
+    });
+
+    expect(task.status).toBe("failed");
+    expect(task.summary).toBe("Mocked adapter execution failed.");
+    expect(task.result).toBeUndefined();
+    expect(task.metadata.verification).toBe(
+      "Mocked Agent Engine adapter returned a failed result.",
     );
     expect(await repository.list()).toEqual([task]);
   });

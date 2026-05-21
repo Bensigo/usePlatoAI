@@ -365,19 +365,23 @@ export async function runMockedEngineBackedTask(
       authorityMode: input.authorityMode,
       requiredCapabilities: input.requiredCapabilities,
     });
+    const completedAt = result.completedAt;
+    const isCompleted = result.status === "completed";
 
     return saveTerminalTask(input, {
       id: taskId,
       title,
-      status: "completed",
+      status: isCompleted ? "completed" : "failed",
       summary: result.summary,
-      result: result.output,
+      result: isCompleted ? result.output : undefined,
       metadata: {
         ...baseMetadata,
-        verification: "Mocked Agent Engine adapter returned a completed result.",
+        verification: isCompleted
+          ? "Mocked Agent Engine adapter returned a completed result."
+          : "Mocked Agent Engine adapter returned a failed result.",
       },
       createdAt,
-      completedAt: result.completedAt,
+      completedAt,
     });
   } catch (error) {
     return saveTerminalTask(input, {
