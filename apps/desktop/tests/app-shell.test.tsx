@@ -1037,6 +1037,10 @@ describe("desktop app shell", () => {
       ...createMockTask("task-approval", "Approve local file edit"),
       status: "waiting_for_approval" as const,
     };
+    const failedTask = {
+      ...createMockTask("task-failed", "Repair local task"),
+      status: "failed" as const,
+    };
 
     expect(
       currentTaskPresenceStateForLocalTasks([
@@ -1051,6 +1055,9 @@ describe("desktop app shell", () => {
         runningTask,
       ]),
     ).toBe("task_running");
+    expect(
+      currentTaskPresenceStateForLocalTasks([pausedTask, runningTask, failedTask]),
+    ).toBe("error");
     expect(
       currentTaskPresenceStateForLocalTasks([
         runningTask,
