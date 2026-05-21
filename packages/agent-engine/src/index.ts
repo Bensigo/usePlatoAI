@@ -72,6 +72,11 @@ export type AgentEngineKind = "codex_sdk" | "claude_agent_sdk" | "none";
 
 export type EngineAvailability = "available" | "unavailable";
 
+export type AgentEngineAdapterStateStatus =
+  | "available"
+  | "unavailable"
+  | "auth_missing";
+
 export type EngineResolutionStatus =
   | "engine_selected"
   | "engine_unavailable"
@@ -109,6 +114,33 @@ export interface AgentEngine {
   availability: EngineAvailability;
 }
 
+export interface AgentEngineAdapterState {
+  status: AgentEngineAdapterStateStatus;
+  reason: string;
+  authAvailability?: ProviderAuthAvailability;
+}
+
+export interface AgentTaskResult {
+  taskId: string;
+  status: "completed" | "failed";
+  summary: string;
+  output: {
+    kind: "mocked_agent_engine_result";
+    text: string;
+  };
+  engineKind: AgentEngineKind;
+  completedAt: string;
+}
+
+export interface AgentEngineAdapter {
+  engine: AgentEngine;
+  getState(
+    provider: ModelProvider,
+    secretStore?: SecretStore,
+  ): Promise<AgentEngineAdapterState>;
+  runMockedTask(request: AgentTaskRequest): Promise<AgentTaskResult>;
+}
+
 export interface EngineResolution {
   provider: ModelProvider;
   status: EngineResolutionStatus;
@@ -117,6 +149,11 @@ export interface EngineResolution {
 }
 
 export type AgentEngineCatalog = ReadonlyMap<AgentEngineKind, AgentEngine>;
+
+export type AgentEngineAdapterRegistry = ReadonlyMap<
+  AgentEngineKind,
+  AgentEngineAdapter
+>;
 
 export type ExecutionAuthorityMode = "ask_first" | "trusted_workspace" | "manual_only";
 
@@ -151,6 +188,91 @@ export function createAgentEngineCatalog(
   engines: readonly AgentEngine[] = defaultAgentEngines,
 ): AgentEngineCatalog {
   return new Map(engines.map((engine) => [engine.kind, engine]));
+}
+
+export function createAgentEngineAdapterRegistry(
+  adapters: readonly AgentEngineAdapter[] = [],
+): AgentEngineAdapterRegistry {
+  return new Map(adapters.map((adapter) => [adapter.engine.kind, adapter]));
+}
+
+export function createAgentEngineCatalogFromAdapters(
+  adapters: AgentEngineAdapterRegistry,
+): AgentEngineCatalog {
+  return createAgentEngineCatalog(
+    [...adapters.values()].map((adapter) => adapter.engine),
+  );
+}
+
+export function createCodexSdkAgentEngineAdapter(input?: {
+  runtimeAvailable?: boolean;
+  now?: () => Date;
+}): AgentEngineAdapter {
+  const runtimeAvailable = input?.runtimeAvailable ?? false;
+  const now = input?.now ?? (() => new Date());
+
+  return {
+    engine: {
+      kind: "codex_sdk",
+      displayName: "Codex SDK",
+      availability: runtimeAvailable ? "available" : "unavailable",
+    },
+    async getState(provider, secretStore) {
+      if (provider.kind !== "openai") {
+        return {
+          status: "unavailable",
+          reason: "Codex SDK is only mapped for OpenAI-backed providers.",
+        };
+      }
+
+      if (!runtimeAvailable) {
+        return {
+          status: "unavailable",
+          reason: "Codex SDK runtime is not available in this app build.",
+        };
+      }
+
+      if (!provider.authState) {
+        return {
+          status: "auth_missing",
+          reason: "OpenAI provider auth is not configured for Codex SDK.",
+          authAvailability: "not_configured",
+        };
+      }
+
+      const authSnapshot = await getProviderAuthAvailabilitySnapshot(
+        provider.authState,
+        secretStore,
+      );
+
+      if (authSnapshot.availability !== "ready") {
+        return {
+          status: "auth_missing",
+          reason: "OpenAI provider auth is not ready for Codex SDK.",
+          authAvailability: authSnapshot.availability,
+        };
+      }
+
+      return {
+        status: "available",
+        reason: "Codex SDK is available for OpenAI-backed Agent Engine tasks.",
+        authAvailability: authSnapshot.availability,
+      };
+    },
+    async runMockedTask(request) {
+      return {
+        taskId: request.taskId,
+        status: "completed",
+        summary: `Mocked Codex SDK completed: ${request.instruction}`,
+        output: {
+          kind: "mocked_agent_engine_result",
+          text: `Codex SDK mocked execution accepted ${request.requiredCapabilities.length} required capabilities under ${request.authorityMode}.`,
+        },
+        engineKind: "codex_sdk",
+        completedAt: now().toISOString(),
+      };
+    },
+  };
 }
 
 export async function createApiKeyProviderAuthState(input: {
