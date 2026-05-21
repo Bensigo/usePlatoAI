@@ -303,6 +303,36 @@ describe("desktop app shell", () => {
     expect(markup).not.toContain("live2d-avatar-body");
   });
 
+  it("resets the avatar fallback renderer after asset load failures", () => {
+    const idleSurface = Live2DAvatarSurface({ presenceState: "idle" });
+    const speakingSurface = Live2DAvatarSurface({ presenceState: "speaking" });
+    const idleStage = idleSurface.props.children[0];
+    const speakingStage = speakingSurface.props.children[0];
+    const idleImage = idleStage.props.children[0];
+
+    const rendererMutations: Array<[string, string]> = [];
+    const stageElement = {
+      setAttribute: (name: string, value: string) => {
+        rendererMutations.push([name, value]);
+      },
+    };
+    const imageEvent = {
+      currentTarget: {
+        closest: () => stageElement,
+      },
+    };
+
+    idleImage.props.onError(imageEvent);
+    idleImage.props.onLoad(imageEvent);
+
+    expect(rendererMutations).toEqual([
+      ["data-avatar-renderer", "fallback-presence-mark"],
+      ["data-avatar-renderer", "plato-mascot-asset"],
+    ]);
+    expect(idleStage.key).toBe("/avatar/plato/idle.png");
+    expect(speakingStage.key).toBe("/avatar/plato/speaking.png");
+  });
+
   it("renders the floating presence from an injected presence state", () => {
     const markup = renderToStaticMarkup(
       <App
