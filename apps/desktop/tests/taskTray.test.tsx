@@ -1,5 +1,5 @@
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { App } from "../src/App";
 import {
@@ -9,6 +9,7 @@ import {
   createApprovalGatedMockTask,
   createMemoryTaskStore,
   createMockTask,
+  createTauriTaskStore,
   localTaskControlsFor,
   listActiveTasks,
   resolveMockTaskApproval,
@@ -16,6 +17,19 @@ import {
   waitForMockTaskApproval,
 } from "../src/tasks";
 import { defaultCompanionSettings } from "../src/settings";
+
+const { invokeMock } = vi.hoisted(() => ({
+  invokeMock: vi.fn(),
+}));
+
+vi.mock("@tauri-apps/api/core", () => ({
+  invoke: invokeMock,
+}));
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+  invokeMock.mockReset();
+});
 
 describe("task tray and local mock tasks", () => {
   it("persists two mock tasks and exposes active progress for the tray", async () => {
@@ -161,6 +175,46 @@ describe("task tray and local mock tasks", () => {
         }),
       ]),
     );
+  });
+
+  it("maps approved artifact IDs from Tauri task audit metadata", async () => {
+    vi.stubGlobal("window", { __TAURI_INTERNALS__: {} });
+    invokeMock.mockResolvedValueOnce([
+      {
+        category: "task_metadata",
+        action: "task.completed",
+        metadata: {
+          taskId: "task-approval",
+          status: "completed",
+          approvalDecision: "approved",
+          approvedArtifactIds: ["task-approval-approved-decision"],
+        },
+        createdAt: "1970-01-01T00:00:00.000Z",
+      },
+      {
+        category: "settings",
+        action: "settings.updated",
+        metadata: {
+          taskId: "ignored",
+          approvalDecision: "approved",
+          approvedArtifactIds: ["ignored-artifact"],
+        },
+        createdAt: "1970-01-01T00:00:00.000Z",
+      },
+    ]);
+
+    await expect(createTauriTaskStore().audit()).resolves.toEqual([
+      {
+        taskId: "task-approval",
+        decision: "approved",
+        artifactIds: ["task-approval-approved-decision"],
+        status: "completed",
+        createdAt: "1970-01-01T00:00:00.000Z",
+      },
+    ]);
+    expect(invokeMock).toHaveBeenCalledWith("read_recent_audit_history", {
+      limit: 50,
+    });
   });
 
   it("retains terminal summaries and strips raw execution logs from durable task snapshots", async () => {

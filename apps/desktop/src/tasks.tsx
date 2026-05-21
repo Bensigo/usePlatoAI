@@ -387,9 +387,7 @@ export function createTauriTaskStore(): TaskStore {
           return {
             taskId: stringFrom(metadata.taskId, ""),
             decision: approvalDecisionFrom(metadata.approvalDecision),
-            artifactIds: artifactReferencesFrom(metadata.approvedArtifacts).map(
-              (artifact) => artifact.artifactId,
-            ),
+            artifactIds: taskAuditArtifactIdsFrom(metadata),
             status: localTaskStatusFrom(stringFrom(metadata.status, "running")),
             createdAt: entry.createdAt,
           };
@@ -689,6 +687,25 @@ function artifactReferencesFrom(value: unknown): TaskArtifactReference[] {
         ]
       : [];
   });
+}
+
+function taskAuditArtifactIdsFrom(metadata: Record<string, unknown>) {
+  const artifactIds = stringArrayFrom(metadata.approvedArtifactIds);
+
+  return artifactIds.length > 0
+    ? artifactIds
+    : artifactReferencesFrom(metadata.approvedArtifacts).map(
+        (artifact) => artifact.artifactId,
+      );
+}
+
+function stringArrayFrom(value: unknown) {
+  return Array.isArray(value)
+    ? value.filter(
+        (item): item is string =>
+          typeof item === "string" && item.trim().length > 0,
+      )
+    : [];
 }
 
 function artifactKindFrom(value: unknown): TaskArtifactReference["kind"] | null {
