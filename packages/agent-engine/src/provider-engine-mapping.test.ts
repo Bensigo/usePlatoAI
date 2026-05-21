@@ -51,20 +51,51 @@ describe("provider to Agent Engine mapping", () => {
   });
 
   it("maps OpenAI providers to Codex SDK when available", () => {
-    const resolution = resolveAgentEngineForProvider(openAiProvider);
+    const catalog = createAgentEngineCatalog([
+      {
+        kind: "codex_sdk",
+        displayName: "Codex SDK",
+        availability: "available",
+      },
+    ]);
+
+    const resolution = resolveAgentEngineForProvider(openAiProvider, catalog);
 
     expect(resolution.status).toBe("engine_selected");
     expect(resolution.selectedEngine?.kind).toBe("codex_sdk");
   });
 
   it("maps Anthropic/Claude providers to Claude Agent SDK when available", () => {
-    const anthropicResolution = resolveAgentEngineForProvider(anthropicProvider);
-    const claudeResolution = resolveAgentEngineForProvider(claudeProvider);
+    const catalog = createAgentEngineCatalog([
+      {
+        kind: "claude_agent_sdk",
+        displayName: "Claude Agent SDK",
+        availability: "available",
+      },
+    ]);
+    const anthropicResolution = resolveAgentEngineForProvider(
+      anthropicProvider,
+      catalog,
+    );
+    const claudeResolution = resolveAgentEngineForProvider(
+      claudeProvider,
+      catalog,
+    );
 
     expect(anthropicResolution.status).toBe("engine_selected");
     expect(anthropicResolution.selectedEngine?.kind).toBe("claude_agent_sdk");
     expect(claudeResolution.status).toBe("engine_selected");
     expect(claudeResolution.selectedEngine?.kind).toBe("claude_agent_sdk");
+  });
+
+  it("does not select SDK engines from the default catalog without runtime availability", () => {
+    const openAiResolution = resolveAgentEngineForProvider(openAiProvider);
+    const anthropicResolution = resolveAgentEngineForProvider(anthropicProvider);
+
+    expect(openAiResolution.status).toBe("engine_unavailable");
+    expect(openAiResolution.selectedEngine).toBeNull();
+    expect(anthropicResolution.status).toBe("engine_unavailable");
+    expect(anthropicResolution.selectedEngine).toBeNull();
   });
 
   it("represents local providers as endpoints without claiming Agent Engine support", () => {
