@@ -17,6 +17,7 @@ import {
   SoulEditorPanel,
   VoiceInteractionPanel,
   currentTaskPresenceStateForAction,
+  currentTaskPresenceStateForLocalTasks,
   isActiveCorrectionPromptTransition,
   isActionableCurrentTaskState,
   openControlSurfaceEntryFromEvent,
@@ -90,6 +91,7 @@ import {
   experienceTokenCss,
   experienceTokens,
 } from "../src/experienceTokens";
+import { createMockTask } from "../src/tasks";
 
 const completedSettings: CompanionSettings = {
   ...defaultCompanionSettings,
@@ -1020,6 +1022,55 @@ describe("desktop app shell", () => {
     expect(currentTaskPresenceStateForAction("cancel")).toBe("idle");
     expect(currentTaskPresenceStateForAction("approve")).toBe("task_running");
     expect(currentTaskPresenceStateForAction("reject")).toBe("idle");
+  });
+
+  it("derives current task presence from every local task status", () => {
+    const runningTask = {
+      ...createMockTask("task-running", "Patch task tray"),
+      status: "running" as const,
+    };
+    const pausedTask = {
+      ...createMockTask("task-paused", "Research OAuth flow"),
+      status: "paused" as const,
+    };
+    const approvalTask = {
+      ...createMockTask("task-approval", "Approve local file edit"),
+      status: "waiting_for_approval" as const,
+    };
+    const failedTask = {
+      ...createMockTask("task-failed", "Repair local task"),
+      status: "failed" as const,
+    };
+
+    expect(
+      currentTaskPresenceStateForLocalTasks([
+        { ...runningTask, status: "cancelled" },
+        pausedTask,
+      ]),
+    ).toBe("task_paused");
+    expect(
+      currentTaskPresenceStateForLocalTasks([
+        { ...runningTask, status: "cancelled" },
+        pausedTask,
+        runningTask,
+      ]),
+    ).toBe("task_running");
+    expect(
+      currentTaskPresenceStateForLocalTasks([pausedTask, runningTask, failedTask]),
+    ).toBe("error");
+    expect(
+      currentTaskPresenceStateForLocalTasks([
+        runningTask,
+        pausedTask,
+        approvalTask,
+      ]),
+    ).toBe("waiting_for_approval");
+    expect(
+      currentTaskPresenceStateForLocalTasks([
+        { ...runningTask, status: "completed" },
+        { ...pausedTask, status: "cancelled" },
+      ]),
+    ).toBe("idle");
   });
 
   it("only treats actionable current-task states as centered opener triggers", () => {
