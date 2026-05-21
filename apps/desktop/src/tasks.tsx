@@ -26,6 +26,14 @@ export type LocalTaskRecord = {
   updatedAt: string;
 };
 
+export type LocalTaskAction =
+  | "pause"
+  | "resume"
+  | "cancel"
+  | "advance"
+  | "complete"
+  | "fail";
+
 type TaskMetadata = {
   taskId: string;
   title: string;
@@ -153,6 +161,97 @@ export function mockApprovalTaskVisualTasks(
 }
 
 export function advanceMockTask(task: LocalTaskRecord): LocalTaskRecord {
+  return applyLocalTaskTransition(task, "advance");
+}
+
+export function applyLocalTaskTransition(
+  task: LocalTaskRecord,
+  action: LocalTaskAction,
+): LocalTaskRecord {
+  const updatedAt = new Date(0).toISOString();
+
+  if (action === "pause") {
+    assertTaskStatus(task, ["running"], action);
+
+    return {
+      ...task,
+      status: "paused",
+      statusMessage: "Mock task paused",
+      updatedAt,
+    };
+  }
+
+  if (action === "resume") {
+    assertTaskStatus(task, ["paused"], action);
+
+    return {
+      ...task,
+      status: "running",
+      statusMessage: "Mock task resumed",
+      updatedAt,
+    };
+  }
+
+  if (action === "cancel") {
+    assertTaskStatus(task, ["running", "paused", "waiting_for_approval"], action);
+
+    return {
+      ...task,
+      status: "cancelled",
+      statusMessage: "Mock task cancelled",
+      summary: `Cancelled ${task.title} at ${task.progress}%.`,
+      updatedAt,
+    };
+  }
+
+  if (action === "advance") {
+    assertTaskStatus(task, ["running"], action);
+    return advancedTask(task, updatedAt);
+  }
+
+  if (action === "complete") {
+    assertTaskStatus(task, ["running"], action);
+
+    return {
+      ...task,
+      progress: 100,
+      status: "completed",
+      statusMessage: "Mock task completed",
+      summary: `Completed ${task.title} with mock local progress.`,
+      updatedAt,
+    };
+  }
+
+  assertTaskStatus(task, ["running", "waiting_for_approval"], action);
+
+  return {
+    ...task,
+    status: "failed",
+    statusMessage: "Mock task failed",
+    updatedAt,
+  };
+}
+
+export function localTaskControlsFor(task: LocalTaskRecord): LocalTaskAction[] {
+  if (task.status === "running") {
+    return ["pause", "cancel"];
+  }
+
+  if (task.status === "waiting_for_approval") {
+    return ["cancel"];
+  }
+
+  if (task.status === "paused") {
+    return ["resume", "cancel"];
+  }
+
+  return [];
+}
+
+function advancedTask(
+  task: LocalTaskRecord,
+  updatedAt: string,
+): LocalTaskRecord {
   const nextProgress = Math.min(100, task.progress + 25);
 
   return {
@@ -165,8 +264,18 @@ export function advanceMockTask(task: LocalTaskRecord): LocalTaskRecord {
       nextProgress >= 100
         ? `Completed ${task.title} with mock local progress.`
         : task.summary,
-    updatedAt: new Date(0).toISOString(),
+    updatedAt,
   };
+}
+
+function assertTaskStatus(
+  task: LocalTaskRecord,
+  allowedStatuses: LocalTaskStatus[],
+  action: LocalTaskAction,
+) {
+  if (!allowedStatuses.includes(task.status)) {
+    throw new Error(`Cannot ${action} a ${task.status} local task`);
+  }
 }
 
 export function listActiveTasks(tasks: LocalTaskRecord[]) {
@@ -267,6 +376,7 @@ export function TaskTrayPanel({
   onApproveTask,
   onRejectTask,
   onDismissApproval,
+  onTaskAction,
 }: {
   tasks: LocalTaskRecord[];
   selectedTaskId?: string | null;
@@ -275,6 +385,7 @@ export function TaskTrayPanel({
   onApproveTask?: (taskId: string) => void;
   onRejectTask?: (taskId: string) => void;
   onDismissApproval?: (taskId: string) => void;
+  onTaskAction: (taskId: string, action: LocalTaskAction) => void;
 }) {
   const selectedTask =
     tasks.find((task) => task.taskId === selectedTaskId) ?? tasks[0] ?? null;
@@ -359,10 +470,33 @@ export function TaskTrayPanel({
             </div>
           ) : null}
           {selectedTask.summary ? <p>{selectedTask.summary}</p> : null}
+          <div className="task-detail-actions">
+            {localTaskControlsFor(selectedTask).map((action) => (
+              <button
+                key={action}
+                type="button"
+                onClick={() => onTaskAction(selectedTask.taskId, action)}
+              >
+                {taskActionLabel(action)}
+              </button>
+            ))}
+          </div>
         </section>
       ) : null}
     </section>
   );
+}
+
+function taskActionLabel(action: LocalTaskAction) {
+  if (action === "pause") {
+    return "Pause task";
+  }
+
+  if (action === "resume") {
+    return "Resume task";
+  }
+
+  return "Cancel task";
 }
 
 function taskRecordToMetadata(task: LocalTaskRecord): TaskMetadata {

@@ -213,7 +213,8 @@ button {
 }
 
 .task-tray-header button,
-.task-list button {
+.task-list button,
+.task-detail-actions button {
   border: var(--plato-border-control);
   border-radius: var(--plato-radius-control);
   background: var(--plato-color-surface-raised);
@@ -230,7 +231,8 @@ button {
 
 .task-tray-header button:hover,
 .task-list button:hover,
-.task-list button.active {
+.task-list button.active,
+.task-detail-actions button:hover {
   background: var(--plato-color-control-hover);
   border-color: var(--plato-color-companion);
 }
@@ -330,6 +332,19 @@ button {
   padding: 0 9px;
   background: var(--plato-color-surface-raised);
   color: var(--plato-color-text);
+  font-size: var(--plato-font-control);
+  font-weight: 800;
+}
+
+.task-detail-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--plato-space-xs);
+}
+
+.task-detail-actions button {
+  min-height: 32px;
+  padding: 0 10px;
   font-size: var(--plato-font-control);
   font-weight: 800;
 }

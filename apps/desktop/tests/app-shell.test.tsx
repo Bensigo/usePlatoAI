@@ -18,8 +18,10 @@ import {
   SoulEditorPanel,
   VoiceInteractionPanel,
   currentTaskPresenceStateForAction,
+  currentTaskPresenceStateForLocalTasks,
   isActiveCorrectionPromptTransition,
   isActionableCurrentTaskState,
+  loadPersistedLocalTasks,
   openControlSurfaceEntryFromEvent,
   renderedPresenceStateFor,
   shouldShowCenteredChatPanelOpener,
@@ -63,6 +65,11 @@ import {
   defaultExecutionAuthorityPolicy,
   decisionForActionImpact,
 } from "../src/settings";
+import {
+  createMemoryTaskStore,
+  createMockTask,
+  type LocalTaskRecord,
+} from "../src/tasks";
 import {
   createVoiceOutputSession,
   mockVoiceResponse,
@@ -1084,6 +1091,116 @@ describe("desktop app shell", () => {
     expect(currentTaskPresenceStateForAction("approve")).toBe("task_running");
     expect(currentTaskPresenceStateForAction("reject")).toBe("idle");
     expect(currentTaskPresenceStateForAction("dismiss")).toBe("idle");
+  });
+
+  it("derives current task presence from every local task status", () => {
+    const runningTask = {
+      ...createMockTask("task-running", "Patch task tray"),
+      status: "running" as const,
+    };
+    const pausedTask = {
+      ...createMockTask("task-paused", "Research OAuth flow"),
+      status: "paused" as const,
+    };
+    const approvalTask = {
+      ...createMockTask("task-approval", "Approve local file edit"),
+      status: "waiting_for_approval" as const,
+    };
+    const failedTask = {
+      ...createMockTask("task-failed", "Repair local task"),
+      status: "failed" as const,
+    };
+
+    expect(
+      currentTaskPresenceStateForLocalTasks([
+        { ...runningTask, status: "cancelled" },
+        pausedTask,
+      ]),
+    ).toBe("task_paused");
+    expect(
+      currentTaskPresenceStateForLocalTasks([
+        { ...runningTask, status: "cancelled" },
+        pausedTask,
+        runningTask,
+      ]),
+    ).toBe("task_running");
+    expect(
+      currentTaskPresenceStateForLocalTasks([pausedTask, runningTask, failedTask]),
+    ).toBe("error");
+    expect(
+      currentTaskPresenceStateForLocalTasks([
+        runningTask,
+        pausedTask,
+        approvalTask,
+      ]),
+    ).toBe("waiting_for_approval");
+    expect(
+      currentTaskPresenceStateForLocalTasks([
+        { ...runningTask, status: "completed" },
+        { ...pausedTask, status: "cancelled" },
+      ]),
+    ).toBe("idle");
+  });
+
+  it("loads persisted local tasks into presence with an injected task store", async () => {
+    const persistedTask = {
+      ...createMockTask("task-approval", "Approve local action"),
+      status: "waiting_for_approval" as const,
+    };
+    const taskStore = createMemoryTaskStore([persistedTask]);
+    const presenceStateSource = createMemoryPresenceStateSource();
+    let tasks: LocalTaskRecord[] = [];
+    let selectedTaskId: string | null = null;
+
+    await loadPersistedLocalTasks({
+      taskStore,
+      presenceStateSource,
+      setTasks: (nextTasks) => {
+        tasks =
+          typeof nextTasks === "function" ? nextTasks(tasks) : nextTasks;
+      },
+      setSelectedTaskId: (nextSelectedTaskId) => {
+        selectedTaskId =
+          typeof nextSelectedTaskId === "function"
+            ? nextSelectedTaskId(selectedTaskId)
+            : nextSelectedTaskId;
+      },
+    });
+
+    expect(tasks).toEqual([persistedTask]);
+    expect(selectedTaskId).toBe("task-approval");
+    expect(presenceStateSource.getSnapshot().state).toBe("waiting_for_approval");
+  });
+
+  it("loads a failed persisted local task into repair presence", async () => {
+    const persistedTask = {
+      ...createMockTask("task-failed", "Repair local task"),
+      status: "failed" as const,
+      statusMessage: "Task failed and needs repair.",
+    };
+    const taskStore = createMemoryTaskStore([persistedTask]);
+    const presenceStateSource = createMemoryPresenceStateSource();
+    let tasks: LocalTaskRecord[] = [];
+    let selectedTaskId: string | null = null;
+
+    await loadPersistedLocalTasks({
+      taskStore,
+      presenceStateSource,
+      setTasks: (nextTasks) => {
+        tasks =
+          typeof nextTasks === "function" ? nextTasks(tasks) : nextTasks;
+      },
+      setSelectedTaskId: (nextSelectedTaskId) => {
+        selectedTaskId =
+          typeof nextSelectedTaskId === "function"
+            ? nextSelectedTaskId(selectedTaskId)
+            : nextSelectedTaskId;
+      },
+    });
+
+    expect(tasks).toEqual([persistedTask]);
+    expect(selectedTaskId).toBe("task-failed");
+    expect(presenceStateSource.getSnapshot().state).toBe("error");
   });
 
   it("only treats actionable current-task states as centered opener triggers", () => {
