@@ -247,4 +247,43 @@ describe("mocked engine-backed task integration", () => {
     expect(task).not.toHaveProperty("providerId");
     expect(task).not.toHaveProperty("engineKind");
   });
+
+  it("generates distinct task ids for tasks created at the same time", async () => {
+    const secretStore = new MemorySecretStore();
+    const authState = await createApiKeyProviderAuthState({
+      providerId: "openai",
+      providerDisplayName: "OpenAI",
+      apiKey: "sk-test",
+      secretStore,
+    });
+    const adapter = createCodexSdkAgentEngineAdapter({
+      runtimeAvailable: true,
+      now: () => new Date("2026-05-21T13:20:00.000Z"),
+    });
+    const adapters = createAgentEngineAdapterRegistry([adapter]);
+    const repository = createMemoryLocalTaskRepository();
+    const input = {
+      provider: {
+        id: "openai",
+        displayName: "OpenAI",
+        kind: "openai" as const,
+        authMode: "api_key" as const,
+        authState,
+      },
+      instruction: "Summarize the current issue.",
+      authorityMode: "ask_first" as const,
+      requiredCapabilities: ["github"],
+      adapters,
+      catalog: createAgentEngineCatalogFromAdapters(adapters),
+      secretStore,
+      repository,
+      now: () => new Date("2026-05-21T13:20:00.000Z"),
+    };
+
+    const firstTask = await runMockedEngineBackedTask(input);
+    const secondTask = await runMockedEngineBackedTask(input);
+
+    expect(firstTask.id).not.toBe(secondTask.id);
+    expect(await repository.list()).toHaveLength(2);
+  });
 });

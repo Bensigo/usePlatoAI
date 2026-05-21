@@ -95,6 +95,27 @@ describe("provider settings UI", () => {
   });
 
   it("runs a mocked engine-backed task through the task tray", async () => {
+    const settings = renderSurface();
+
+    await settings.selectProvider("openai");
+    document
+      .querySelector<HTMLButtonElement>("[data-action='launch-mocked-task']")
+      ?.click();
+
+    expect(document.body.textContent).toContain("Running");
+
+    const task = await settings.currentTask;
+
+    expect(task?.status).toBe("completed");
+    expect(factValue("Task status")).toBe("Completed");
+    expect(factValue("Task result")).toContain("Mocked Codex SDK completed");
+    expect(factValue("Cost")).toBe(
+      "Mocked execution only; no provider API call or token spend occurred.",
+    );
+    expect(JSON.stringify(task)).not.toContain("codex_sdk");
+  });
+
+  it("can run a mocked engine-backed task through injected provider configuration", async () => {
     const secretStore = new MemorySecretStore();
     const authState = await createApiKeyProviderAuthState({
       providerId: "openai",
@@ -115,13 +136,13 @@ describe("provider settings UI", () => {
           costWarning: "Mocked execution records cost metadata without spend.",
         },
       ],
-      adapters: [
+      mockedTaskAdapters: [
         createCodexSdkAgentEngineAdapter({
           runtimeAvailable: true,
           now: () => new Date("2026-05-21T13:00:00.000Z"),
         }),
       ],
-      secretStore,
+      mockedTaskSecretStore: secretStore,
       now: () => new Date("2026-05-21T13:00:00.000Z"),
     });
 
@@ -147,8 +168,15 @@ describe("provider settings UI", () => {
   });
 
   it("surfaces unavailable engines in the task tray instead of doing nothing", async () => {
-    const settings = renderSurface();
+    const settings = renderProviderSettings(document.createElement("main"), {
+      mockedTaskAdapters: [
+        createCodexSdkAgentEngineAdapter({
+          runtimeAvailable: false,
+        }),
+      ],
+    });
 
+    document.body.replaceChildren(settings.root);
     await settings.selectProvider("openai");
     document
       .querySelector<HTMLButtonElement>("[data-action='launch-mocked-task']")

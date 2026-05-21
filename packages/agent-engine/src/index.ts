@@ -211,6 +211,8 @@ export const agentEngineTaskConcepts = [
   "requiredCapabilities",
 ] as const satisfies readonly (keyof AgentTaskRequest)[];
 
+let fallbackTaskIdSequence = 0;
+
 export interface RunMockedEngineBackedTaskInput {
   provider: ModelProvider;
   instruction: string;
@@ -421,7 +423,13 @@ async function saveTask(
 }
 
 function createTaskId(now: () => Date): string {
-  return `task-${now().getTime().toString(36)}`;
+  const randomId = globalThis.crypto?.randomUUID?.();
+  if (randomId) {
+    return `task-${randomId}`;
+  }
+
+  fallbackTaskIdSequence += 1;
+  return `task-${now().getTime().toString(36)}-${fallbackTaskIdSequence.toString(36)}`;
 }
 
 export function createCodexSdkAgentEngineAdapter(input?: {

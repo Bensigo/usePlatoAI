@@ -52,6 +52,21 @@ class ProviderSettingsSecretStore implements SecretStore {
   }
 }
 
+class MockedTaskSecretStore implements SecretStore {
+  read(reference: SecretReference): string | null {
+    if (reference.id.startsWith("provider:") && reference.id.endsWith(":api_key")) {
+      return "mocked-provider-secret";
+    }
+
+    return null;
+  }
+
+  write(reference: SecretReference, value: string): void {
+    void reference;
+    void value;
+  }
+}
+
 const openAiSecretReference = createProviderSecretReference({
   providerId: "openai",
   authMode: "api_key",
@@ -65,10 +80,16 @@ const anthropicSecretReference = createProviderSecretReference({
 });
 
 const defaultProviderSettingsSecretStore = new ProviderSettingsSecretStore();
+const defaultMockedTaskSecretStore = new MockedTaskSecretStore();
 
 const defaultRuntimeAdapters = [
   createCodexSdkAgentEngineAdapter({ runtimeAvailable: false }),
   createClaudeAgentSdkAgentEngineAdapter({ runtimeAvailable: false }),
+] satisfies AgentEngineAdapter[];
+
+const defaultMockedTaskAdapters = [
+  createCodexSdkAgentEngineAdapter({ runtimeAvailable: true }),
+  createClaudeAgentSdkAgentEngineAdapter({ runtimeAvailable: true }),
 ] satisfies AgentEngineAdapter[];
 
 const defaultProviders: ProviderOption[] = [
@@ -149,7 +170,9 @@ const defaultProviders: ProviderOption[] = [
 export interface ProviderSettingsOptions {
   providers?: ProviderOption[];
   adapters?: readonly AgentEngineAdapter[];
+  mockedTaskAdapters?: readonly AgentEngineAdapter[];
   secretStore?: SecretStore;
+  mockedTaskSecretStore?: SecretStore;
   repository?: LocalTaskRepository;
   now?: () => Date;
 }
@@ -163,7 +186,13 @@ export function renderProviderSettings(
   const adapters = createAgentEngineAdapterRegistry(
     options.adapters ?? defaultRuntimeAdapters,
   );
+  const mockedTaskAdapters = createAgentEngineAdapterRegistry(
+    options.mockedTaskAdapters ?? defaultMockedTaskAdapters,
+  );
+  const mockedTaskSecretStore =
+    options.mockedTaskSecretStore ?? defaultMockedTaskSecretStore;
   const catalog = createAgentEngineCatalogFromAdapters(adapters);
+  const mockedTaskCatalog = createAgentEngineCatalogFromAdapters(mockedTaskAdapters);
   const repository =
     options.repository ??
     createMemoryLocalTaskRepository({
@@ -403,9 +432,9 @@ export function renderProviderSettings(
       instruction: "Summarize the current issue.",
       authorityMode: "ask_first",
       requiredCapabilities: ["github"],
-      adapters,
-      catalog,
-      secretStore,
+      adapters: mockedTaskAdapters,
+      catalog: mockedTaskCatalog,
+      secretStore: mockedTaskSecretStore,
       repository,
       now: options.now,
       onTaskChanged: async (task) => {
