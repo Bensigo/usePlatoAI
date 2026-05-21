@@ -8,6 +8,12 @@ function renderSurface() {
   return renderProviderSettings(root);
 }
 
+function factValue(label: string) {
+  const labels = [...document.querySelectorAll("dt")];
+  const match = labels.find((node) => node.textContent === label);
+  return match?.nextElementSibling?.textContent ?? "";
+}
+
 describe("provider settings UI", () => {
   it("distinguishes provider auth modes and shows OpenAI with Codex SDK cost warnings", async () => {
     const settings = renderSurface();
@@ -15,9 +21,9 @@ describe("provider settings UI", () => {
     await settings.selectProvider("openai");
 
     expect(document.body.textContent).toContain("API key provider");
-    expect(document.body.textContent).toContain("Codex SDK");
-    expect(document.body.textContent).toContain("Available");
-    expect(document.body.textContent).toContain("Auth ready");
+    expect(factValue("Selected engine")).toBe("Codex SDK");
+    expect(factValue("Engine state")).toBe("Available");
+    expect(factValue("Auth status")).toBe("Auth ready");
     expect(document.body.textContent).toContain("Token and API usage may create spend");
   });
 
@@ -27,9 +33,9 @@ describe("provider settings UI", () => {
     await settings.selectProvider("claude");
 
     expect(document.body.textContent).toContain("Local SDK auth");
-    expect(document.body.textContent).toContain("Claude Agent SDK");
-    expect(document.body.textContent).toContain("Available");
-    expect(document.body.textContent).toContain("Signed in as operator@example.com");
+    expect(factValue("Selected engine")).toBe("Claude Agent SDK");
+    expect(factValue("Engine state")).toBe("Available");
+    expect(factValue("Auth status")).toBe("Signed in as operator@example.com");
     expect(document.body.textContent).toContain("Subscription-backed local auth is separate");
   });
 
@@ -39,8 +45,12 @@ describe("provider settings UI", () => {
     await settings.selectProvider("claude-pro");
 
     expect(document.body.textContent).toContain("Subscription-backed local auth");
-    expect(document.body.textContent).toContain("Claude Agent SDK");
-    expect(document.body.textContent).toContain("Auth missing");
+    expect(factValue("Selected engine")).toBe("Claude Agent SDK");
+    expect(factValue("Engine state")).toBe("Unavailable");
+    expect(factValue("Reason")).toContain(
+      "Claude Agent SDK requires Anthropic/Claude provider auth to use api_key or local_sdk_auth.",
+    );
+    expect(factValue("Auth status")).toContain("Auth missing");
     expect(document.body.textContent).toContain(
       "Subscription access does not equal API access unless the local SDK exposes supported auth.",
     );
@@ -52,8 +62,8 @@ describe("provider settings UI", () => {
     await settings.selectProvider("local");
 
     expect(document.body.textContent).toContain("Local model endpoint");
-    expect(document.body.textContent).toContain("http://localhost:11434");
-    expect(document.body.textContent).toContain("No Agent Engine supported yet");
+    expect(factValue("Endpoint")).toBe("http://localhost:11434");
+    expect(factValue("Engine state")).toBe("No Agent Engine supported yet");
     expect(document.body.textContent).toContain(
       "Local providers can reduce API cost, but agent-engine task execution is unavailable until implemented.",
     );
