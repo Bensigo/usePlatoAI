@@ -1047,6 +1047,11 @@ describe("desktop app shell", () => {
     ).toBe("waiting_for_approval");
     expect(
       currentTaskPresenceStateForLocalTasks([
+        { ...runningTask, status: "failed" },
+      ]),
+    ).toBe("error");
+    expect(
+      currentTaskPresenceStateForLocalTasks([
         { ...runningTask, status: "completed" },
       ]),
     ).toBe("idle");
@@ -1080,6 +1085,37 @@ describe("desktop app shell", () => {
     expect(tasks).toEqual([persistedTask]);
     expect(selectedTaskId).toBe("task-approval");
     expect(presenceStateSource.getSnapshot().state).toBe("waiting_for_approval");
+  });
+
+  it("loads a failed persisted local task into repair presence", async () => {
+    const persistedTask = {
+      ...createMockTask("task-failed", "Repair local task"),
+      status: "failed" as const,
+      statusMessage: "Task failed and needs repair.",
+    };
+    const taskStore = createMemoryTaskStore([persistedTask]);
+    const presenceStateSource = createMemoryPresenceStateSource();
+    let tasks: LocalTaskRecord[] = [];
+    let selectedTaskId: string | null = null;
+
+    await loadPersistedLocalTasks({
+      taskStore,
+      presenceStateSource,
+      setTasks: (nextTasks) => {
+        tasks =
+          typeof nextTasks === "function" ? nextTasks(tasks) : nextTasks;
+      },
+      setSelectedTaskId: (nextSelectedTaskId) => {
+        selectedTaskId =
+          typeof nextSelectedTaskId === "function"
+            ? nextSelectedTaskId(selectedTaskId)
+            : nextSelectedTaskId;
+      },
+    });
+
+    expect(tasks).toEqual([persistedTask]);
+    expect(selectedTaskId).toBe("task-failed");
+    expect(presenceStateSource.getSnapshot().state).toBe("error");
   });
 
   it("only treats actionable current-task states as centered opener triggers", () => {
