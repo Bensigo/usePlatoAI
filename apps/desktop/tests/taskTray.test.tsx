@@ -6,6 +6,7 @@ import {
   TaskTrayPanel,
   applyLocalTaskTransition,
   advanceMockTask,
+  companionTaskNotificationFor,
   createApprovalGatedMockTask,
   createMemoryTaskStore,
   createMockTask,
@@ -13,6 +14,7 @@ import {
   localTaskControlsFor,
   listActiveTasks,
   resolveMockTaskApproval,
+  taskNotificationPolicyFor,
   type LocalTaskRecord,
   waitForMockTaskApproval,
 } from "../src/tasks";
@@ -332,6 +334,98 @@ describe("task tray and local mock tasks", () => {
     expect(trayMarkup).toContain("Dismiss");
     expect(appMarkup).toContain("Open current task controls");
     expect(appMarkup).toContain("Approval needed");
+  });
+
+  it("maps task statuses to notification tiers in domain logic", () => {
+    const runningTask = createMockTask("task-running", "Patch task tray");
+    const pausedTask = {
+      ...runningTask,
+      taskId: "task-paused",
+      status: "paused" as const,
+    };
+    const completedTask = {
+      ...runningTask,
+      taskId: "task-completed",
+      status: "completed" as const,
+      progress: 100,
+    };
+    const cancelledTask = {
+      ...runningTask,
+      taskId: "task-cancelled",
+      status: "cancelled" as const,
+    };
+    const failedTask = {
+      ...runningTask,
+      taskId: "task-failed",
+      status: "failed" as const,
+      statusMessage: "Mock task failed",
+    };
+    const approvalTask = waitForMockTaskApproval(
+      createApprovalGatedMockTask("task-approval", "Submit browser form"),
+    );
+
+    expect(taskNotificationPolicyFor(runningTask)).toMatchObject({
+      tier: "quiet",
+      surfacesNearCompanion: false,
+      interruptsCompanionInteraction: false,
+    });
+    expect(taskNotificationPolicyFor(pausedTask).tier).toBe("quiet");
+    expect(taskNotificationPolicyFor(completedTask)).toMatchObject({
+      tier: "quiet",
+      label: "Completed quietly",
+    });
+    expect(taskNotificationPolicyFor(cancelledTask).tier).toBe("quiet");
+    expect(taskNotificationPolicyFor(failedTask)).toMatchObject({
+      tier: "attention",
+      surfacesNearCompanion: true,
+      interruptsCompanionInteraction: false,
+    });
+    expect(taskNotificationPolicyFor(approvalTask)).toMatchObject({
+      tier: "urgent",
+      surfacesNearCompanion: true,
+      interruptsCompanionInteraction: true,
+    });
+    expect(companionTaskNotificationFor([failedTask, approvalTask])).toMatchObject({
+      tier: "urgent",
+      label: "Approval needed",
+    });
+  });
+
+  it("keeps quiet progress in the tray while surfacing approval and failure tiers", () => {
+    const runningTask = {
+      ...createMockTask("task-running", "Research OAuth flow"),
+      progress: 45,
+    };
+    const approvalTask = waitForMockTaskApproval(
+      createApprovalGatedMockTask("task-approval", "Submit browser form"),
+    );
+    const failedTask = {
+      ...createMockTask("task-failed", "Patch task tray"),
+      status: "failed" as const,
+      progress: 58,
+      statusMessage: "Mock dependency failed; inspect detail for repair.",
+    };
+
+    const markup = renderToStaticMarkup(
+      <TaskTrayPanel
+        tasks={[runningTask, approvalTask, failedTask]}
+        selectedTaskId="task-running"
+        onStartMockTasks={() => undefined}
+        onSelectTask={() => undefined}
+        onApproveTask={() => undefined}
+        onRejectTask={() => undefined}
+        onDismissApproval={() => undefined}
+        onTaskAction={() => undefined}
+      />,
+    );
+
+    expect(markup).toContain('data-notification-tier="quiet"');
+    expect(markup).toContain("running · Quiet update");
+    expect(markup).toContain('data-notification-tier="urgent"');
+    expect(markup).toContain("Approval needed");
+    expect(markup).toContain('data-notification-tier="attention"');
+    expect(markup).toContain("Needs repair");
+    expect(markup).toContain("Mock dependency failed; inspect detail for repair.");
   });
 
   it("pauses, resumes, completes, fails, and rejects invalid task transitions", () => {

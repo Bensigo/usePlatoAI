@@ -24,6 +24,7 @@ import {
   loadPersistedLocalTasks,
   openControlSurfaceEntryFromEvent,
   renderedPresenceStateFor,
+  shouldSurfaceTaskStateNearCompanion,
   shouldShowCenteredChatPanelOpener,
 } from "../src/App";
 import {
@@ -928,7 +929,7 @@ describe("desktop app shell", () => {
     expect(markup).not.toContain("Listening through local mock voice");
   });
 
-  it("keeps paused task controls reachable while voice is idle", () => {
+  it("keeps paused task controls out of the companion surface while voice is idle", () => {
     const markup = renderToStaticMarkup(
       <App
         initialSettings={completedSettings}
@@ -941,9 +942,9 @@ describe("desktop app shell", () => {
         voiceInteractionSessionState: "idle",
         currentTaskState: presenceStateSnapshot("task_paused"),
       }),
-    ).toBe(true);
-    expect(markup).toContain("Open current task controls: Task paused");
-    expect(markup).toContain("Task paused");
+    ).toBe(false);
+    expect(markup).not.toContain("Open current task controls: Task paused");
+    expect(markup).toContain("presence-task_paused");
     expect(markup).not.toContain("presence-sound-wave");
   });
 
@@ -965,7 +966,7 @@ describe("desktop app shell", () => {
     expect(speakingMarkup).not.toContain("presence-thinking-indicator");
   });
 
-  it("renders the centered panel opener for active task state while voice is idle", () => {
+  it("keeps active task progress quiet while surfacing approval and failure states", () => {
     const runningMarkup = renderToStaticMarkup(
       <App
         initialSettings={completedSettings}
@@ -984,15 +985,27 @@ describe("desktop app shell", () => {
         initialPresenceState="waitingApproval"
       />,
     );
+    const failedTask = {
+      ...createMockTask("task-failed", "Patch task tray"),
+      status: "failed" as const,
+      statusMessage: "Mock task failed",
+    };
+    const failedMarkup = renderToStaticMarkup(
+      <App initialSettings={completedSettings} initialTasks={[failedTask]} />,
+    );
 
-    expect(runningMarkup).toContain("Open current task controls: Task running");
-    expect(runningMarkup).toContain("Task running");
+    expect(runningMarkup).not.toContain(
+      "Open current task controls: Task running",
+    );
+    expect(runningMarkup).toContain("presence-task_running");
     expect(approvalMarkup).toContain(
       "Open current task controls: Waiting for approval",
     );
     expect(legacyApprovalMarkup).toContain(
       "Open current task controls: Waiting for approval",
     );
+    expect(failedMarkup).toContain("Open current task controls: Needs repair");
+    expect(failedMarkup).toContain("Mock task failed");
   });
 
   it("renders a centered chat panel with transcript and running-task controls", () => {
@@ -1021,6 +1034,26 @@ describe("desktop app shell", () => {
     expect(markup).not.toContain("Settings");
     expect(markup).not.toContain("Memory control");
     expect(markup).not.toContain("Provider");
+  });
+
+  it("renders a non-blocking failed-task notice in the centered panel", () => {
+    const markup = renderToStaticMarkup(
+      <CenteredChatPanel
+        currentTaskState={{
+          state: "error",
+          label: "Needs repair",
+          rendererHint: "error",
+        }}
+        voiceInteraction={defaultVoiceInteractionSnapshot}
+        onDismiss={() => undefined}
+      />,
+    );
+
+    expect(markup).toContain("Task notification");
+    expect(markup).toContain("Needs repair");
+    expect(markup).not.toContain("Approve");
+    expect(markup).not.toContain("Pause");
+    expect(markup).not.toContain("Cancel");
   });
 
   it("shows and wires approval controls while the centered panel waits for approval", () => {
@@ -1204,11 +1237,18 @@ describe("desktop app shell", () => {
   });
 
   it("only treats actionable current-task states as centered opener triggers", () => {
-    expect(isActionableCurrentTaskState("task_running")).toBe(true);
+    expect(isActionableCurrentTaskState("task_running")).toBe(false);
     expect(isActionableCurrentTaskState("waiting_for_approval")).toBe(true);
     expect(isActionableCurrentTaskState("waitingApproval")).toBe(true);
+    expect(isActionableCurrentTaskState("error")).toBe(true);
     expect(isActionableCurrentTaskState("task_paused")).toBe(false);
     expect(isActionableCurrentTaskState("idle")).toBe(false);
+    expect(shouldSurfaceTaskStateNearCompanion("task_running")).toBe(false);
+    expect(shouldSurfaceTaskStateNearCompanion("task_paused")).toBe(false);
+    expect(shouldSurfaceTaskStateNearCompanion("waiting_for_approval")).toBe(
+      true,
+    );
+    expect(shouldSurfaceTaskStateNearCompanion("error")).toBe(true);
   });
 
   it("keeps the compact bubble styling native and animated", () => {

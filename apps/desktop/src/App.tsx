@@ -95,6 +95,7 @@ import { experienceTokenCss } from "./experienceTokens";
 import {
   TaskTrayPanel,
   applyLocalTaskTransition,
+  companionTaskNotificationFor,
   createMockTask,
   resolveMockTaskApproval,
   createTauriTaskStore,
@@ -197,9 +198,9 @@ export type CurrentTaskPanelAction =
 
 export function isActionableCurrentTaskState(state: string) {
   return (
-    state === "task_running" ||
     state === "waiting_for_approval" ||
-    state === "waitingApproval"
+    state === "waitingApproval" ||
+    state === "error"
   );
 }
 
@@ -270,7 +271,16 @@ export function isCurrentTaskControlState(state: string) {
     state === "task_running" ||
     state === "task_paused" ||
     state === "waiting_for_approval" ||
-    state === "waitingApproval"
+    state === "waitingApproval" ||
+    state === "error"
+  );
+}
+
+export function shouldSurfaceTaskStateNearCompanion(state: string) {
+  return (
+    state === "waiting_for_approval" ||
+    state === "waitingApproval" ||
+    state === "error"
   );
 }
 
@@ -283,7 +293,7 @@ export function shouldShowCenteredChatPanelOpener({
 }) {
   return (
     voiceInteractionSessionState !== "idle" ||
-    isCurrentTaskControlState(currentTaskState.state)
+    shouldSurfaceTaskStateNearCompanion(currentTaskState.state)
   );
 }
 
@@ -1049,7 +1059,9 @@ export function CenteredChatPanel({
     currentTaskState.state === "waiting_for_approval" ||
     currentTaskState.state === "waitingApproval";
   const isWorkPaused = currentTaskState.state === "task_paused";
-  const showsCurrentTask = isWorkRunning || isWaitingForApproval || isWorkPaused;
+  const isTaskFailure = currentTaskState.state === "error";
+  const showsCurrentTask =
+    isWorkRunning || isWaitingForApproval || isWorkPaused || isTaskFailure;
   const transcript = voiceInteraction.transcript || "No voice input yet.";
   const latestUserMessage =
     voiceInteraction.submittedFallbackText || voiceInteraction.transcript;
@@ -1123,7 +1135,7 @@ export function CenteredChatPanel({
           aria-label="Current task controls"
         >
           <div>
-            <strong>Current task</strong>
+            <strong>{isTaskFailure ? "Task notification" : "Current task"}</strong>
             <p>{currentTaskState.label}</p>
           </div>
           {isWorkRunning ? (
@@ -2272,13 +2284,20 @@ export function App({
   }
 
   const currentApprovalTask = findCurrentApprovalTask();
+  const companionTaskNotification = companionTaskNotificationFor(tasks);
   const taskAwarePresence: PresenceStateSnapshot = currentApprovalTask
     ? {
         state: "waiting_for_approval",
         label: "Approval needed",
         rendererHint: "approval",
       }
-    : presence;
+    : companionTaskNotification?.tier === "attention"
+      ? {
+          state: "error",
+          label: companionTaskNotification.label,
+          rendererHint: "error",
+        }
+      : presence;
 
   const renderedPresenceState = renderedPresenceStateFor({
     audioActivationState: audioActivation.state,
