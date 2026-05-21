@@ -4,6 +4,8 @@
   "version": "0.0.0",
   "identifier": "ai.useplato.desktop",
   "build": {
+    "beforeDevCommand": "pnpm dev",
+    "beforeBuildCommand": "pnpm build",
     "devUrl": "http://127.0.0.1:4173",
     "frontendDist": "../dist"
   },
@@ -28,4 +30,3 @@
     "targets": "app"
   }
 }
-

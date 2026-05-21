@@ -2,10 +2,20 @@
   "name": "@useplatoai/desktop",
   "version": "0.0.0",
   "private": true,
+  "type": "module",
   "scripts": {
-    "desktop": "tauri dev"
+    "dev": "vite --host 127.0.0.1 --port 4173 --strictPort",
+    "build": "vite build",
+    "desktop": "tauri dev",
+    "test": "vitest run --environment jsdom",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@useplatoai/agent-engine": "workspace:*"
   },
   "devDependencies": {
-    "@tauri-apps/cli": "2.11.1"
+    "@tauri-apps/cli": "2.11.1",
+    "jsdom": "27.2.0",
+    "vite": "7.2.4"
   }
 }
