@@ -22,20 +22,25 @@ describe("provider settings UI", () => {
 
     expect(document.body.textContent).toContain("API key provider");
     expect(factValue("Selected engine")).toBe("Codex SDK");
-    expect(factValue("Engine state")).toBe("Available");
-    expect(factValue("Auth status")).toBe("Auth ready");
+    expect(factValue("Engine state")).toBe("Unavailable");
+    expect(factValue("Auth status")).toBe(
+      "Auth missing: stored secret is not available",
+    );
+    expect(factValue("Reason")).toContain("mapped Agent Engine is not available");
     expect(document.body.textContent).toContain("Token and API usage may create spend");
   });
 
-  it("switches Anthropic/Claude providers to Claude Agent SDK with local auth status", async () => {
+  it("switches Anthropic/Claude providers to Claude Agent SDK with local auth requirements", async () => {
     const settings = renderSurface();
 
     await settings.selectProvider("claude");
 
     expect(document.body.textContent).toContain("Local SDK auth");
     expect(factValue("Selected engine")).toBe("Claude Agent SDK");
-    expect(factValue("Engine state")).toBe("Available");
-    expect(factValue("Auth status")).toBe("Signed in as operator@example.com");
+    expect(factValue("Engine state")).toBe("Unavailable");
+    expect(factValue("Auth status")).toBe(
+      "Auth missing: local login is not available",
+    );
     expect(document.body.textContent).toContain("Subscription-backed local auth is separate");
   });
 
@@ -47,9 +52,7 @@ describe("provider settings UI", () => {
     expect(document.body.textContent).toContain("Subscription-backed local auth");
     expect(factValue("Selected engine")).toBe("Claude Agent SDK");
     expect(factValue("Engine state")).toBe("Unavailable");
-    expect(factValue("Reason")).toContain(
-      "Claude Agent SDK requires Anthropic/Claude provider auth to use api_key or local_sdk_auth.",
-    );
+    expect(factValue("Reason")).toContain("mapped Agent Engine is not available");
     expect(factValue("Auth status")).toContain("Auth missing");
     expect(document.body.textContent).toContain(
       "Subscription access does not equal API access unless the local SDK exposes supported auth.",

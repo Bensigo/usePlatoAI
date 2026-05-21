@@ -30,21 +30,15 @@ export interface ProviderSettingsSurface {
   selectProvider(providerId: string): Promise<void>;
 }
 
-class DemoSecretStore implements SecretStore {
-  private readonly values = new Map<string, string>();
-
-  constructor(secrets: readonly [SecretReference, string][]) {
-    for (const [reference, value] of secrets) {
-      this.values.set(reference.id, value);
-    }
-  }
-
+class ProviderSettingsSecretStore implements SecretStore {
   read(reference: SecretReference): string | null {
-    return this.values.get(reference.id) ?? null;
+    void reference;
+    return null;
   }
 
   write(reference: SecretReference, value: string): void {
-    this.values.set(reference.id, value);
+    void reference;
+    void value;
   }
 }
 
@@ -60,14 +54,11 @@ const anthropicSecretReference = createProviderSecretReference({
   description: "Anthropic API key",
 });
 
-const demoSecretStore = new DemoSecretStore([
-  [openAiSecretReference, "present"],
-  [anthropicSecretReference, "present"],
-]);
+const providerSettingsSecretStore = new ProviderSettingsSecretStore();
 
 const runtimeAdapters = createAgentEngineAdapterRegistry([
-  createCodexSdkAgentEngineAdapter({ runtimeAvailable: true }),
-  createClaudeAgentSdkAgentEngineAdapter({ runtimeAvailable: true }),
+  createCodexSdkAgentEngineAdapter({ runtimeAvailable: false }),
+  createClaudeAgentSdkAgentEngineAdapter({ runtimeAvailable: false }),
 ]);
 
 const runtimeCatalog = createAgentEngineCatalogFromAdapters(runtimeAdapters);
@@ -83,7 +74,7 @@ const providers: ProviderOption[] = [
       secretReference: openAiSecretReference,
     },
     authLabel: "API key provider",
-    availabilityLabel: "Cloud provider available when the stored key is present.",
+    availabilityLabel: "Cloud provider waits for a stored key before work can run.",
     costWarning:
       "Token and API usage may create spend. Review task scope before running engine-backed work.",
   },
@@ -97,7 +88,7 @@ const providers: ProviderOption[] = [
       secretReference: anthropicSecretReference,
     },
     authLabel: "API key provider",
-    availabilityLabel: "Cloud provider available when the stored key is present.",
+    availabilityLabel: "Cloud provider waits for a stored key before work can run.",
     costWarning:
       "Claude API usage may create spend. Keep long-running tasks approval-gated.",
   },
@@ -109,8 +100,7 @@ const providers: ProviderOption[] = [
     authState: {
       mode: "local_sdk_auth",
       sdkName: "Claude Code",
-      isAuthenticated: true,
-      accountHint: "operator@example.com",
+      isAuthenticated: false,
     },
     authLabel: "Local SDK auth",
     availabilityLabel: "Uses an existing local SDK login instead of storing an app-owned key.",
@@ -168,7 +158,7 @@ export function renderProviderSettings(root: HTMLElement): ProviderSettingsSurfa
       selectedProvider.authState
         ? getProviderAuthAvailabilitySnapshot(
             selectedProvider.authState,
-            demoSecretStore,
+            providerSettingsSecretStore,
           )
         : Promise.resolve<ProviderAuthAvailabilitySnapshot>({
             mode: selectedProvider.authMode,
@@ -348,7 +338,10 @@ async function getEngineDisplayState(
     };
   }
 
-  const adapterState = await adapter.getState(provider, demoSecretStore);
+  const adapterState = await adapter.getState(
+    provider,
+    providerSettingsSecretStore,
+  );
 
   return {
     engineName,
