@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 import { renderToStaticMarkup } from "react-dom/server";
@@ -187,54 +187,63 @@ describe("desktop app shell", () => {
     const expectedMappings: Array<{
       state: AvatarPresenceState;
       statusText: string;
+      avatarAssetPath: string;
       motionGroup: string;
       expression: string;
     }> = [
       {
         state: "appearing",
         statusText: "Coming online",
+        avatarAssetPath: "/avatar/plato/appearing.png",
         motionGroup: "appear",
         expression: "bright",
       },
       {
         state: "idle",
         statusText: "Idle presence",
+        avatarAssetPath: "/avatar/plato/idle.png",
         motionGroup: "idle",
         expression: "neutral",
       },
       {
         state: "listening",
         statusText: "Listening now",
+        avatarAssetPath: "/avatar/plato/listening.png",
         motionGroup: "tap_body",
         expression: "attentive",
       },
       {
         state: "thinking",
         statusText: "Thinking through it",
+        avatarAssetPath: "/avatar/plato/thinking.png",
         motionGroup: "thinking",
         expression: "focused",
       },
       {
         state: "speaking",
         statusText: "Speaking",
+        avatarAssetPath: "/avatar/plato/speaking.png",
         motionGroup: "speak",
         expression: "talking",
       },
       {
         state: "waitingApproval",
         statusText: "Waiting for approval",
+        avatarAssetPath: "/avatar/plato/waitingApproval.png",
         motionGroup: "approval",
         expression: "concerned",
       },
       {
         state: "muted",
         statusText: "Muted",
+        avatarAssetPath: "/avatar/plato/muted.png",
         motionGroup: "quiet",
         expression: "soft",
       },
       {
         state: "error",
         statusText: "Needs repair",
+        avatarAssetPath: "/avatar/plato/error.png",
         motionGroup: "error",
         expression: "strained",
       },
@@ -245,43 +254,83 @@ describe("desktop app shell", () => {
       const markup = renderToStaticMarkup(
         <Live2DAvatarSurface presenceState={mapping.state} />,
       );
+      const assetFile = resolve(
+        __dirname,
+        `../public${mapping.avatarAssetPath}`,
+      );
 
       expect(hook.statusText).toBe(mapping.statusText);
+      expect(hook.avatarAssetPath).toBe(mapping.avatarAssetPath);
+      expect(existsSync(assetFile)).toBe(true);
       expect(hook.motionGroup).toBe(mapping.motionGroup);
       expect(hook.expression).toBe(mapping.expression);
       expect(markup).toContain(`data-presence-state="${mapping.state}"`);
+      expect(markup).toContain(
+        `data-avatar-renderer="plato-mascot-asset"`,
+      );
+      expect(markup).toContain(`src="${mapping.avatarAssetPath}"`);
+      expect(markup).toContain(`data-avatar-asset="${mapping.state}"`);
       expect(markup).toContain(
         `data-live2d-motion-group="${mapping.motionGroup}"`,
       );
       expect(markup).toContain(
         `data-live2d-expression="${mapping.expression}"`,
       );
-      expect(markup).toContain("live2d-presence-mark");
+      expect(markup).toContain("data-avatar-fallback-surface");
       expect(markup).toContain(mapping.statusText);
-      expect(markup).not.toContain("<img");
-      expect(markup).not.toContain("plato-avatar-asset");
       expect(markup).not.toContain("live2d-avatar-head");
       expect(markup).not.toContain("live2d-avatar-body");
     }
   });
 
-  it("renders the visible avatar without static raster stickers", () => {
+  it("renders the visible avatar with the Plato mascot asset as the primary surface", () => {
     const markup = renderToStaticMarkup(
       <Live2DAvatarSurface presenceState="listening" />,
     );
 
+    expect(markup).toContain("<img");
+    expect(markup).toContain("plato-avatar-asset");
+    expect(markup).toContain('src="/avatar/plato/listening.png"');
+    expect(markup).toContain('data-avatar-asset="listening"');
+    expect(markup).toContain('data-avatar-renderer="plato-mascot-asset"');
     expect(markup).toContain("live2d-presence-mark");
     expect(markup).toContain("live2d-presence-core");
     expect(markup).toContain("live2d-presence-meter");
-    expect(markup).not.toContain("<img");
-    expect(markup).not.toContain("plato-avatar-asset");
-    expect(markup).not.toContain("/avatar/plato/listening.png");
-    expect(markup).not.toContain("data-avatar-asset");
     expect(markup).not.toContain("live2d-avatar-hair");
     expect(markup).not.toContain("live2d-avatar-head");
     expect(markup).not.toContain("live2d-avatar-eye");
     expect(markup).not.toContain("live2d-avatar-mouth");
     expect(markup).not.toContain("live2d-avatar-body");
+  });
+
+  it("resets the avatar fallback renderer after asset load failures", () => {
+    const idleSurface = Live2DAvatarSurface({ presenceState: "idle" });
+    const speakingSurface = Live2DAvatarSurface({ presenceState: "speaking" });
+    const idleStage = idleSurface.props.children[0];
+    const speakingStage = speakingSurface.props.children[0];
+    const idleImage = idleStage.props.children[0];
+
+    const rendererMutations: Array<[string, string]> = [];
+    const stageElement = {
+      setAttribute: (name: string, value: string) => {
+        rendererMutations.push([name, value]);
+      },
+    };
+    const imageEvent = {
+      currentTarget: {
+        closest: () => stageElement,
+      },
+    };
+
+    idleImage.props.onError(imageEvent);
+    idleImage.props.onLoad(imageEvent);
+
+    expect(rendererMutations).toEqual([
+      ["data-avatar-renderer", "fallback-presence-mark"],
+      ["data-avatar-renderer", "plato-mascot-asset"],
+    ]);
+    expect(idleStage.key).toBe("/avatar/plato/idle.png");
+    expect(speakingStage.key).toBe("/avatar/plato/speaking.png");
   });
 
   it("renders the floating presence from an injected presence state", () => {

@@ -135,7 +135,7 @@ describe("Milestone 005 redesign smoke coverage", () => {
     expect(memoryWithRecordsMarkup).toContain("Delete");
   });
 
-  it("confirms every required Plato avatar state renders through the non-raster surface", () => {
+  it("confirms every required Plato avatar state renders through the mascot surface", () => {
     for (const state of avatarPresenceStates) {
       const hook = getLive2DAvatarSurfaceHook(state);
       const markup = renderToStaticMarkup(
@@ -143,15 +143,14 @@ describe("Milestone 005 redesign smoke coverage", () => {
       );
 
       expect(markup).toContain(`data-presence-state="${state}"`);
+      expect(markup).toContain('data-avatar-renderer="plato-mascot-asset"');
+      expect(markup).toContain(`src="${hook.avatarAssetPath}"`);
+      expect(markup).toContain(`data-avatar-asset="${state}"`);
       expect(markup).toContain(`data-live2d-motion-group="${hook.motionGroup}"`);
       expect(markup).toContain(`data-live2d-expression="${hook.expression}"`);
-      expect(markup).toContain("live2d-presence-mark");
-      expect(markup).toContain("live2d-presence-core");
-      expect(markup).toContain("live2d-presence-meter");
+      expect(markup).toContain("plato-avatar-asset");
+      expect(markup).toContain("data-avatar-fallback-surface");
       expect(markup).toContain(hook.statusText);
-      expect(markup).not.toContain("<img");
-      expect(markup).not.toContain("data-avatar-asset");
-      expect(markup).not.toContain("plato-avatar-asset");
     }
   });
 
