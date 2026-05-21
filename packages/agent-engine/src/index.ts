@@ -7,6 +7,67 @@ export type ProviderAuthMode =
   | "local_model_endpoint"
   | "none";
 
+export type ProviderAuthAvailability =
+  | "ready"
+  | "missing_secret"
+  | "missing_local_auth"
+  | "missing_endpoint"
+  | "not_configured";
+
+export interface SecretReference {
+  store: "secret_store";
+  id: string;
+  description: string;
+}
+
+export interface SecretStore {
+  write(reference: SecretReference, value: string): void | Promise<void>;
+  read(reference: SecretReference): string | null | Promise<string | null>;
+}
+
+export interface ApiKeyProviderAuthState {
+  mode: "api_key";
+  secretReference: SecretReference;
+}
+
+export interface LocalSdkProviderAuthState {
+  mode: "local_sdk_auth";
+  sdkName: string;
+  isAuthenticated: boolean;
+  accountHint?: string;
+}
+
+export interface SubscriptionLocalProviderAuthState {
+  mode: "subscription_local_auth";
+  subscriptionName: string;
+  isAuthenticated: boolean;
+  accountHint?: string;
+}
+
+export interface LocalModelEndpointProviderAuthState {
+  mode: "local_model_endpoint";
+  endpoint: string;
+}
+
+export interface UnconfiguredProviderAuthState {
+  mode: "none";
+}
+
+export type ProviderAuthState =
+  | ApiKeyProviderAuthState
+  | LocalSdkProviderAuthState
+  | SubscriptionLocalProviderAuthState
+  | LocalModelEndpointProviderAuthState
+  | UnconfiguredProviderAuthState;
+
+export interface ProviderAuthAvailabilitySnapshot {
+  mode: ProviderAuthMode;
+  availability: ProviderAuthAvailability;
+  hasSecretReference: boolean;
+  accountHint?: string;
+  endpoint?: string;
+}
+
 export type AgentEngineKind = "codex_sdk" | "claude_agent_sdk" | "none";
 
 export type EngineAvailability = "available" | "unavailable";
@@ -38,6 +99,7 @@ export interface ModelProvider {
   displayName: string;
   kind: ProviderKind;
   authMode: ProviderAuthMode;
+  authState?: ProviderAuthState;
   localEndpoint?: string;
 }
 
@@ -89,6 +151,95 @@ export function createAgentEngineCatalog(
   engines: readonly AgentEngine[] = defaultAgentEngines,
 ): AgentEngineCatalog {
   return new Map(engines.map((engine) => [engine.kind, engine]));
+}
+
+export async function createApiKeyProviderAuthState(input: {
+  providerId: string;
+  providerDisplayName: string;
+  apiKey: string;
+  secretStore: SecretStore;
+}): Promise<ApiKeyProviderAuthState> {
+  const secretReference = createProviderSecretReference({
+    providerId: input.providerId,
+    authMode: "api_key",
+    description: `${input.providerDisplayName} API key`,
+  });
+
+  await input.secretStore.write(secretReference, input.apiKey);
+
+  return {
+    mode: "api_key",
+    secretReference,
+  };
+}
+
+export function createProviderSecretReference(input: {
+  providerId: string;
+  authMode: ProviderAuthMode;
+  description: string;
+}): SecretReference {
+  return {
+    store: "secret_store",
+    id: `provider:${input.providerId}:${input.authMode}`,
+    description: input.description,
+  };
+}
+
+export async function readProviderSecret(
+  secretStore: SecretStore,
+  reference: SecretReference,
+): Promise<string | null> {
+  return secretStore.read(reference);
+}
+
+export async function getProviderAuthAvailabilitySnapshot(
+  authState: ProviderAuthState,
+  secretStore?: SecretStore,
+): Promise<ProviderAuthAvailabilitySnapshot> {
+  if (authState.mode === "api_key") {
+    const secret = secretStore
+      ? await readProviderSecret(secretStore, authState.secretReference)
+      : null;
+
+    return {
+      mode: authState.mode,
+      availability: secret ? "ready" : "missing_secret",
+      hasSecretReference: true,
+    };
+  }
+
+  if (authState.mode === "local_sdk_auth") {
+    return {
+      mode: authState.mode,
+      availability: authState.isAuthenticated ? "ready" : "missing_local_auth",
+      hasSecretReference: false,
+      accountHint: authState.accountHint,
+    };
+  }
+
+  if (authState.mode === "subscription_local_auth") {
+    return {
+      mode: authState.mode,
+      availability: authState.isAuthenticated ? "ready" : "missing_local_auth",
+      hasSecretReference: false,
+      accountHint: authState.accountHint,
+    };
+  }
+
+  if (authState.mode === "local_model_endpoint") {
+    return {
+      mode: authState.mode,
+      availability: authState.endpoint ? "ready" : "missing_endpoint",
+      hasSecretReference: false,
+      endpoint: authState.endpoint,
+    };
+  }
+
+  return {
+    mode: authState.mode,
+    availability: "not_configured",
+    hasSecretReference: false,
+  };
 }
 
 export function resolveAgentEngineForProvider(
