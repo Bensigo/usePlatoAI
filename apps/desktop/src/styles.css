@@ -156,6 +156,43 @@ button {
   line-height: 1.45;
 }
 
+.task-tray {
+  margin-top: 22px;
+}
+
+.task-tray__title {
+  margin: 0 0 14px;
+  color: #14211e;
+  font-size: 1.45rem;
+  font-weight: 760;
+  line-height: 1.2;
+}
+
+.task-tray__launch {
+  min-height: 40px;
+  margin-bottom: 10px;
+  border: 1px solid #1f6b59;
+  border-radius: 7px;
+  background: #1f6b59;
+  color: #ffffff;
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 700;
+  line-height: 1.1;
+  padding: 0 14px;
+}
+
+.task-tray__launch:hover {
+  background: #185646;
+}
+
+.task-tray__empty {
+  margin: 0;
+  color: #5d6d69;
+  font-size: 0.92rem;
+  font-weight: 560;
+}
+
 @media (max-width: 760px) {
   .provider-settings {
     padding: 28px 16px;

@@ -142,6 +142,36 @@ export interface AgentTaskResult {
   completedAt: string;
 }
 
+export type LocalTaskStatus = "running" | "completed" | "failed" | "blocked";
+
+export interface LocalTaskResult {
+  kind: "mocked_agent_engine_result";
+  text: string;
+}
+
+export interface LocalTaskMetadata {
+  executionSource: "agent_engine";
+  verification: string;
+  costAwareness: string;
+}
+
+export interface LocalTaskRecord {
+  id: string;
+  title: string;
+  status: LocalTaskStatus;
+  summary: string;
+  result?: LocalTaskResult;
+  metadata: LocalTaskMetadata;
+  createdAt: string;
+  updatedAt: string;
+  completedAt?: string;
+}
+
+export interface LocalTaskRepository {
+  save(task: LocalTaskRecord): void | Promise<void>;
+  list(): LocalTaskRecord[] | Promise<LocalTaskRecord[]>;
+}
+
 export interface AgentEngineAdapter {
   engine: AgentEngine;
   getState(
@@ -181,6 +211,20 @@ export const agentEngineTaskConcepts = [
   "requiredCapabilities",
 ] as const satisfies readonly (keyof AgentTaskRequest)[];
 
+export interface RunMockedEngineBackedTaskInput {
+  provider: ModelProvider;
+  instruction: string;
+  authorityMode: ExecutionAuthorityMode;
+  requiredCapabilities: string[];
+  adapters: AgentEngineAdapterRegistry;
+  catalog?: AgentEngineCatalog;
+  secretStore?: SecretStore;
+  repository: LocalTaskRepository;
+  taskId?: string;
+  now?: () => Date;
+  onTaskChanged?: (task: LocalTaskRecord) => void | Promise<void>;
+}
+
 export const defaultAgentEngines = [
   {
     kind: "codex_sdk",
@@ -212,6 +256,168 @@ export function createAgentEngineCatalogFromAdapters(
   return createAgentEngineCatalog(
     [...adapters.values()].map((adapter) => adapter.engine),
   );
+}
+
+export function createMemoryLocalTaskRepository(input?: {
+  now?: () => Date;
+  initialTasks?: readonly LocalTaskRecord[];
+}): LocalTaskRepository {
+  void input?.now;
+  const tasks = new Map<string, LocalTaskRecord>(
+    input?.initialTasks?.map((task) => [task.id, task]),
+  );
+
+  return {
+    save(task) {
+      tasks.set(task.id, task);
+    },
+    list() {
+      return [...tasks.values()];
+    },
+  };
+}
+
+export async function runMockedEngineBackedTask(
+  input: RunMockedEngineBackedTaskInput,
+): Promise<LocalTaskRecord> {
+  const now = input.now ?? (() => new Date());
+  const taskId = input.taskId ?? createTaskId(now);
+  const createdAt = now().toISOString();
+  const title = input.instruction;
+  const baseMetadata: LocalTaskMetadata = {
+    executionSource: "agent_engine",
+    verification: "Mocked Agent Engine task was accepted by the local task model.",
+    costAwareness:
+      "Mocked execution only; no provider API call or token spend occurred.",
+  };
+
+  await saveTask(input, {
+    id: taskId,
+    title,
+    status: "running",
+    summary: "Running mocked Agent Engine task.",
+    metadata: baseMetadata,
+    createdAt,
+    updatedAt: createdAt,
+  });
+
+  const resolution = resolveAgentEngineForProvider(
+    input.provider,
+    input.catalog ?? createAgentEngineCatalogFromAdapters(input.adapters),
+  );
+
+  if (resolution.status !== "engine_selected" || !resolution.selectedEngine) {
+    return saveTerminalTask(input, {
+      id: taskId,
+      title,
+      status: "failed",
+      summary: resolution.reason,
+      metadata: {
+        ...baseMetadata,
+        verification:
+          "Task stopped before execution because no runnable Agent Engine was selected.",
+      },
+      createdAt,
+      completedAt: now().toISOString(),
+    });
+  }
+
+  const adapter = input.adapters.get(resolution.selectedEngine.kind);
+  if (!adapter) {
+    return saveTerminalTask(input, {
+      id: taskId,
+      title,
+      status: "failed",
+      summary: `${resolution.selectedEngine.displayName} adapter is not registered.`,
+      metadata: {
+        ...baseMetadata,
+        verification:
+          "Task stopped before execution because the selected Agent Engine adapter was not registered.",
+      },
+      createdAt,
+      completedAt: now().toISOString(),
+    });
+  }
+
+  const adapterState = await adapter.getState(input.provider, input.secretStore);
+  if (adapterState.status !== "available") {
+    return saveTerminalTask(input, {
+      id: taskId,
+      title,
+      status: adapterState.status === "auth_missing" ? "blocked" : "failed",
+      summary: adapterState.reason,
+      metadata: {
+        ...baseMetadata,
+        verification:
+          adapterState.status === "auth_missing"
+            ? "Task stopped before execution because provider auth is not ready."
+            : "Task stopped before execution because the selected Agent Engine is unavailable.",
+      },
+      createdAt,
+      completedAt: now().toISOString(),
+    });
+  }
+
+  try {
+    const result = await adapter.runMockedTask({
+      taskId,
+      instruction: input.instruction,
+      authorityMode: input.authorityMode,
+      requiredCapabilities: input.requiredCapabilities,
+    });
+
+    return saveTerminalTask(input, {
+      id: taskId,
+      title,
+      status: "completed",
+      summary: result.summary,
+      result: result.output,
+      metadata: {
+        ...baseMetadata,
+        verification: "Mocked Agent Engine adapter returned a completed result.",
+      },
+      createdAt,
+      completedAt: result.completedAt,
+    });
+  } catch (error) {
+    return saveTerminalTask(input, {
+      id: taskId,
+      title,
+      status: "failed",
+      summary: error instanceof Error ? error.message : "Mocked task failed.",
+      metadata: {
+        ...baseMetadata,
+        verification:
+          "Task failed after the selected Agent Engine accepted execution.",
+      },
+      createdAt,
+      completedAt: now().toISOString(),
+    });
+  }
+}
+
+async function saveTerminalTask(
+  input: RunMockedEngineBackedTaskInput,
+  task: Omit<LocalTaskRecord, "updatedAt"> & { completedAt: string },
+): Promise<LocalTaskRecord> {
+  const terminalTask: LocalTaskRecord = {
+    ...task,
+    updatedAt: task.completedAt,
+  };
+  await saveTask(input, terminalTask);
+  return terminalTask;
+}
+
+async function saveTask(
+  input: RunMockedEngineBackedTaskInput,
+  task: LocalTaskRecord,
+): Promise<void> {
+  await input.repository.save(task);
+  await input.onTaskChanged?.(task);
+}
+
+function createTaskId(now: () => Date): string {
+  return `task-${now().getTime().toString(36)}`;
 }
 
 export function createCodexSdkAgentEngineAdapter(input?: {

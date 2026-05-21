@@ -3,17 +3,24 @@ import {
   createAgentEngineAdapterRegistry,
   createClaudeAgentSdkAgentEngineAdapter,
   createCodexSdkAgentEngineAdapter,
+  createMemoryLocalTaskRepository,
   createProviderSecretReference,
   getProviderAuthAvailabilitySnapshot,
+  runMockedEngineBackedTask,
   resolveAgentEngineForProvider,
+  type AgentEngineAdapter,
+  type AgentEngineAdapterRegistry,
+  type AgentEngineCatalog,
   type EngineResolution,
+  type LocalTaskRecord,
+  type LocalTaskRepository,
   type ModelProvider,
   type ProviderAuthAvailabilitySnapshot,
   type SecretReference,
   type SecretStore,
 } from "@useplatoai/agent-engine";
 
-type ProviderOption = ModelProvider & {
+export type ProviderOption = ModelProvider & {
   authLabel: string;
   availabilityLabel: string;
   costWarning: string;
@@ -27,7 +34,10 @@ type EngineDisplayState = {
 };
 
 export interface ProviderSettingsSurface {
+  root: HTMLElement;
+  currentTask: Promise<LocalTaskRecord | null>;
   selectProvider(providerId: string): Promise<void>;
+  launchMockedTask(): Promise<LocalTaskRecord>;
 }
 
 class ProviderSettingsSecretStore implements SecretStore {
@@ -54,16 +64,14 @@ const anthropicSecretReference = createProviderSecretReference({
   description: "Anthropic API key",
 });
 
-const providerSettingsSecretStore = new ProviderSettingsSecretStore();
+const defaultProviderSettingsSecretStore = new ProviderSettingsSecretStore();
 
-const runtimeAdapters = createAgentEngineAdapterRegistry([
+const defaultRuntimeAdapters = [
   createCodexSdkAgentEngineAdapter({ runtimeAvailable: false }),
   createClaudeAgentSdkAgentEngineAdapter({ runtimeAvailable: false }),
-]);
+] satisfies AgentEngineAdapter[];
 
-const runtimeCatalog = createAgentEngineCatalogFromAdapters(runtimeAdapters);
-
-const providers: ProviderOption[] = [
+const defaultProviders: ProviderOption[] = [
   {
     id: "openai",
     displayName: "OpenAI",
@@ -138,15 +146,39 @@ const providers: ProviderOption[] = [
   },
 ];
 
-export function renderProviderSettings(root: HTMLElement): ProviderSettingsSurface {
-  let selectedProviderId = providers[0]?.id ?? "";
+export interface ProviderSettingsOptions {
+  providers?: ProviderOption[];
+  adapters?: readonly AgentEngineAdapter[];
+  secretStore?: SecretStore;
+  repository?: LocalTaskRepository;
+  now?: () => Date;
+}
+
+export function renderProviderSettings(
+  root: HTMLElement,
+  options: ProviderSettingsOptions = {},
+): ProviderSettingsSurface {
+  const providerOptions = options.providers ?? defaultProviders;
+  const secretStore = options.secretStore ?? defaultProviderSettingsSecretStore;
+  const adapters = createAgentEngineAdapterRegistry(
+    options.adapters ?? defaultRuntimeAdapters,
+  );
+  const catalog = createAgentEngineCatalogFromAdapters(adapters);
+  const repository =
+    options.repository ??
+    createMemoryLocalTaskRepository({
+      now: options.now,
+    });
+  let selectedProviderId = providerOptions[0]?.id ?? "";
   let renderVersion = 0;
+  let latestTask: LocalTaskRecord | null = null;
+  let currentTaskPromise: Promise<LocalTaskRecord | null> = Promise.resolve(null);
 
   async function render() {
     const currentRenderVersion = ++renderVersion;
     const selectedProvider =
-      providers.find((provider) => provider.id === selectedProviderId) ??
-      providers[0];
+      providerOptions.find((provider) => provider.id === selectedProviderId) ??
+      providerOptions[0];
 
     if (!selectedProvider) {
       root.replaceChildren();
@@ -157,14 +189,14 @@ export function renderProviderSettings(root: HTMLElement): ProviderSettingsSurfa
       selectedProvider.authState
         ? getProviderAuthAvailabilitySnapshot(
             selectedProvider.authState,
-            providerSettingsSecretStore,
+            secretStore,
           )
         : Promise.resolve<ProviderAuthAvailabilitySnapshot>({
             mode: selectedProvider.authMode,
             availability: "not_configured",
             hasSecretReference: false,
           }),
-      getEngineDisplayState(selectedProvider),
+      getEngineDisplayState(selectedProvider, catalog, adapters, secretStore),
     ]);
 
     if (currentRenderVersion !== renderVersion) {
@@ -186,6 +218,7 @@ export function renderProviderSettings(root: HTMLElement): ProviderSettingsSurfa
       buildHeader(),
       buildProviderTabs(selectedProvider.id),
       buildProviderPanel(selectedProvider, authSnapshot, engineDisplayState),
+      buildTaskTray(latestTask),
     );
     return shell;
   }
@@ -209,7 +242,7 @@ export function renderProviderSettings(root: HTMLElement): ProviderSettingsSurfa
     group.setAttribute("role", "tablist");
     group.setAttribute("aria-label", "Model providers");
 
-    for (const provider of providers) {
+    for (const provider of providerOptions) {
       const button = element(
         "button",
         "provider-settings__tab",
@@ -297,24 +330,116 @@ export function renderProviderSettings(root: HTMLElement): ProviderSettingsSurfa
   }
 
   async function selectProvider(providerId: string) {
-    if (!providers.some((provider) => provider.id === providerId)) {
+    if (!providerOptions.some((provider) => provider.id === providerId)) {
       throw new Error(`Unknown provider: ${providerId}`);
     }
     selectedProviderId = providerId;
     await render();
   }
 
+  function buildTaskTray(task: LocalTaskRecord | null) {
+    const tray = element("section", "task-tray");
+    tray.append(
+      element("h2", "task-tray__title", "Task Tray"),
+      buildMockedTaskLauncher(),
+      task
+        ? buildTaskRecord(task)
+        : element("p", "task-tray__empty", "No tasks yet."),
+    );
+    return tray;
+  }
+
+  function buildMockedTaskLauncher() {
+    const button = element(
+      "button",
+      "task-tray__launch",
+      "Run mocked engine task",
+    );
+    button.type = "button";
+    button.dataset.action = "launch-mocked-task";
+    button.addEventListener("click", () => {
+      void launchMockedTask();
+    });
+    return button;
+  }
+
+  function buildTaskRecord(task: LocalTaskRecord) {
+    return buildSection("Current task", [
+      ["Task title", task.title],
+      ["Task status", taskStatusLabel(task.status)],
+      ["Task result", task.summary],
+      ["Verification", task.metadata.verification],
+      ["Cost", task.metadata.costAwareness],
+    ]);
+  }
+
+  async function launchMockedTask(): Promise<LocalTaskRecord> {
+    const provider =
+      providerOptions.find((candidate) => candidate.id === selectedProviderId) ??
+      providerOptions[0];
+
+    if (!provider) {
+      throw new Error("No provider is available for mocked task launch.");
+    }
+
+    latestTask = {
+      id: `task-${Date.now().toString(36)}`,
+      title: "Summarize the current issue.",
+      status: "running",
+      summary: "Running mocked Agent Engine task.",
+      metadata: {
+        executionSource: "agent_engine",
+        verification: "Mocked Agent Engine task was accepted by the local task model.",
+        costAwareness:
+          "Mocked execution only; no provider API call or token spend occurred.",
+      },
+      createdAt: (options.now ?? (() => new Date()))().toISOString(),
+      updatedAt: (options.now ?? (() => new Date()))().toISOString(),
+    };
+    root.querySelector(".task-tray")?.replaceWith(buildTaskTray(latestTask));
+
+    currentTaskPromise = runMockedEngineBackedTask({
+      provider,
+      instruction: "Summarize the current issue.",
+      authorityMode: "ask_first",
+      requiredCapabilities: ["github"],
+      adapters,
+      catalog,
+      secretStore,
+      repository,
+      now: options.now,
+      onTaskChanged: async (task) => {
+        latestTask = task;
+        await render();
+      },
+    });
+
+    const task = await currentTaskPromise;
+    if (!task) {
+      throw new Error("Mocked task did not return a task record.");
+    }
+    return task;
+  }
+
   void render();
 
   return {
+    root,
+    get currentTask() {
+      return currentTaskPromise;
+    },
     selectProvider,
+    launchMockedTask,
   };
 }
 
 async function getEngineDisplayState(
   provider: ModelProvider,
+  catalog: AgentEngineCatalog,
+  adapters: AgentEngineAdapterRegistry,
+  secretStore: SecretStore,
 ): Promise<EngineDisplayState> {
-  const resolution = resolveAgentEngineForProvider(provider, runtimeCatalog);
+  const resolution = resolveAgentEngineForProvider(provider, catalog);
   const engineName =
     resolution.selectedEngine?.displayName ?? fallbackEngineName(resolution);
 
@@ -327,7 +452,7 @@ async function getEngineDisplayState(
     };
   }
 
-  const adapter = runtimeAdapters.get(resolution.selectedEngine.kind);
+  const adapter = adapters.get(resolution.selectedEngine.kind);
   if (!adapter) {
     return {
       engineName,
@@ -339,7 +464,7 @@ async function getEngineDisplayState(
 
   const adapterState = await adapter.getState(
     provider,
-    providerSettingsSecretStore,
+    secretStore,
   );
 
   return {
@@ -349,6 +474,22 @@ async function getEngineDisplayState(
     reason: adapterState.reason,
     isBlocking: adapterState.status !== "available",
   };
+}
+
+function taskStatusLabel(status: LocalTaskRecord["status"]): string {
+  if (status === "completed") {
+    return "Completed";
+  }
+
+  if (status === "failed") {
+    return "Failed";
+  }
+
+  if (status === "blocked") {
+    return "Blocked";
+  }
+
+  return "Running";
 }
 
 function authStatusLabel(snapshot: ProviderAuthAvailabilitySnapshot): string {
