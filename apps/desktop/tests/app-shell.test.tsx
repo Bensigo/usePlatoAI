@@ -1,8 +1,9 @@
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
+import { isValidElement, type ReactElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   App,
@@ -95,6 +96,61 @@ const completedSettings: CompanionSettings = {
   ...defaultCompanionSettings,
   onboardingComplete: true,
 };
+
+function nodeText(node: ReactNode): string {
+  if (node === null || node === undefined || typeof node === "boolean") {
+    return "";
+  }
+
+  if (typeof node === "string" || typeof node === "number") {
+    return String(node);
+  }
+
+  if (Array.isArray(node)) {
+    return node.map(nodeText).join("");
+  }
+
+  if (isValidElement(node)) {
+    const element = node as ReactElement<{ children?: ReactNode }>;
+    return nodeText(element.props.children);
+  }
+
+  return "";
+}
+
+function findButtonClickHandler(
+  node: ReactNode,
+  label: string,
+): (() => void) | undefined {
+  if (node === null || node === undefined || typeof node === "boolean") {
+    return undefined;
+  }
+
+  if (Array.isArray(node)) {
+    for (const child of node) {
+      const handler = findButtonClickHandler(child, label);
+      if (handler) {
+        return handler;
+      }
+    }
+    return undefined;
+  }
+
+  if (!isValidElement(node)) {
+    return undefined;
+  }
+
+  const element = node as ReactElement<{
+    children?: ReactNode;
+    onClick?: () => void;
+  }>;
+
+  if (element.type === "button" && nodeText(element.props.children) === label) {
+    return element.props.onClick;
+  }
+
+  return findButtonClickHandler(element.props.children, label);
+}
 
 describe("desktop app shell", () => {
   it("renders a companion-only default desktop presence with collapsed controls", () => {
@@ -960,20 +1016,27 @@ describe("desktop app shell", () => {
     expect(markup).not.toContain("Provider");
   });
 
-  it("shows approval controls only while the centered panel waits for approval", () => {
-    const markup = renderToStaticMarkup(
-      <CenteredChatPanel
-        currentTaskState={presenceStateSnapshot("waiting_for_approval")}
-        voiceInteraction={defaultVoiceInteractionSnapshot}
-        onDismiss={() => undefined}
-      />,
-    );
+  it("shows and wires approval controls while the centered panel waits for approval", () => {
+    const dismissCurrentTask = vi.fn();
+    const panel = CenteredChatPanel({
+      currentTaskState: presenceStateSnapshot("waiting_for_approval"),
+      voiceInteraction: defaultVoiceInteractionSnapshot,
+      onDismiss: () => undefined,
+      onDismissCurrentTask: dismissCurrentTask,
+    });
+    const markup = renderToStaticMarkup(panel);
 
     expect(markup).toContain("Waiting for approval");
     expect(markup).toContain("Approve");
     expect(markup).toContain("Reject");
+    expect(markup).toContain("Dismiss");
     expect(markup).not.toContain("Pause");
     expect(markup).not.toContain("Cancel");
+
+    const dismissHandler = findButtonClickHandler(panel, "Dismiss");
+    expect(dismissHandler).toBeTypeOf("function");
+    dismissHandler?.();
+    expect(dismissCurrentTask).toHaveBeenCalledOnce();
   });
 
   it("shows resume and cancel controls while the centered panel has paused work", () => {
@@ -1020,6 +1083,7 @@ describe("desktop app shell", () => {
     expect(currentTaskPresenceStateForAction("cancel")).toBe("idle");
     expect(currentTaskPresenceStateForAction("approve")).toBe("task_running");
     expect(currentTaskPresenceStateForAction("reject")).toBe("idle");
+    expect(currentTaskPresenceStateForAction("dismiss")).toBe("idle");
   });
 
   it("only treats actionable current-task states as centered opener triggers", () => {

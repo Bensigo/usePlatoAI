@@ -188,7 +188,8 @@ export type CurrentTaskPanelAction =
   | "resume"
   | "cancel"
   | "approve"
-  | "reject";
+  | "reject"
+  | "dismiss";
 
 export function isActionableCurrentTaskState(state: string) {
   return (
@@ -977,6 +978,7 @@ export function CenteredChatPanel({
   onCancelCurrentTask,
   onApproveCurrentTask,
   onRejectCurrentTask,
+  onDismissCurrentTask,
 }: {
   voiceInteraction: VoiceInteractionSnapshot;
   currentTaskState: PresenceStateSnapshot;
@@ -988,6 +990,7 @@ export function CenteredChatPanel({
   onCancelCurrentTask?: () => void;
   onApproveCurrentTask?: () => void;
   onRejectCurrentTask?: () => void;
+  onDismissCurrentTask?: () => void;
 }) {
   const isWorkRunning = currentTaskState.state === "task_running";
   const isWaitingForApproval =
@@ -1098,6 +1101,9 @@ export function CenteredChatPanel({
               </button>
               <button type="button" onClick={onRejectCurrentTask}>
                 Reject
+              </button>
+              <button type="button" onClick={onDismissCurrentTask}>
+                Dismiss
               </button>
             </div>
           ) : null}
@@ -1975,6 +1981,10 @@ export function App({
     void resolveCurrentApprovalTask("rejected");
   }
 
+  function dismissCurrentTask() {
+    void resolveCurrentApprovalTask("dismissed");
+  }
+
   async function saveTaskSnapshot(task: LocalTaskRecord) {
     const savedTask = await durableTaskStore.save(task);
     setTasks((currentTasks) => {
@@ -2034,7 +2044,9 @@ export function App({
     }
 
     companionPresenceStateSource.setState(
-      currentTaskPresenceStateForAction("reject"),
+      currentTaskPresenceStateForAction(
+        decision === "dismissed" ? "dismiss" : "reject",
+      ),
     );
     setVoiceInteraction((current) => ({
       ...current,
@@ -2080,12 +2092,17 @@ export function App({
     clearVoiceTimers();
     correctionPromptRequestId.current += 1;
     companionPresenceStateSource.setState(
-      currentTaskPresenceStateForAction("reject"),
+      currentTaskPresenceStateForAction(
+        decision === "dismissed" ? "dismiss" : "reject",
+      ),
     );
     setVoiceInteraction((current) => ({
       ...current,
       sessionState: "idle",
-      response: "Rejected. Current task stopped.",
+      response:
+        decision === "dismissed"
+          ? "Dismissed. Current task stopped before the gated action."
+          : "Rejected. Current task stopped.",
       companionPrompt: null,
     }));
   }
@@ -2436,6 +2453,7 @@ export function App({
           onCancelCurrentTask={cancelCurrentTask}
           onApproveCurrentTask={approveCurrentTask}
           onRejectCurrentTask={rejectCurrentTask}
+          onDismissCurrentTask={dismissCurrentTask}
         />
       ) : null}
 
