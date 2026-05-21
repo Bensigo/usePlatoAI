@@ -201,6 +201,7 @@ export function Live2DAvatarSurface({
       aria-label={`Plato avatar surface: ${hook.statusText}`}
     >
       <div
+        key={hook.avatarAssetPath}
         className="live2d-avatar-stage"
         data-avatar-renderer="plato-mascot-asset"
         aria-hidden="true"
@@ -216,6 +217,11 @@ export function Live2DAvatarSurface({
             event.currentTarget
               .closest(".live2d-avatar-stage")
               ?.setAttribute("data-avatar-renderer", "fallback-presence-mark");
+          }}
+          onLoad={(event) => {
+            event.currentTarget
+              .closest(".live2d-avatar-stage")
+              ?.setAttribute("data-avatar-renderer", "plato-mascot-asset");
           }}
         />
         <div
