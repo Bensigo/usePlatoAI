@@ -6,8 +6,10 @@ import {
   useRef,
   useState,
   useSyncExternalStore,
+  type Dispatch,
   type FormEvent,
   type MouseEvent,
+  type SetStateAction,
 } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 
@@ -207,6 +209,54 @@ export function currentTaskPresenceStateForAction(
   }
 
   return "idle";
+}
+
+export function currentTaskPresenceStateForLocalTasks(
+  tasks: LocalTaskRecord[],
+): CompanionPresenceState {
+  if (tasks.some((task) => task.status === "waiting_for_approval")) {
+    return "waiting_for_approval";
+  }
+
+  if (tasks.some((task) => task.status === "failed")) {
+    return "error";
+  }
+
+  if (tasks.some((task) => task.status === "running")) {
+    return "task_running";
+  }
+
+  if (tasks.some((task) => task.status === "paused")) {
+    return "task_paused";
+  }
+
+  return "idle";
+}
+
+export async function loadPersistedLocalTasks({
+  taskStore,
+  presenceStateSource,
+  setTasks,
+  setSelectedTaskId,
+  shouldApply = () => true,
+}: {
+  taskStore: TaskStore;
+  presenceStateSource: PresenceStateSource;
+  setTasks: Dispatch<SetStateAction<LocalTaskRecord[]>>;
+  setSelectedTaskId: Dispatch<SetStateAction<string | null>>;
+  shouldApply?: () => boolean;
+}) {
+  const savedTasks = await taskStore.list();
+
+  if (!shouldApply()) {
+    return;
+  }
+
+  setTasks(savedTasks);
+  setSelectedTaskId((currentTaskId) =>
+    currentTaskId ?? savedTasks[0]?.taskId ?? null,
+  );
+  presenceStateSource.setState(currentTaskPresenceStateForLocalTasks(savedTasks));
 }
 
 export function isCurrentTaskControlState(state: string) {
@@ -2138,24 +2188,18 @@ export function App({
 
     let isCurrent = true;
 
-    durableTaskStore
-      .list()
-      .then((savedTasks) => {
-        if (!isCurrent) {
-          return;
-        }
-
-        setTasks(savedTasks);
-        setSelectedTaskId((currentTaskId) =>
-          currentTaskId ?? savedTasks[0]?.taskId ?? null,
-        );
-      })
-      .catch(() => undefined);
+    loadPersistedLocalTasks({
+      taskStore: durableTaskStore,
+      presenceStateSource: companionPresenceStateSource,
+      setTasks,
+      setSelectedTaskId,
+      shouldApply: () => isCurrent,
+    }).catch(() => undefined);
 
     return () => {
       isCurrent = false;
     };
-  }, [durableTaskStore, initialTasks.length]);
+  }, [companionPresenceStateSource, durableTaskStore, initialTasks.length]);
 
   useEffect(() => {
     if (typeof window === "undefined" || !("__TAURI_INTERNALS__" in window)) {
