@@ -218,6 +218,10 @@ export function currentTaskPresenceStateForLocalTasks(
     return "waiting_for_approval";
   }
 
+  if (tasks.some((task) => task.status === "failed")) {
+    return "error";
+  }
+
   if (tasks.some((task) => task.status === "running")) {
     return "task_running";
   }
