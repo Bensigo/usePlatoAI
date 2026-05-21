@@ -90,6 +90,13 @@ import {
   type VoiceSessionState,
 } from "./voiceInteraction";
 import { experienceTokenCss } from "./experienceTokens";
+import {
+  TaskTrayPanel,
+  createMockTask,
+  createTauriTaskStore,
+  type LocalTaskRecord,
+  type TaskStore,
+} from "./tasks";
 
 function startPresenceDrag(event: MouseEvent<HTMLButtonElement>) {
   if (event.button !== 0) {
@@ -1653,6 +1660,9 @@ export function App({
   trustFoundationStore,
   soulGuidanceStore,
   memoryStore,
+  taskStore,
+  initialTasks = [],
+  initialSelectedTaskId = null,
   presenceStateSource,
   initialAudioActivationState,
   initialVoiceSessionState,
@@ -1667,6 +1677,9 @@ export function App({
   trustFoundationStore?: TrustFoundationStore;
   soulGuidanceStore?: SoulGuidanceStore;
   memoryStore?: MemoryStore;
+  taskStore?: TaskStore;
+  initialTasks?: LocalTaskRecord[];
+  initialSelectedTaskId?: string | null;
   presenceStateSource?: PresenceStateSource;
 }) {
   const experienceTokenStyle = (
@@ -1691,6 +1704,10 @@ export function App({
   const durableMemoryStore = useMemo(
     () => memoryStore ?? createTauriMemoryStore(),
     [memoryStore],
+  );
+  const durableTaskStore = useMemo(
+    () => taskStore ?? createTauriTaskStore(),
+    [taskStore],
   );
   const presence = usePresenceState(companionPresenceStateSource);
   const [activeEntry, setActiveEntry] =
@@ -1724,7 +1741,12 @@ export function App({
     );
   const [soulGuidance, setSoulGuidance] =
     useState<SoulGuidance>(fallbackSoulGuidance);
+  const [tasks, setTasks] = useState<LocalTaskRecord[]>(initialTasks);
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(
+    initialSelectedTaskId ?? initialTasks[0]?.taskId ?? null,
+  );
   const voiceTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const taskTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
   const avatarReactionTimer = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
@@ -1736,6 +1758,14 @@ export function App({
     }
 
     voiceTimers.current = [];
+  }
+
+  function clearTaskTimers() {
+    for (const timer of taskTimers.current) {
+      clearTimeout(timer);
+    }
+
+    taskTimers.current = [];
   }
 
   function scheduleVoiceState(
@@ -1958,6 +1988,85 @@ export function App({
     }));
   }
 
+  async function saveTaskSnapshot(task: LocalTaskRecord) {
+    const savedTask = await durableTaskStore.save(task);
+    setTasks((currentTasks) => {
+      const otherTasks = currentTasks.filter(
+        (currentTask) => currentTask.taskId !== savedTask.taskId,
+      );
+      return [...otherTasks, savedTask];
+    });
+    setSelectedTaskId((currentTaskId) => currentTaskId ?? savedTask.taskId);
+    return savedTask;
+  }
+
+  function scheduleMockTaskSnapshot(task: LocalTaskRecord, delay: number) {
+    taskTimers.current.push(
+      setTimeout(() => {
+        void saveTaskSnapshot(task);
+      }, delay),
+    );
+  }
+
+  function startParallelMockTasks() {
+    clearTaskTimers();
+    const startedAt = new Date().toISOString();
+    const researchTask = {
+      ...createMockTask(`mock-research-${Date.now()}`, "Research OAuth flow"),
+      createdAt: startedAt,
+      updatedAt: startedAt,
+    };
+    const codingTask = {
+      ...createMockTask(`mock-coding-${Date.now()}`, "Patch task tray"),
+      createdAt: startedAt,
+      updatedAt: startedAt,
+    };
+
+    void Promise.all([saveTaskSnapshot(researchTask), saveTaskSnapshot(codingTask)]);
+    setSelectedTaskId(codingTask.taskId);
+    companionPresenceStateSource.setState("task_running");
+
+    scheduleMockTaskSnapshot(
+      {
+        ...researchTask,
+        progress: 35,
+        statusMessage: "Mock research is collecting local context",
+        updatedAt: new Date().toISOString(),
+      },
+      700,
+    );
+    scheduleMockTaskSnapshot(
+      {
+        ...codingTask,
+        progress: 25,
+        statusMessage: "Mock coding task is preparing a patch",
+        updatedAt: new Date().toISOString(),
+      },
+      900,
+    );
+    scheduleMockTaskSnapshot(
+      {
+        ...researchTask,
+        progress: 100,
+        status: "completed",
+        statusMessage: "Mock task completed",
+        summary: "Found the local task tray path and recorded a summary.",
+        updatedAt: new Date().toISOString(),
+      },
+      2200,
+    );
+    scheduleMockTaskSnapshot(
+      {
+        ...codingTask,
+        progress: 58,
+        status: "failed",
+        statusMessage: "Mock dependency failed; inspect detail for repair.",
+        updatedAt: new Date().toISOString(),
+      },
+      2600,
+    );
+  }
+
   const renderedPresenceState = renderedPresenceStateFor({
     audioActivationState: audioActivation.state,
     voiceOutputPresenceState: voiceSession.presenceState,
@@ -2023,6 +2132,32 @@ export function App({
   }, [durableSoulGuidanceStore]);
 
   useEffect(() => {
+    if (initialTasks.length > 0) {
+      return;
+    }
+
+    let isCurrent = true;
+
+    durableTaskStore
+      .list()
+      .then((savedTasks) => {
+        if (!isCurrent) {
+          return;
+        }
+
+        setTasks(savedTasks);
+        setSelectedTaskId((currentTaskId) =>
+          currentTaskId ?? savedTasks[0]?.taskId ?? null,
+        );
+      })
+      .catch(() => undefined);
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [durableTaskStore, initialTasks.length]);
+
+  useEffect(() => {
     if (typeof window === "undefined" || !("__TAURI_INTERNALS__" in window)) {
       return;
     }
@@ -2058,6 +2193,8 @@ export function App({
       if (avatarReactionTimer.current) {
         clearTimeout(avatarReactionTimer.current);
       }
+
+      clearTaskTimers();
     },
     [],
   );
@@ -2212,6 +2349,13 @@ export function App({
           onRejectCurrentTask={rejectCurrentTask}
         />
       ) : null}
+
+      <TaskTrayPanel
+        tasks={tasks}
+        selectedTaskId={selectedTaskId}
+        onStartMockTasks={startParallelMockTasks}
+        onSelectTask={setSelectedTaskId}
+      />
 
       <section className="companion-presence-zone" aria-label="Bottom Plato presence area">
         {isDismissed ? (
