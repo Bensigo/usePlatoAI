@@ -92,9 +92,9 @@ run_codex_review() {
   fi
 
   if [[ ${#extra_args[@]} -gt 0 ]]; then
-    codex exec review --base "$base" "${output_args[@]}" "${extra_args[@]}" - <<< "$prompt"
+    codex exec "${output_args[@]}" "${extra_args[@]}" - <<< "$prompt"
   else
-    codex exec review --base "$base" "${output_args[@]}" - <<< "$prompt"
+    codex exec "${output_args[@]}" - <<< "$prompt"
   fi
 }
 
