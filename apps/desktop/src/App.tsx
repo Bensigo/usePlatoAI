@@ -94,8 +94,10 @@ import {
 import { experienceTokenCss } from "./experienceTokens";
 import {
   TaskTrayPanel,
+  applyLocalTaskTransition,
   createMockTask,
   createTauriTaskStore,
+  type LocalTaskAction,
   type LocalTaskRecord,
   type TaskStore,
 } from "./tasks";
@@ -1795,6 +1797,7 @@ export function App({
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(
     initialSelectedTaskId ?? initialTasks[0]?.taskId ?? null,
   );
+  const latestTasks = useRef<LocalTaskRecord[]>(initialTasks);
   const voiceTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
   const taskTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
   const avatarReactionTimer = useRef<ReturnType<typeof setTimeout> | null>(
@@ -1817,6 +1820,10 @@ export function App({
 
     taskTimers.current = [];
   }
+
+  useEffect(() => {
+    latestTasks.current = tasks;
+  }, [tasks]);
 
   function scheduleVoiceState(
     delay: number,
@@ -2040,22 +2047,64 @@ export function App({
 
   async function saveTaskSnapshot(task: LocalTaskRecord) {
     const savedTask = await durableTaskStore.save(task);
-    setTasks((currentTasks) => {
-      const otherTasks = currentTasks.filter(
+    const nextTasks = [
+      ...latestTasks.current.filter(
         (currentTask) => currentTask.taskId !== savedTask.taskId,
-      );
-      return [...otherTasks, savedTask];
-    });
+      ),
+      savedTask,
+    ];
+
+    latestTasks.current = nextTasks;
+    setTasks(nextTasks);
     setSelectedTaskId((currentTaskId) => currentTaskId ?? savedTask.taskId);
+    companionPresenceStateSource.setState(
+      currentTaskPresenceStateForLocalTasks(nextTasks),
+    );
     return savedTask;
   }
 
   function scheduleMockTaskSnapshot(task: LocalTaskRecord, delay: number) {
     taskTimers.current.push(
       setTimeout(() => {
+        const currentTask = latestTasks.current.find(
+          (candidateTask) => candidateTask.taskId === task.taskId,
+        );
+
+        if (currentTask && currentTask.status !== "running") {
+          return;
+        }
+
         void saveTaskSnapshot(task);
       }, delay),
     );
+  }
+
+  async function controlLocalTask(taskId: string, action: LocalTaskAction) {
+    const task = latestTasks.current.find(
+      (candidateTask) => candidateTask.taskId === taskId,
+    );
+
+    if (!task) {
+      return;
+    }
+
+    try {
+      const updatedTask = await saveTaskSnapshot(
+        applyLocalTaskTransition(task, action),
+      );
+
+      if (action === "resume") {
+        scheduleMockTaskSnapshot(
+          {
+            ...applyLocalTaskTransition(updatedTask, "advance"),
+            updatedAt: new Date().toISOString(),
+          },
+          700,
+        );
+      }
+    } catch {
+      return;
+    }
   }
 
   function startParallelMockTasks() {
@@ -2073,6 +2122,14 @@ export function App({
     };
 
     void Promise.all([saveTaskSnapshot(researchTask), saveTaskSnapshot(codingTask)]);
+    latestTasks.current = [
+      ...latestTasks.current.filter(
+        (task) =>
+          task.taskId !== researchTask.taskId && task.taskId !== codingTask.taskId,
+      ),
+      researchTask,
+      codingTask,
+    ];
     setSelectedTaskId(codingTask.taskId);
     companionPresenceStateSource.setState("task_running");
 
@@ -2399,6 +2456,7 @@ export function App({
         selectedTaskId={selectedTaskId}
         onStartMockTasks={startParallelMockTasks}
         onSelectTask={setSelectedTaskId}
+        onTaskAction={controlLocalTask}
       />
 
       <section className="companion-presence-zone" aria-label="Bottom Plato presence area">

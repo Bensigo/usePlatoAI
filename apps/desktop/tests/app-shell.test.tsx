@@ -1029,30 +1029,51 @@ describe("desktop app shell", () => {
     expect(currentTaskPresenceStateForAction("reject")).toBe("idle");
   });
 
-  it("derives shared task presence from persisted local task state", () => {
-    const runningTask = createMockTask("task-running", "Run local task");
+  it("derives current task presence from every local task status", () => {
+    const runningTask = {
+      ...createMockTask("task-running", "Patch task tray"),
+      status: "running" as const,
+    };
+    const pausedTask = {
+      ...createMockTask("task-paused", "Research OAuth flow"),
+      status: "paused" as const,
+    };
+    const approvalTask = {
+      ...createMockTask("task-approval", "Approve local file edit"),
+      status: "waiting_for_approval" as const,
+    };
+    const failedTask = {
+      ...createMockTask("task-failed", "Repair local task"),
+      status: "failed" as const,
+    };
 
-    expect(currentTaskPresenceStateForLocalTasks([runningTask])).toBe(
-      "task_running",
-    );
     expect(
       currentTaskPresenceStateForLocalTasks([
-        { ...runningTask, status: "paused" },
+        { ...runningTask, status: "cancelled" },
+        pausedTask,
       ]),
     ).toBe("task_paused");
     expect(
       currentTaskPresenceStateForLocalTasks([
-        { ...runningTask, status: "waiting_for_approval" },
+        { ...runningTask, status: "cancelled" },
+        pausedTask,
+        runningTask,
+      ]),
+    ).toBe("task_running");
+    expect(
+      currentTaskPresenceStateForLocalTasks([pausedTask, runningTask, failedTask]),
+    ).toBe("error");
+    expect(
+      currentTaskPresenceStateForLocalTasks([
+        runningTask,
+        pausedTask,
+        approvalTask,
       ]),
     ).toBe("waiting_for_approval");
     expect(
       currentTaskPresenceStateForLocalTasks([
-        { ...runningTask, status: "failed" },
-      ]),
-    ).toBe("error");
-    expect(
-      currentTaskPresenceStateForLocalTasks([
         { ...runningTask, status: "completed" },
+        { ...pausedTask, status: "cancelled" },
       ]),
     ).toBe("idle");
   });
