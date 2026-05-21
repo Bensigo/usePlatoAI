@@ -1,5 +1,5 @@
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { App } from "../src/App";
 import {
@@ -9,12 +9,27 @@ import {
   createApprovalGatedMockTask,
   createMemoryTaskStore,
   createMockTask,
+  createTauriTaskStore,
   localTaskControlsFor,
   listActiveTasks,
   resolveMockTaskApproval,
+  type LocalTaskRecord,
   waitForMockTaskApproval,
 } from "../src/tasks";
 import { defaultCompanionSettings } from "../src/settings";
+
+const { invokeMock } = vi.hoisted(() => ({
+  invokeMock: vi.fn(),
+}));
+
+vi.mock("@tauri-apps/api/core", () => ({
+  invoke: invokeMock,
+}));
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+  invokeMock.mockReset();
+});
 
 describe("task tray and local mock tasks", () => {
   it("persists two mock tasks and exposes active progress for the tray", async () => {
@@ -117,6 +132,14 @@ describe("task tray and local mock tasks", () => {
       progress: 65,
       statusMessage: "Approval granted; mock task is continuing.",
       approvalDecision: "approved",
+      approvedArtifacts: [
+        expect.objectContaining({
+          artifactId: "task-approval-approved-decision",
+          label: "Submit mock browser form",
+          kind: "decision",
+          approvalDecision: "approved",
+        }),
+      ],
     });
     expect(rejectedTask).toMatchObject({
       status: "cancelled",
@@ -140,6 +163,7 @@ describe("task tray and local mock tasks", () => {
         expect.objectContaining({
           taskId: "task-approval",
           decision: "approved",
+          artifactIds: ["task-approval-approved-decision"],
         }),
         expect.objectContaining({
           taskId: "task-approval",
@@ -151,6 +175,127 @@ describe("task tray and local mock tasks", () => {
         }),
       ]),
     );
+  });
+
+  it("maps approved artifact IDs from Tauri task audit metadata", async () => {
+    vi.stubGlobal("window", { __TAURI_INTERNALS__: {} });
+    invokeMock.mockResolvedValueOnce([
+      {
+        category: "task_metadata",
+        action: "task.completed",
+        metadata: {
+          taskId: "task-approval",
+          status: "completed",
+          approvalDecision: "approved",
+          approvedArtifactIds: ["task-approval-approved-decision"],
+        },
+        createdAt: "1970-01-01T00:00:00.000Z",
+      },
+      {
+        category: "settings",
+        action: "settings.updated",
+        metadata: {
+          taskId: "ignored",
+          approvalDecision: "approved",
+          approvedArtifactIds: ["ignored-artifact"],
+        },
+        createdAt: "1970-01-01T00:00:00.000Z",
+      },
+    ]);
+
+    await expect(createTauriTaskStore().audit()).resolves.toEqual([
+      {
+        taskId: "task-approval",
+        decision: "approved",
+        artifactIds: ["task-approval-approved-decision"],
+        status: "completed",
+        createdAt: "1970-01-01T00:00:00.000Z",
+      },
+    ]);
+    expect(invokeMock).toHaveBeenCalledWith("read_recent_audit_history", {
+      limit: 50,
+    });
+  });
+
+  it("retains terminal summaries and strips raw execution logs from durable task snapshots", async () => {
+    const store = createMemoryTaskStore();
+    const rawExecutionLog = "tool call stdout that should not be durable";
+
+    await store.save({
+      ...createMockTask("task-completed", "Summarize local work"),
+      status: "completed",
+      progress: 100,
+      statusMessage: "Mock task completed",
+      summary: "Completed local work and retained the concise summary.",
+      rawExecutionLog,
+    } as LocalTaskRecord & { rawExecutionLog: string });
+    await store.save({
+      ...createMockTask("task-failed", "Patch dependency"),
+      status: "failed",
+      progress: 40,
+      statusMessage: "Dependency install failed",
+    });
+    await store.save({
+      ...createMockTask("task-cancelled", "Draft browser action"),
+      status: "cancelled",
+      progress: 10,
+      statusMessage: "Mock task cancelled",
+    });
+
+    const tasks = await store.list();
+
+    expect(tasks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          taskId: "task-completed",
+          summary: "Completed local work and retained the concise summary.",
+        }),
+        expect.objectContaining({
+          taskId: "task-failed",
+          summary: "Failed Patch dependency: Dependency install failed.",
+        }),
+        expect.objectContaining({
+          taskId: "task-cancelled",
+          summary: "Cancelled Draft browser action.",
+        }),
+      ]),
+    );
+    expect(JSON.stringify(tasks)).not.toContain(rawExecutionLog);
+    expect(JSON.stringify(tasks)).not.toContain("rawExecutionLog");
+  });
+
+  it("renders completed approval summaries and approved artifact references", () => {
+    const approvedTask = {
+      ...resolveMockTaskApproval(
+        waitForMockTaskApproval(
+          createApprovalGatedMockTask("task-approval", "Submit browser form"),
+        ),
+        "approved",
+      ),
+      status: "completed" as const,
+      progress: 100,
+      statusMessage: "Mock task completed after approval.",
+      summary:
+        "Completed Submit browser form after approval; retained the approved decision reference.",
+    };
+
+    const markup = renderToStaticMarkup(
+      <TaskTrayPanel
+        tasks={[approvedTask]}
+        selectedTaskId={approvedTask.taskId}
+        onStartMockTasks={() => undefined}
+        onSelectTask={() => undefined}
+        onTaskAction={() => undefined}
+      />,
+    );
+
+    expect(markup).toContain("completed");
+    expect(markup).toContain(
+      "Completed Submit browser form after approval; retained the approved decision reference.",
+    );
+    expect(markup).toContain("Approved references");
+    expect(markup).toContain("Submit mock browser form");
+    expect(markup).toContain("decision");
   });
 
   it("renders approval waiting state in the tray, detail view, and near Plato", () => {
