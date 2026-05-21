@@ -34,6 +34,17 @@ export type LocalTaskAction =
   | "complete"
   | "fail";
 
+export type TaskNotificationTier = "quiet" | "attention" | "urgent";
+
+export type TaskNotificationPolicy = {
+  tier: TaskNotificationTier;
+  label: string;
+  detail: string;
+  surfacesInTaskTray: boolean;
+  surfacesNearCompanion: boolean;
+  interruptsCompanionInteraction: boolean;
+};
+
 type TaskMetadata = {
   taskId: string;
   title: string;
@@ -248,6 +259,55 @@ export function localTaskControlsFor(task: LocalTaskRecord): LocalTaskAction[] {
   return [];
 }
 
+export function taskNotificationPolicyFor(
+  task: LocalTaskRecord,
+): TaskNotificationPolicy {
+  if (task.status === "waiting_for_approval") {
+    return {
+      tier: "urgent",
+      label: "Approval needed",
+      detail: task.approvalRequest?.actionLabel ?? task.statusMessage,
+      surfacesInTaskTray: true,
+      surfacesNearCompanion: true,
+      interruptsCompanionInteraction: true,
+    };
+  }
+
+  if (task.status === "failed") {
+    return {
+      tier: "attention",
+      label: "Needs repair",
+      detail: task.statusMessage,
+      surfacesInTaskTray: true,
+      surfacesNearCompanion: true,
+      interruptsCompanionInteraction: false,
+    };
+  }
+
+  return {
+    tier: "quiet",
+    label: task.status === "completed" ? "Completed quietly" : "Quiet update",
+    detail: task.statusMessage,
+    surfacesInTaskTray: true,
+    surfacesNearCompanion: false,
+    interruptsCompanionInteraction: false,
+  };
+}
+
+export function companionTaskNotificationFor(
+  tasks: LocalTaskRecord[],
+): TaskNotificationPolicy | null {
+  const notifications = tasks
+    .map(taskNotificationPolicyFor)
+    .filter((notification) => notification.surfacesNearCompanion);
+
+  return (
+    notifications.find((notification) => notification.tier === "urgent") ??
+    notifications.find((notification) => notification.tier === "attention") ??
+    null
+  );
+}
+
 function advancedTask(
   task: LocalTaskRecord,
   updatedAt: string,
@@ -389,6 +449,12 @@ export function TaskTrayPanel({
 }) {
   const selectedTask =
     tasks.find((task) => task.taskId === selectedTaskId) ?? tasks[0] ?? null;
+  const surfacedNotifications = tasks
+    .map((task) => ({
+      task,
+      notification: taskNotificationPolicyFor(task),
+    }))
+    .filter(({ notification }) => notification.tier !== "quiet");
 
   return (
     <section className="task-tray" aria-label="Task tray">
@@ -402,26 +468,54 @@ export function TaskTrayPanel({
         </button>
       </header>
 
+      {surfacedNotifications.length > 0 ? (
+        <div className="task-notification-stack" aria-label="Task notifications">
+          {surfacedNotifications.map(({ task, notification }) => (
+            <div
+              key={`${task.taskId}-${notification.tier}`}
+              className="task-notification"
+              data-notification-tier={notification.tier}
+            >
+              <strong>{notification.label}</strong>
+              <span>{task.title}</span>
+              <small>{notification.detail}</small>
+            </div>
+          ))}
+        </div>
+      ) : null}
+
       <div className="task-list" role="list" aria-label="Local tasks">
         {tasks.length > 0 ? (
-          tasks.map((task) => (
-            <button
-              key={task.taskId}
-              type="button"
-              role="listitem"
-              className={task.taskId === selectedTask?.taskId ? "active" : undefined}
-              onClick={() => onSelectTask(task.taskId)}
-            >
-              <span>
-                <strong>{task.title}</strong>
-                <small>{task.status}</small>
-              </span>
-              <span className="task-progress" aria-label={`${task.progress}% complete`}>
-                <span style={{ width: `${task.progress}%` }} />
-              </span>
-              <em>{task.progress}%</em>
-            </button>
-          ))
+          tasks.map((task) => {
+            const notification = taskNotificationPolicyFor(task);
+
+            return (
+              <button
+                key={task.taskId}
+                type="button"
+                role="listitem"
+                className={
+                  task.taskId === selectedTask?.taskId ? "active" : undefined
+                }
+                data-notification-tier={notification.tier}
+                onClick={() => onSelectTask(task.taskId)}
+              >
+                <span>
+                  <strong>{task.title}</strong>
+                  <small>
+                    {task.status} · {notification.label}
+                  </small>
+                </span>
+                <span
+                  className="task-progress"
+                  aria-label={`${task.progress}% complete`}
+                >
+                  <span style={{ width: `${task.progress}%` }} />
+                </span>
+                <em>{task.progress}%</em>
+              </button>
+            );
+          })
         ) : (
           <p className="empty-state">No local tasks yet</p>
         )}
