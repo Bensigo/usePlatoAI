@@ -15,6 +15,7 @@ export type Live2DAvatarSurfaceHook = {
   state: AvatarPresenceState;
   label: string;
   statusText: string;
+  avatarAssetPath: `/avatar/plato/${AvatarPresenceState}.png`;
   motionGroup:
     | "appear"
     | "idle"
@@ -49,6 +50,7 @@ export const live2dAvatarSurfaceHooks: Record<
     state: "appearing",
     label: "Appearing",
     statusText: "Coming online",
+    avatarAssetPath: "/avatar/plato/appearing.png",
     motionGroup: "appear",
     expression: "bright",
     parameterHints: {
@@ -62,6 +64,7 @@ export const live2dAvatarSurfaceHooks: Record<
     state: "idle",
     label: "Idle",
     statusText: "Idle presence",
+    avatarAssetPath: "/avatar/plato/idle.png",
     motionGroup: "idle",
     expression: "neutral",
     parameterHints: {
@@ -75,6 +78,7 @@ export const live2dAvatarSurfaceHooks: Record<
     state: "listening",
     label: "Listening",
     statusText: "Listening now",
+    avatarAssetPath: "/avatar/plato/listening.png",
     motionGroup: "tap_body",
     expression: "attentive",
     parameterHints: {
@@ -88,6 +92,7 @@ export const live2dAvatarSurfaceHooks: Record<
     state: "thinking",
     label: "Thinking",
     statusText: "Thinking through it",
+    avatarAssetPath: "/avatar/plato/thinking.png",
     motionGroup: "thinking",
     expression: "focused",
     parameterHints: {
@@ -101,6 +106,7 @@ export const live2dAvatarSurfaceHooks: Record<
     state: "speaking",
     label: "Speaking",
     statusText: "Speaking",
+    avatarAssetPath: "/avatar/plato/speaking.png",
     motionGroup: "speak",
     expression: "talking",
     parameterHints: {
@@ -114,6 +120,7 @@ export const live2dAvatarSurfaceHooks: Record<
     state: "waitingApproval",
     label: "Waiting for approval",
     statusText: "Waiting for approval",
+    avatarAssetPath: "/avatar/plato/waitingApproval.png",
     motionGroup: "approval",
     expression: "concerned",
     parameterHints: {
@@ -127,6 +134,7 @@ export const live2dAvatarSurfaceHooks: Record<
     state: "muted",
     label: "Muted",
     statusText: "Muted",
+    avatarAssetPath: "/avatar/plato/muted.png",
     motionGroup: "quiet",
     expression: "soft",
     parameterHints: {
@@ -140,6 +148,7 @@ export const live2dAvatarSurfaceHooks: Record<
     state: "error",
     label: "Error",
     statusText: "Needs repair",
+    avatarAssetPath: "/avatar/plato/error.png",
     motionGroup: "error",
     expression: "strained",
     parameterHints: {
@@ -191,8 +200,28 @@ export function Live2DAvatarSurface({
       data-live2d-expression={hook.expression}
       aria-label={`Plato avatar surface: ${hook.statusText}`}
     >
-      <div className="live2d-avatar-stage" aria-hidden="true">
-        <div className="live2d-presence-mark">
+      <div
+        className="live2d-avatar-stage"
+        data-avatar-renderer="plato-mascot-asset"
+        aria-hidden="true"
+      >
+        <img
+          className="plato-avatar-asset"
+          src={hook.avatarAssetPath}
+          alt=""
+          decoding="async"
+          draggable={false}
+          data-avatar-asset={hook.state}
+          onError={(event) => {
+            event.currentTarget
+              .closest(".live2d-avatar-stage")
+              ?.setAttribute("data-avatar-renderer", "fallback-presence-mark");
+          }}
+        />
+        <div
+          className="live2d-presence-mark"
+          data-avatar-fallback-surface="presence-mark"
+        >
           <span className="live2d-presence-core" />
           <span className="live2d-presence-ring live2d-presence-ring-primary" />
           <span className="live2d-presence-ring live2d-presence-ring-secondary" />
