@@ -1,5 +1,6 @@
 import {
   createAgentEngineCatalogFromAdapters,
+  createAgentEngineAdapterRegistry,
   createClaudeAgentSdkAgentEngineAdapter,
   createCodexSdkAgentEngineAdapter,
   createProviderSecretReference,
@@ -16,6 +17,13 @@ type ProviderOption = ModelProvider & {
   authLabel: string;
   availabilityLabel: string;
   costWarning: string;
+};
+
+type EngineDisplayState = {
+  engineName: string;
+  stateLabel: string;
+  reason: string;
+  isBlocking: boolean;
 };
 
 export interface ProviderSettingsSurface {
@@ -57,18 +65,12 @@ const demoSecretStore = new DemoSecretStore([
   [anthropicSecretReference, "present"],
 ]);
 
-const runtimeCatalog = createAgentEngineCatalogFromAdapters(
-  new Map([
-    [
-      "codex_sdk",
-      createCodexSdkAgentEngineAdapter({ runtimeAvailable: true }),
-    ],
-    [
-      "claude_agent_sdk",
-      createClaudeAgentSdkAgentEngineAdapter({ runtimeAvailable: true }),
-    ],
-  ]),
-);
+const runtimeAdapters = createAgentEngineAdapterRegistry([
+  createCodexSdkAgentEngineAdapter({ runtimeAvailable: true }),
+  createClaudeAgentSdkAgentEngineAdapter({ runtimeAvailable: true }),
+]);
+
+const runtimeCatalog = createAgentEngineCatalogFromAdapters(runtimeAdapters);
 
 const providers: ProviderOption[] = [
   {
@@ -162,7 +164,7 @@ export function renderProviderSettings(root: HTMLElement): ProviderSettingsSurfa
       return;
     }
 
-    const [authSnapshot, engineResolution] = await Promise.all([
+    const [authSnapshot, engineDisplayState] = await Promise.all([
       selectedProvider.authState
         ? getProviderAuthAvailabilitySnapshot(
             selectedProvider.authState,
@@ -173,9 +175,7 @@ export function renderProviderSettings(root: HTMLElement): ProviderSettingsSurfa
             availability: "not_configured",
             hasSecretReference: false,
           }),
-      Promise.resolve(
-        resolveAgentEngineForProvider(selectedProvider, runtimeCatalog),
-      ),
+      getEngineDisplayState(selectedProvider),
     ]);
 
     if (currentRenderVersion !== renderVersion) {
@@ -183,20 +183,20 @@ export function renderProviderSettings(root: HTMLElement): ProviderSettingsSurfa
     }
 
     root.replaceChildren(
-      buildShell(selectedProvider, authSnapshot, engineResolution),
+      buildShell(selectedProvider, authSnapshot, engineDisplayState),
     );
   }
 
   function buildShell(
     selectedProvider: ProviderOption,
     authSnapshot: ProviderAuthAvailabilitySnapshot,
-    engineResolution: EngineResolution,
+    engineDisplayState: EngineDisplayState,
   ) {
     const shell = element("section", "provider-settings");
     shell.append(
       buildHeader(),
       buildProviderTabs(selectedProvider.id),
-      buildProviderPanel(selectedProvider, authSnapshot, engineResolution),
+      buildProviderPanel(selectedProvider, authSnapshot, engineDisplayState),
     );
     return shell;
   }
@@ -248,13 +248,10 @@ export function renderProviderSettings(root: HTMLElement): ProviderSettingsSurfa
   function buildProviderPanel(
     provider: ProviderOption,
     authSnapshot: ProviderAuthAvailabilitySnapshot,
-    engineResolution: EngineResolution,
+    engineDisplayState: EngineDisplayState,
   ) {
     const panel = element("article", "provider-settings__panel");
     const status = authStatusLabel(authSnapshot);
-    const engineName =
-      engineResolution.selectedEngine?.displayName ??
-      fallbackEngineName(engineResolution);
 
     panel.append(
       buildSection("Provider", [
@@ -268,14 +265,11 @@ export function renderProviderSettings(root: HTMLElement): ProviderSettingsSurfa
         ],
       ]),
       buildSection("Agent Engine", [
-        ["Selected engine", engineName],
-        ["Engine state", engineStateLabel(engineResolution)],
-        ["Reason", engineResolution.reason],
+        ["Selected engine", engineDisplayState.engineName],
+        ["Engine state", engineDisplayState.stateLabel],
+        ["Reason", engineDisplayState.reason],
       ]),
-      buildWarning(
-        provider.costWarning,
-        engineResolution.status === "no_engine_supported",
-      ),
+      buildWarning(provider.costWarning, engineDisplayState.isBlocking),
     );
 
     return panel;
@@ -325,6 +319,43 @@ export function renderProviderSettings(root: HTMLElement): ProviderSettingsSurfa
 
   return {
     selectProvider,
+  };
+}
+
+async function getEngineDisplayState(
+  provider: ModelProvider,
+): Promise<EngineDisplayState> {
+  const resolution = resolveAgentEngineForProvider(provider, runtimeCatalog);
+  const engineName =
+    resolution.selectedEngine?.displayName ?? fallbackEngineName(resolution);
+
+  if (resolution.status !== "engine_selected" || !resolution.selectedEngine) {
+    return {
+      engineName,
+      stateLabel: engineStateLabel(resolution),
+      reason: resolution.reason,
+      isBlocking: resolution.status !== "engine_selected",
+    };
+  }
+
+  const adapter = runtimeAdapters.get(resolution.selectedEngine.kind);
+  if (!adapter) {
+    return {
+      engineName,
+      stateLabel: "Unavailable",
+      reason: `${engineName} adapter is not registered.`,
+      isBlocking: true,
+    };
+  }
+
+  const adapterState = await adapter.getState(provider, demoSecretStore);
+
+  return {
+    engineName,
+    stateLabel:
+      adapterState.status === "available" ? "Available" : "Unavailable",
+    reason: adapterState.reason,
+    isBlocking: adapterState.status !== "available",
   };
 }
 
