@@ -275,6 +275,81 @@ export function createCodexSdkAgentEngineAdapter(input?: {
   };
 }
 
+export function createClaudeAgentSdkAgentEngineAdapter(input?: {
+  runtimeAvailable?: boolean;
+  now?: () => Date;
+}): AgentEngineAdapter {
+  const runtimeAvailable = input?.runtimeAvailable ?? false;
+  const now = input?.now ?? (() => new Date());
+
+  return {
+    engine: {
+      kind: "claude_agent_sdk",
+      displayName: "Claude Agent SDK",
+      availability: runtimeAvailable ? "available" : "unavailable",
+    },
+    async getState(provider, secretStore) {
+      if (provider.kind !== "anthropic" && provider.kind !== "claude") {
+        return {
+          status: "unavailable",
+          reason:
+            "Claude Agent SDK is only mapped for Anthropic/Claude-backed providers.",
+        };
+      }
+
+      if (!runtimeAvailable) {
+        return {
+          status: "unavailable",
+          reason: "Claude Agent SDK runtime is not available in this app build.",
+        };
+      }
+
+      if (!provider.authState) {
+        return {
+          status: "auth_missing",
+          reason:
+            "Anthropic/Claude provider auth is not configured for Claude Agent SDK.",
+          authAvailability: "not_configured",
+        };
+      }
+
+      const authSnapshot = await getProviderAuthAvailabilitySnapshot(
+        provider.authState,
+        secretStore,
+      );
+
+      if (authSnapshot.availability !== "ready") {
+        return {
+          status: "auth_missing",
+          reason:
+            "Anthropic/Claude provider auth is not ready for Claude Agent SDK.",
+          authAvailability: authSnapshot.availability,
+        };
+      }
+
+      return {
+        status: "available",
+        reason:
+          "Claude Agent SDK is available for Anthropic/Claude-backed Agent Engine tasks.",
+        authAvailability: authSnapshot.availability,
+      };
+    },
+    async runMockedTask(request) {
+      return {
+        taskId: request.taskId,
+        status: "completed",
+        summary: `Mocked Claude Agent SDK completed: ${request.instruction}`,
+        output: {
+          kind: "mocked_agent_engine_result",
+          text: `Claude Agent SDK mocked execution accepted ${request.requiredCapabilities.length} required capabilities under ${request.authorityMode}.`,
+        },
+        engineKind: "claude_agent_sdk",
+        completedAt: now().toISOString(),
+      };
+    },
+  };
+}
+
 export async function createApiKeyProviderAuthState(input: {
   providerId: string;
   providerDisplayName: string;
