@@ -127,13 +127,12 @@ const providers: ProviderOption[] = [
     displayName: "Ollama",
     kind: "local",
     authMode: "local_model_endpoint",
-    localEndpoint: "http://localhost:11434",
     authState: {
       mode: "local_model_endpoint",
-      endpoint: "http://localhost:11434",
+      endpoint: "",
     },
     authLabel: "Local model endpoint",
-    availabilityLabel: "Local provider endpoint is configured on this machine.",
+    availabilityLabel: "Local provider waits for a configured endpoint.",
     costWarning:
       "Local providers can reduce API cost, but agent-engine task execution is unavailable until implemented.",
   },
@@ -251,7 +250,7 @@ export function renderProviderSettings(root: HTMLElement): ProviderSettingsSurfa
         ["Auth status", status],
         [
           "Endpoint",
-          authSnapshot.endpoint ?? provider.localEndpoint ?? "Not applicable",
+          authSnapshot.endpoint || provider.localEndpoint || "Not applicable",
         ],
       ]),
       buildSection("Agent Engine", [

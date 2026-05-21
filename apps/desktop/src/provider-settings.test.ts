@@ -65,7 +65,10 @@ describe("provider settings UI", () => {
     await settings.selectProvider("local");
 
     expect(document.body.textContent).toContain("Local model endpoint");
-    expect(factValue("Endpoint")).toBe("http://localhost:11434");
+    expect(factValue("Endpoint")).toBe("Not applicable");
+    expect(factValue("Auth status")).toBe(
+      "Auth missing: local endpoint is not configured",
+    );
     expect(factValue("Engine state")).toBe("No Agent Engine supported yet");
     expect(document.body.textContent).toContain(
       "Local providers can reduce API cost, but agent-engine task execution is unavailable until implemented.",
