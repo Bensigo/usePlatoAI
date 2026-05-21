@@ -176,4 +176,36 @@ describe("task tray and local mock tasks", () => {
     expect(pausedMarkup).toContain("Resume task");
     expect(pausedMarkup).toContain("Cancel task");
   });
+
+  it("renders only cancellable controls for approval-waiting tasks", () => {
+    const waitingTask = {
+      ...createMockTask("task-approval", "Approve browser submission"),
+      status: "waiting_for_approval" as const,
+      progress: 64,
+      statusMessage: "Mock browser action is waiting for approval.",
+    };
+
+    const markup = renderToStaticMarkup(
+      <TaskTrayPanel
+        tasks={[waitingTask]}
+        selectedTaskId={waitingTask.taskId}
+        onStartMockTasks={() => undefined}
+        onSelectTask={() => undefined}
+        onTaskAction={() => undefined}
+      />,
+    );
+
+    expect(localTaskControlsFor(waitingTask)).toEqual(["cancel"]);
+    expect(markup).not.toContain("Pause task");
+    expect(markup).toContain("Cancel task");
+    expect(() => applyLocalTaskTransition(waitingTask, "pause")).toThrow(
+      "Cannot pause a waiting_for_approval local task",
+    );
+    expect(applyLocalTaskTransition(waitingTask, "cancel")).toMatchObject({
+      status: "cancelled",
+      progress: 64,
+      statusMessage: "Mock task cancelled",
+      summary: "Cancelled Approve browser submission at 64%.",
+    });
+  });
 });
