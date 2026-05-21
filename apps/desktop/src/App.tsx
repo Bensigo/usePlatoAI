@@ -96,7 +96,10 @@ import {
   TaskTrayPanel,
   applyLocalTaskTransition,
   createMockTask,
+  resolveMockTaskApproval,
   createTauriTaskStore,
+  waitForMockTaskApproval,
+  type TaskApprovalDecision,
   type LocalTaskAction,
   type LocalTaskRecord,
   type TaskStore,
@@ -189,7 +192,8 @@ export type CurrentTaskPanelAction =
   | "resume"
   | "cancel"
   | "approve"
-  | "reject";
+  | "reject"
+  | "dismiss";
 
 export function isActionableCurrentTaskState(state: string) {
   return (
@@ -1026,6 +1030,7 @@ export function CenteredChatPanel({
   onCancelCurrentTask,
   onApproveCurrentTask,
   onRejectCurrentTask,
+  onDismissCurrentTask,
 }: {
   voiceInteraction: VoiceInteractionSnapshot;
   currentTaskState: PresenceStateSnapshot;
@@ -1037,6 +1042,7 @@ export function CenteredChatPanel({
   onCancelCurrentTask?: () => void;
   onApproveCurrentTask?: () => void;
   onRejectCurrentTask?: () => void;
+  onDismissCurrentTask?: () => void;
 }) {
   const isWorkRunning = currentTaskState.state === "task_running";
   const isWaitingForApproval =
@@ -1147,6 +1153,9 @@ export function CenteredChatPanel({
               </button>
               <button type="button" onClick={onRejectCurrentTask}>
                 Reject
+              </button>
+              <button type="button" onClick={onDismissCurrentTask}>
+                Dismiss
               </button>
             </div>
           ) : null}
@@ -2022,27 +2031,15 @@ export function App({
   }
 
   function approveCurrentTask() {
-    companionPresenceStateSource.setState(
-      currentTaskPresenceStateForAction("approve"),
-    );
-    setVoiceInteraction((current) => ({
-      ...current,
-      response: "Approved. Continuing the current task.",
-    }));
+    void resolveCurrentApprovalTask("approved");
   }
 
   function rejectCurrentTask() {
-    clearVoiceTimers();
-    correctionPromptRequestId.current += 1;
-    companionPresenceStateSource.setState(
-      currentTaskPresenceStateForAction("reject"),
-    );
-    setVoiceInteraction((current) => ({
-      ...current,
-      sessionState: "idle",
-      response: "Rejected. Current task stopped.",
-      companionPrompt: null,
-    }));
+    void resolveCurrentApprovalTask("rejected");
+  }
+
+  function dismissCurrentTask() {
+    void resolveCurrentApprovalTask("dismissed");
   }
 
   async function saveTaskSnapshot(task: LocalTaskRecord) {
@@ -2061,6 +2058,116 @@ export function App({
       currentTaskPresenceStateForLocalTasks(nextTasks),
     );
     return savedTask;
+  }
+
+  function findCurrentApprovalTask(currentTasks = tasks) {
+    return (
+      currentTasks.find(
+        (task) =>
+          task.taskId === selectedTaskId &&
+          task.status === "waiting_for_approval",
+      ) ??
+      currentTasks.find((task) => task.status === "waiting_for_approval") ??
+      null
+    );
+  }
+
+  async function resolveApprovalTask(
+    task: LocalTaskRecord,
+    decision: TaskApprovalDecision,
+  ) {
+    clearVoiceTimers();
+    correctionPromptRequestId.current += 1;
+    const resolvedTask = await saveTaskSnapshot(
+      resolveMockTaskApproval(task, decision),
+    );
+    setSelectedTaskId(resolvedTask.taskId);
+
+    if (decision === "approved") {
+      companionPresenceStateSource.setState(
+        currentTaskPresenceStateForAction("approve"),
+      );
+      setVoiceInteraction((current) => ({
+        ...current,
+        response: "Approved. Continuing the current task.",
+        companionPrompt: null,
+      }));
+      scheduleMockTaskSnapshot(
+        {
+          ...resolvedTask,
+          progress: 100,
+          status: "completed",
+          statusMessage: "Mock task completed after approval.",
+          summary: `Completed ${resolvedTask.title} after approval.`,
+          updatedAt: new Date().toISOString(),
+        },
+        1200,
+      );
+      return;
+    }
+
+    companionPresenceStateSource.setState(
+      currentTaskPresenceStateForAction(
+        decision === "dismissed" ? "dismiss" : "reject",
+      ),
+    );
+    setVoiceInteraction((current) => ({
+      ...current,
+      sessionState: "idle",
+      response:
+        decision === "dismissed"
+          ? "Dismissed. Current task stopped before the gated action."
+          : "Rejected. Current task stopped.",
+      companionPrompt: null,
+    }));
+  }
+
+  async function resolveSelectedApprovalTask(
+    taskId: string,
+    decision: TaskApprovalDecision,
+  ) {
+    const task = tasks.find((currentTask) => currentTask.taskId === taskId);
+    if (!task || task.status !== "waiting_for_approval") {
+      return;
+    }
+
+    await resolveApprovalTask(task, decision);
+  }
+
+  async function resolveCurrentApprovalTask(decision: TaskApprovalDecision) {
+    const task = findCurrentApprovalTask();
+    if (task) {
+      await resolveApprovalTask(task, decision);
+      return;
+    }
+
+    if (decision === "approved") {
+      companionPresenceStateSource.setState(
+        currentTaskPresenceStateForAction("approve"),
+      );
+      setVoiceInteraction((current) => ({
+        ...current,
+        response: "Approved. Continuing the current task.",
+      }));
+      return;
+    }
+
+    clearVoiceTimers();
+    correctionPromptRequestId.current += 1;
+    companionPresenceStateSource.setState(
+      currentTaskPresenceStateForAction(
+        decision === "dismissed" ? "dismiss" : "reject",
+      ),
+    );
+    setVoiceInteraction((current) => ({
+      ...current,
+      sessionState: "idle",
+      response:
+        decision === "dismissed"
+          ? "Dismissed. Current task stopped before the gated action."
+          : "Rejected. Current task stopped.",
+      companionPrompt: null,
+    }));
   }
 
   function scheduleMockTaskSnapshot(task: LocalTaskRecord, delay: number) {
@@ -2143,12 +2250,12 @@ export function App({
       700,
     );
     scheduleMockTaskSnapshot(
-      {
+      waitForMockTaskApproval({
         ...codingTask,
         progress: 25,
-        statusMessage: "Mock coding task is preparing a patch",
+        statusMessage: "Mock coding task is preparing a gated browser action",
         updatedAt: new Date().toISOString(),
-      },
+      }),
       900,
     );
     scheduleMockTaskSnapshot(
@@ -2162,29 +2269,28 @@ export function App({
       },
       2200,
     );
-    scheduleMockTaskSnapshot(
-      {
-        ...codingTask,
-        progress: 58,
-        status: "failed",
-        statusMessage: "Mock dependency failed; inspect detail for repair.",
-        updatedAt: new Date().toISOString(),
-      },
-      2600,
-    );
   }
+
+  const currentApprovalTask = findCurrentApprovalTask();
+  const taskAwarePresence: PresenceStateSnapshot = currentApprovalTask
+    ? {
+        state: "waiting_for_approval",
+        label: "Approval needed",
+        rendererHint: "approval",
+      }
+    : presence;
 
   const renderedPresenceState = renderedPresenceStateFor({
     audioActivationState: audioActivation.state,
     voiceOutputPresenceState: voiceSession.presenceState,
     voiceInteractionSessionState: voiceInteraction.sessionState,
-    sharedPresenceState: presence.state,
+    sharedPresenceState: taskAwarePresence.state,
   });
   const avatarPresenceState = avatarPresenceStateFor(renderedPresenceState);
   const avatarSurfaceHook = getLive2DAvatarSurfaceHook(avatarPresenceState);
   const showCenteredChatPanelOpener = shouldShowCenteredChatPanelOpener({
     voiceInteractionSessionState: voiceInteraction.sessionState,
-    currentTaskState: presence,
+    currentTaskState: taskAwarePresence,
   });
 
   useEffect(() => {
@@ -2437,7 +2543,7 @@ export function App({
       {isChatPanelOpen ? (
         <CenteredChatPanel
           voiceInteraction={voiceInteraction}
-          currentTaskState={presence}
+          currentTaskState={taskAwarePresence}
           onDismiss={() => setIsChatPanelOpen(false)}
           onTextFallbackChange={(fallbackText) =>
             setVoiceInteraction((current) => ({ ...current, fallbackText }))
@@ -2448,6 +2554,7 @@ export function App({
           onCancelCurrentTask={cancelCurrentTask}
           onApproveCurrentTask={approveCurrentTask}
           onRejectCurrentTask={rejectCurrentTask}
+          onDismissCurrentTask={dismissCurrentTask}
         />
       ) : null}
 
@@ -2456,6 +2563,15 @@ export function App({
         selectedTaskId={selectedTaskId}
         onStartMockTasks={startParallelMockTasks}
         onSelectTask={setSelectedTaskId}
+        onApproveTask={(taskId) =>
+          void resolveSelectedApprovalTask(taskId, "approved")
+        }
+        onRejectTask={(taskId) =>
+          void resolveSelectedApprovalTask(taskId, "rejected")
+        }
+        onDismissApproval={(taskId) =>
+          void resolveSelectedApprovalTask(taskId, "dismissed")
+        }
         onTaskAction={controlLocalTask}
       />
 
@@ -2501,13 +2617,13 @@ export function App({
                 <PresenceListeningBubble
                   state={avatarPresenceState}
                   label={
-                    isCurrentTaskControlState(presence.state)
-                      ? presence.label
+                    isCurrentTaskControlState(taskAwarePresence.state)
+                      ? taskAwarePresence.label
                       : undefined
                   }
                   ariaLabel={
-                    isCurrentTaskControlState(presence.state)
-                      ? `Open current task controls: ${presence.label}`
+                    isCurrentTaskControlState(taskAwarePresence.state)
+                      ? `Open current task controls: ${taskAwarePresence.label}`
                       : undefined
                   }
                   onOpenControls={openCenteredChatPanel}

@@ -6,12 +6,21 @@ export type LocalTaskStatus =
   | "completed"
   | "cancelled";
 
+export type TaskApprovalDecision = "approved" | "rejected" | "dismissed";
+
+export type TaskApprovalRequest = {
+  prompt: string;
+  actionLabel: string;
+};
+
 export type LocalTaskRecord = {
   taskId: string;
   title: string;
   status: LocalTaskStatus;
   progress: number;
   statusMessage: string;
+  approvalRequest?: TaskApprovalRequest | null;
+  approvalDecision?: TaskApprovalDecision | null;
   summary?: string | null;
   createdAt: string;
   updatedAt: string;
@@ -35,6 +44,13 @@ type TaskMetadata = {
 export type TaskStore = {
   save: (task: LocalTaskRecord) => Promise<LocalTaskRecord>;
   list: () => Promise<LocalTaskRecord[]>;
+  audit: () => Promise<TaskAuditEntry[]>;
+};
+
+export type TaskAuditEntry = {
+  taskId: string;
+  decision: TaskApprovalDecision;
+  createdAt: string;
 };
 
 const activeTaskStatuses: LocalTaskStatus[] = [
@@ -53,9 +69,60 @@ export function createMockTask(taskId: string, title: string): LocalTaskRecord {
     status: "running",
     progress: 0,
     statusMessage: "Mock task started",
+    approvalRequest: null,
+    approvalDecision: null,
     summary: null,
     createdAt: now,
     updatedAt: now,
+  };
+}
+
+export function createApprovalGatedMockTask(
+  taskId: string,
+  title: string,
+): LocalTaskRecord {
+  return {
+    ...createMockTask(taskId, title),
+    statusMessage: "Mock task started; approval gate is pending.",
+  };
+}
+
+export function waitForMockTaskApproval(
+  task: LocalTaskRecord,
+): LocalTaskRecord {
+  return {
+    ...task,
+    status: "waiting_for_approval",
+    progress: Math.max(task.progress, 40),
+    statusMessage: "Waiting for approval before mock browser submission.",
+    approvalRequest: {
+      prompt: "Approve mock browser form submission?",
+      actionLabel: "Submit mock browser form",
+    },
+    approvalDecision: null,
+    updatedAt: new Date(0).toISOString(),
+  };
+}
+
+export function resolveMockTaskApproval(
+  task: LocalTaskRecord,
+  decision: TaskApprovalDecision,
+): LocalTaskRecord {
+  const approved = decision === "approved";
+
+  return {
+    ...task,
+    status: approved ? "running" : "cancelled",
+    progress: approved ? Math.max(task.progress, 65) : task.progress,
+    statusMessage: approved
+      ? "Approval granted; mock task is continuing."
+      : `Approval ${decision}; gated mock action did not run.`,
+    approvalRequest: null,
+    approvalDecision: decision,
+    summary: approved
+      ? task.summary
+      : `Stopped ${task.title} after approval was ${decision}.`,
+    updatedAt: new Date(0).toISOString(),
   };
 }
 
@@ -76,15 +143,20 @@ export function mockTaskTrayVisualTasks(): LocalTaskRecord[] {
   ];
 }
 
-export function mockTaskTrayApprovalTasks(): LocalTaskRecord[] {
+export function mockApprovalTaskVisualTasks(
+  state: "waiting" | "approved",
+): LocalTaskRecord[] {
+  const gatedTask = waitForMockTaskApproval(
+    createApprovalGatedMockTask("mock-visual-approval", "Submit browser form"),
+  );
+
   return [
-    {
-      ...createMockTask("mock-approval-browser", "Approve browser submission"),
-      status: "waiting_for_approval",
-      progress: 64,
-      statusMessage: "Mock browser action is waiting for approval.",
-      summary: "Review the pending action before Plato continues.",
-    },
+    state === "approved"
+      ? {
+          ...resolveMockTaskApproval(gatedTask, "approved"),
+          statusMessage: "Approval granted; mock task is continuing.",
+        }
+      : gatedTask,
   ];
 }
 
@@ -214,6 +286,7 @@ export function createMemoryTaskStore(
   initialTasks: LocalTaskRecord[] = [],
 ): TaskStore {
   const tasks = new Map(initialTasks.map((task) => [task.taskId, task]));
+  const audit: TaskAuditEntry[] = [];
 
   return {
     async save(task) {
@@ -224,10 +297,20 @@ export function createMemoryTaskStore(
         updatedAt: task.updatedAt,
       };
       tasks.set(task.taskId, record);
+      if (record.approvalDecision) {
+        audit.push({
+          taskId: record.taskId,
+          decision: record.approvalDecision,
+          createdAt: record.updatedAt,
+        });
+      }
       return record;
     },
     async list() {
       return [...tasks.values()];
+    },
+    async audit() {
+      return [...audit];
     },
   };
 }
@@ -255,6 +338,33 @@ export function createTauriTaskStore(): TaskStore {
       const tasks = await invoke<TaskMetadata[]>("retrieve_local_tasks");
       return tasks.map(taskRecordFromMetadata);
     },
+    async audit() {
+      if (!isTauriRuntime()) {
+        return fallbackStore.audit();
+      }
+
+      const { invoke } = await import("@tauri-apps/api/core");
+      const entries = await invoke<
+        {
+          category: string;
+          action: string;
+          metadata: unknown;
+          createdAt: string;
+        }[]
+      >("read_recent_audit_history", { limit: 50 });
+
+      return entries
+        .filter((entry) => entry.category === "task_metadata")
+        .map((entry) => {
+          const metadata = isRecord(entry.metadata) ? entry.metadata : {};
+          return {
+            taskId: stringFrom(metadata.taskId, ""),
+            decision: approvalDecisionFrom(metadata.approvalDecision),
+            createdAt: entry.createdAt,
+          };
+        })
+        .filter((entry): entry is TaskAuditEntry => Boolean(entry.decision));
+    },
   };
 }
 
@@ -263,12 +373,18 @@ export function TaskTrayPanel({
   selectedTaskId,
   onStartMockTasks,
   onSelectTask,
+  onApproveTask,
+  onRejectTask,
+  onDismissApproval,
   onTaskAction,
 }: {
   tasks: LocalTaskRecord[];
   selectedTaskId?: string | null;
   onStartMockTasks: () => void;
   onSelectTask: (taskId: string) => void;
+  onApproveTask?: (taskId: string) => void;
+  onRejectTask?: (taskId: string) => void;
+  onDismissApproval?: (taskId: string) => void;
   onTaskAction: (taskId: string, action: LocalTaskAction) => void;
 }) {
   const selectedTask =
@@ -326,6 +442,33 @@ export function TaskTrayPanel({
             </div>
           </dl>
           <p>{selectedTask.statusMessage}</p>
+          {selectedTask.status === "waiting_for_approval" &&
+          selectedTask.approvalRequest ? (
+            <div className="task-approval-detail">
+              <strong>{selectedTask.approvalRequest.prompt}</strong>
+              <p>{selectedTask.approvalRequest.actionLabel}</p>
+              <div className="task-approval-actions">
+                <button
+                  type="button"
+                  onClick={() => onApproveTask?.(selectedTask.taskId)}
+                >
+                  Approve
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onRejectTask?.(selectedTask.taskId)}
+                >
+                  Reject
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onDismissApproval?.(selectedTask.taskId)}
+                >
+                  Dismiss
+                </button>
+              </div>
+            </div>
+          ) : null}
           {selectedTask.summary ? <p>{selectedTask.summary}</p> : null}
           <div className="task-detail-actions">
             {localTaskControlsFor(selectedTask).map((action) => (
@@ -364,6 +507,8 @@ function taskRecordToMetadata(task: LocalTaskRecord): TaskMetadata {
     metadata: {
       progress: task.progress,
       statusMessage: task.statusMessage,
+      approvalRequest: task.approvalRequest ?? null,
+      approvalDecision: task.approvalDecision ?? null,
       summary: task.summary ?? null,
       createdAt: task.createdAt,
       updatedAt: task.updatedAt,
@@ -380,6 +525,8 @@ function taskRecordFromMetadata(task: TaskMetadata): LocalTaskRecord {
     status: localTaskStatusFrom(task.status),
     progress: numberFrom(metadata.progress, 0),
     statusMessage: stringFrom(metadata.statusMessage, "Task status unavailable"),
+    approvalRequest: approvalRequestFrom(metadata.approvalRequest),
+    approvalDecision: approvalDecisionFrom(metadata.approvalDecision),
     summary: nullableStringFrom(metadata.summary),
     createdAt: stringFrom(metadata.createdAt, new Date(0).toISOString()),
     updatedAt: stringFrom(metadata.updatedAt, new Date(0).toISOString()),
@@ -403,6 +550,22 @@ function stringFrom(value: unknown, fallback: string) {
 
 function nullableStringFrom(value: unknown) {
   return typeof value === "string" && value.trim() ? value : null;
+}
+
+function approvalRequestFrom(value: unknown): TaskApprovalRequest | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const prompt = stringFrom(value.prompt, "");
+  const actionLabel = stringFrom(value.actionLabel, "");
+  return prompt && actionLabel ? { prompt, actionLabel } : null;
+}
+
+function approvalDecisionFrom(value: unknown): TaskApprovalDecision | null {
+  return value === "approved" || value === "rejected" || value === "dismissed"
+    ? value
+    : null;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

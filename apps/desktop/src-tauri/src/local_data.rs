@@ -556,7 +556,11 @@ impl LocalDataService {
         self.record_audit_entry(
             "task_metadata",
             "task_metadata.upserted",
-            Value::String(task.task_id.clone()),
+            json!({
+                "taskId": task.task_id,
+                "status": task.status,
+                "approvalDecision": task.metadata.get("approvalDecision").cloned().unwrap_or(Value::Null),
+            }),
         )
     }
 

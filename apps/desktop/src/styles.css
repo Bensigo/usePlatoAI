@@ -307,6 +307,35 @@ button {
   line-height: 1.35;
 }
 
+.task-approval-detail {
+  display: grid;
+  gap: 4px;
+  padding-top: 2px;
+}
+
+.task-approval-detail strong {
+  color: var(--plato-color-text);
+  font-size: var(--plato-font-body);
+  line-height: 1.1;
+}
+
+.task-approval-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.task-approval-actions button {
+  min-height: 30px;
+  border: var(--plato-border-control);
+  border-radius: var(--plato-radius-control);
+  padding: 0 9px;
+  background: var(--plato-color-surface-raised);
+  color: var(--plato-color-text);
+  font-size: var(--plato-font-control);
+  font-weight: 800;
+}
+
 .task-detail-actions {
   display: flex;
   flex-wrap: wrap;
@@ -318,6 +347,12 @@ button {
   padding: 0 10px;
   font-size: var(--plato-font-control);
   font-weight: 800;
+}
+
+.task-approval-actions button:first-child {
+  border-color: var(--plato-color-companion);
+  background: var(--plato-color-companion);
+  color: #ffffff;
 }
 
 .live2d-avatar-surface {

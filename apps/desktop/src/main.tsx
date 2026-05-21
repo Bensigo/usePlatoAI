@@ -6,7 +6,10 @@ import { audioActivationStateFrom } from "./audioActivation";
 import { isControlSurfaceId } from "./controlSurface";
 import { normalizePresenceState } from "./presenceState";
 import { defaultCompanionSettings } from "./settings";
-import { mockTaskTrayApprovalTasks, mockTaskTrayVisualTasks } from "./tasks";
+import {
+  mockApprovalTaskVisualTasks,
+  mockTaskTrayVisualTasks,
+} from "./tasks";
 import { voiceSessionStateFrom } from "./voiceInteraction";
 
 const root = document.getElementById("root");
@@ -39,14 +42,16 @@ const initialSettings =
 const initialControlsExpanded =
   !("__TAURI_INTERNALS__" in window) &&
   searchParams.get("controlsExpanded") === "true";
+const mockTasksMode = searchParams.get("mockTasks");
 const initialTasks =
-  !("__TAURI_INTERNALS__" in window)
-    ? searchParams.get("mockTasks") === "approval"
-      ? mockTaskTrayApprovalTasks()
-      : searchParams.get("mockTasks") === "two"
-        ? mockTaskTrayVisualTasks()
-        : []
-    : [];
+  !("__TAURI_INTERNALS__" in window) && mockTasksMode === "two"
+    ? mockTaskTrayVisualTasks()
+    : !("__TAURI_INTERNALS__" in window) && mockTasksMode === "approval"
+      ? mockApprovalTaskVisualTasks("waiting")
+      : !("__TAURI_INTERNALS__" in window) &&
+          mockTasksMode === "approval-approved"
+        ? mockApprovalTaskVisualTasks("approved")
+        : [];
 const initialSelectedTaskId =
   searchParams.get("selectedTaskId") ?? initialTasks[1]?.taskId ?? null;
 
