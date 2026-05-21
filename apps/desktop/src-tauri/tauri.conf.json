@@ -1,0 +1,31 @@
+{
+  "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
+  "productName": "usePlatoAI",
+  "version": "0.0.0",
+  "identifier": "ai.useplato.desktop",
+  "build": {
+    "devUrl": "http://127.0.0.1:4173",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "usePlatoAI",
+        "width": 900,
+        "height": 620,
+        "minWidth": 320,
+        "minHeight": 320,
+        "center": true,
+        "resizable": true
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": false,
+    "targets": "app"
+  }
+}
+

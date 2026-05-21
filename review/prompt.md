@@ -42,6 +42,15 @@ For each finding include:
 - why it matters
 - what should change
 
+Severity meaning:
+
+- `P0`: breaks the app, corrupts data, exposes secrets, or creates an immediate security/privacy failure.
+- `P1`: blocks the intended feature or creates a high-risk regression that should be fixed before merge.
+- `P2`: real bug or missing verification that is worth fixing, but does not block the app or feature.
+- `P3`: minor cleanup, maintainability, or polish.
+
+Do not inflate severity to get work queued. Only `P0` and `P1` findings are eligible for unattended AFK follow-up.
+
 If there are no findings, say that clearly and mention remaining test gaps or residual risk.
 
 End every review with a machine-readable issue draft block:

@@ -57,6 +57,13 @@ Then:
 - Never hallucinate certainty.
 - Never pretend something is good when it is not.
 
+## Definition Of Done
+
+- An implementation issue is not done until every acceptance criterion in the issue is fully met.
+- Do not mark work complete, open a ready PR, or report success for a partial slice unless the user explicitly changes the acceptance criteria.
+- If an acceptance criterion cannot be met, stop and report the blocker instead of silently shipping a partial implementation.
+- Verification must prove the full vertical behavior described by the acceptance criteria, not just isolated code paths.
+
 ## Agent skills
 
 ### Issue tracker

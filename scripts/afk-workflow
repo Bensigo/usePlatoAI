@@ -13,7 +13,7 @@ Runs the full AFK issue workflow:
 3. Run one Ralph implementation loop per issue in an isolated git worktree.
 4. Find the PR opened for the issue.
 5. Review the PR in a fresh context.
-6. Convert machine-readable review findings into new review-fix issues.
+6. Convert machine-readable review findings into review-fix issues, auto-queuing only blocking findings.
 7. Repeat until the queue is empty or max waves is reached.
 
 Defaults:
@@ -195,6 +195,15 @@ create_review_fix_issues() {
     severity="$(jq -r ".fix_issues[$i].severity // \"review-fix\"" <<< "$json")"
     file="$(jq -r ".fix_issues[$i].file // \"\"" <<< "$json")"
 
+    local queue_note="This issue is not automatically queued. A human should add ready-for-agent and ${afk_label} if it is worth unattended follow-up."
+    local labels=(--label "review-fix")
+    case "$severity" in
+      P0|p0|P1|p1)
+        labels+=(--label "$afk_label" --label "ready-for-agent")
+        queue_note="This is a blocking review finding and has been queued for AFK follow-up."
+        ;;
+    esac
+
     gh issue create \
       --title "[review-fix] PR #${pr}: ${title}" \
       --body "$(cat <<BODY
@@ -207,12 +216,10 @@ File: ${file}
 
 ${body}
 
-Run this through the Ralph loop as a small follow-up issue.
+${queue_note}
 BODY
 )" \
-      --label "review-fix" \
-      --label "$afk_label" \
-      --label "ready-for-agent" >/dev/null
+      "${labels[@]}" >/dev/null
   done
 }
 

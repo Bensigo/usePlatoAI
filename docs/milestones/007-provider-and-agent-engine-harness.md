@@ -1,4 +1,4 @@
-# Milestone 006: Provider And Agent Engine Harness
+# Milestone 007: Provider And Agent Engine Harness
 
 ## Source PRD
 
@@ -53,7 +53,7 @@ This milestone may touch:
 ## Blocked By
 
 - Milestone 002: Local Data And Trust Foundation
-- Milestone 005: Task Tray And Parallel Work
+- Milestone 006: Task Tray And Parallel Work
 
 ## Notes
 

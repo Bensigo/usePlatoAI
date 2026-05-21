@@ -40,75 +40,78 @@ Plato should:
 4. As a builder/operator, I want Plato to use a Live2D anime-style character, so that the companion has expressive visual presence.
 5. As a builder/operator, I want Plato to show states like idle, listening, thinking, speaking, focused, task running, and waiting for approval, so that I understand what it is doing.
 6. As a builder/operator, I want to rename Plato and configure the wake name, so that the companion feels personal to me.
-7. As a builder/operator, I want voice-first interaction, so that I can speak naturally instead of typing everything.
-8. As a builder/operator, I want voice interaction to be interruptible, so that I can stop or redirect Plato quickly.
-9. As a builder/operator, I want text fallback for voice interactions, so that I can review or use Plato quietly.
-10. As a builder/operator, I want wake-word activation using the configured name, so that I can call the companion naturally.
-11. As a builder/operator, I want local-first wake-word detection where possible, so that passive listening is privacy-conscious.
-12. As a builder/operator, I want to choose STT, TTS, and wake-word providers independently, so that I can balance quality, privacy, latency, and cost.
-13. As a builder/operator, I want to use cloud or local/open-source voice models, so that I am not locked into one vendor.
-14. As a builder/operator, I want memory to store summaries and preferences locally, so that Plato can maintain continuity without storing raw transcripts forever.
-15. As a builder/operator, I want to view, edit, delete, and disable memory, so that I stay in control of what Plato remembers.
-16. As a builder/operator, I want sensitive data separated from memory, so that API keys, tokens, passwords, and private data are protected.
-17. As a builder/operator, I want secrets stored in OS-backed secure storage, so that credentials are not kept in plain files.
-18. As a builder/operator, I want Plato to use `soul.md` for personality and expression, so that I can customize how the companion behaves socially.
-19. As a non-technical user, I want to edit the companion soul through the desktop app, so that I do not need to edit markdown manually.
-20. As a builder/operator, I want `soul.md` to avoid controlling permissions or safety, so that personality cannot override policy.
-21. As a builder/operator, I want Plato to ask before high-impact actions unless I configure broader execution authority, so that I can trust its autonomy.
-22. As a builder/operator, I want Plato to think, remember, react, draft, and suggest without constant confirmation, so that low-risk collaboration stays fluid.
-23. As a builder/operator, I want execution authority settings, so that I can decide whether Plato asks before changing files, sending messages, deleting data, spending money, or acting externally.
-24. As a builder/operator, I want human-in-the-loop prompts near the avatar, so that approvals feel part of the companion interaction.
-25. As a builder/operator, I want on-demand screen understanding, so that Plato can inspect screen context when I ask.
-26. As a builder/operator, I want continuous screen awareness only as explicit opt-in, so that screen observation is never silent.
-27. As a builder/operator, I want visible screen-awareness status and pause controls, so that I know when Plato can observe my screen.
-28. As a builder/operator, I want a task tray, so that I can see active tasks, approvals, failures, and progress.
-29. As a builder/operator, I want to pause, resume, cancel, and approve tasks, so that I can manage parallel work.
-30. As a builder/operator, I want Plato to handle conversation-level multitasking, so that one long task does not block normal interaction.
-31. As a builder/operator, I want agent-level parallel execution for complex tasks, so that Plato can split work across subagents or execution lanes.
-32. As a builder/operator, I want completed tasks stored as summaries and approved artifacts, so that I keep useful history without permanent full logs by default.
-33. As a builder/operator, I want local task state to be the source of truth, so that Plato is not dependent on an external task app.
-34. As a builder/operator, I want GitHub, Notion, calendar, or other tools to be adapters later, so that external tools do not define Plato's core task model.
-35. As a builder/operator, I want Plato to support coding/project work from idea to PR, so that it can help me build software.
-36. As a builder/operator, I want Plato to run the flow from context to PRD to milestones to issues to PRs, so that software work is structured and reviewable.
-37. As a builder/operator, I want each implementation issue delivered through its own branch and PR, so that changes stay reviewable.
-38. As a builder/operator, I want PRs to include verification notes, so that I can see what was checked.
-39. As a builder/operator, I want vertical milestones, so that every milestone produces a testable companion behavior instead of isolated infrastructure.
-40. As a builder/operator, I want Ralph loop support for implementation issues, so that agents can run fresh-context issue execution loops once the repo has strong issues and tests.
-41. As a builder/operator, I want Codex SDK support, so that OpenAI-backed agent execution can be used where available.
-42. As a builder/operator, I want Claude Agent SDK support, so that Claude-backed agent execution can be used where available.
-43. As a builder/operator, I want model provider selection to automatically choose a compatible Agent Engine, so that setup is simple.
-44. As a power user, I want Model Provider and Agent Engine kept separate internally, so that the product can support future engines.
-45. As a builder/operator, I want explicit provider auth setup, so that API keys, local SDK auth, subscription-backed auth, and local models are not confused.
-46. As a builder/operator, I want provider cost awareness, so that I understand token or API spend risk before expensive tasks.
-47. As a builder/operator, I want local/open-source model options, so that I can reduce cost and improve privacy where practical.
-48. As a builder/operator, I want capabilities to be explicitly enabled, so that Plato cannot silently use discovered tools.
-49. As a builder/operator, I want a capability registry, so that skills, MCPs, tools, permissions, and providers are tracked.
-50. As a builder/operator, I want default skills to ship with the app, so that Plato is useful immediately.
-51. As a builder/operator, I want to add custom skills, so that Plato can adapt to my workflows.
-52. As a builder/operator, I want to disable default skills, so that I stay in control of behavior.
-53. As a builder/operator, I want browser automation as a core capability, so that Plato can research, inspect, summarize, fill forms, and assist with web workflows.
-54. As a builder/operator, I want browser automation to be visible and pausable, so that I can supervise sensitive web actions.
-55. As a builder/operator, I want submissions, purchases, destructive browser actions, and sensitive logged-in contexts approval-gated, so that Plato does not act dangerously.
-56. As a builder/operator, I want Plato to support file and app actions, so that it can help with day-to-day local productivity.
-57. As a builder/operator, I want Plato to draft communication before sending, so that I can approve messages before they leave my machine.
-58. As a builder/operator, I want focus-aware behavior, so that Plato does not interrupt me constantly.
-59. As a builder/operator, I want quiet and snooze modes, so that I can reduce companion activity during focused work.
-60. As a builder/operator, I want notifications tiered by urgency, so that normal updates stay quiet and approval prompts are clear.
-61. As a builder/operator, I want Plato to admit mistakes, explain what happened, repair when possible, and remember corrections, so that I can trust improvement over time.
-62. As a builder/operator, I want ambiguous high-impact actions to trigger one sharp clarifying question, so that Plato does not guess before changing external state.
-63. As a builder/operator, I want low-risk thinking or drafting to proceed with stated assumptions, so that collaboration does not stall.
-64. As a builder/operator, I want Plato to challenge weak plans, so that it has taste and improves outcomes.
-65. As a builder/operator, I want emotional state to affect expression and interaction style, so that Plato feels alive.
-66. As a builder/operator, I want emotional state not to affect truthfulness, permissions, or task correctness, so that expression does not compromise reliability.
-67. As a builder/operator, I want long-term emotional evolution based on editable memory and preferences, so that Plato adapts without random personality drift.
-68. As a builder/operator, I want launch-at-login as the default onboarding option, so that Plato can become a persistent companion.
-69. As a builder/operator, I want manual-only launch as an option, so that persistence remains a choice.
-70. As a builder/operator, I want onboarding to collect only core setup choices, so that I can start safely without a huge wizard.
-71. As a builder/operator, I want the product to be open source, so that it is inspectable and community-extensible.
-72. As a builder/operator, I want local-first behavior, so that memory, settings, tasks, soul, and secrets remain on my system unless I opt into sync later.
-73. As a builder/operator, I want optional encrypted cloud sync later, so that multi-device continuity can exist without becoming the default.
-74. As a builder/operator, I want internet-backed provider features to degrade clearly when unavailable, so that local ownership is not confused with offline intelligence.
-75. As a builder/operator, I want Plato's first product impression to be presence plus useful action, so that it feels alive and gets work done.
+7. As a builder/operator, I want the desktop UI and companion presence to have a coherent high-quality product direction, so that future features do not inherit placeholder design.
+8. As a builder/operator, I want Plato to appear as an original philosopher mascot with memorable but friendly character direction, so that the product has a distinct identity instead of feeling like a generic assistant.
+9. As a builder/operator, I want a short startup sound and click-to-enable audio behavior, so that Plato feels like it is coming online while keeping audio under my control.
+10. As a builder/operator, I want voice-first interaction, so that I can speak naturally instead of typing everything.
+11. As a builder/operator, I want voice interaction to be interruptible, so that I can stop or redirect Plato quickly.
+12. As a builder/operator, I want text fallback for voice interactions, so that I can review or use Plato quietly.
+13. As a builder/operator, I want wake-word activation using the configured name, so that I can call the companion naturally.
+14. As a builder/operator, I want local-first wake-word detection where possible, so that passive listening is privacy-conscious.
+15. As a builder/operator, I want to choose STT, TTS, and wake-word providers independently, so that I can balance quality, privacy, latency, and cost.
+16. As a builder/operator, I want to use cloud or local/open-source voice models, so that I am not locked into one vendor.
+17. As a builder/operator, I want memory to store summaries and preferences locally, so that Plato can maintain continuity without storing raw transcripts forever.
+18. As a builder/operator, I want to view, edit, delete, and disable memory, so that I stay in control of what Plato remembers.
+19. As a builder/operator, I want sensitive data separated from memory, so that API keys, tokens, passwords, and private data are protected.
+20. As a builder/operator, I want secrets stored in OS-backed secure storage, so that credentials are not kept in plain files.
+21. As a builder/operator, I want Plato to use `soul.md` for personality and expression, so that I can customize how the companion behaves socially.
+22. As a non-technical user, I want to edit the companion soul through the desktop app, so that I do not need to edit markdown manually.
+23. As a builder/operator, I want `soul.md` to avoid controlling permissions or safety, so that personality cannot override policy.
+24. As a builder/operator, I want Plato to ask before high-impact actions unless I configure broader execution authority, so that I can trust its autonomy.
+25. As a builder/operator, I want Plato to think, remember, react, draft, and suggest without constant confirmation, so that low-risk collaboration stays fluid.
+26. As a builder/operator, I want execution authority settings, so that I can decide whether Plato asks before changing files, sending messages, deleting data, spending money, or acting externally.
+27. As a builder/operator, I want human-in-the-loop prompts near the avatar, so that approvals feel part of the companion interaction.
+28. As a builder/operator, I want on-demand screen understanding, so that Plato can inspect screen context when I ask.
+29. As a builder/operator, I want continuous screen awareness only as explicit opt-in, so that screen observation is never silent.
+30. As a builder/operator, I want visible screen-awareness status and pause controls, so that I know when Plato can observe my screen.
+31. As a builder/operator, I want a task tray, so that I can see active tasks, approvals, failures, and progress.
+32. As a builder/operator, I want to pause, resume, cancel, and approve tasks, so that I can manage parallel work.
+33. As a builder/operator, I want Plato to handle conversation-level multitasking, so that one long task does not block normal interaction.
+34. As a builder/operator, I want agent-level parallel execution for complex tasks, so that Plato can split work across subagents or execution lanes.
+35. As a builder/operator, I want completed tasks stored as summaries and approved artifacts, so that I keep useful history without permanent full logs by default.
+36. As a builder/operator, I want local task state to be the source of truth, so that Plato is not dependent on an external task app.
+37. As a builder/operator, I want GitHub, Notion, calendar, or other tools to be adapters later, so that external tools do not define Plato's core task model.
+38. As a builder/operator, I want Plato to support coding/project work from idea to PR, so that it can help me build software.
+39. As a builder/operator, I want Plato to run the flow from context to PRD to milestones to issues to PRs, so that software work is structured and reviewable.
+40. As a builder/operator, I want each implementation issue delivered through its own branch and PR, so that changes stay reviewable.
+41. As a builder/operator, I want PRs to include verification notes, so that I can see what was checked.
+42. As a builder/operator, I want vertical milestones, so that every milestone produces a testable companion behavior instead of isolated infrastructure.
+43. As a builder/operator, I want Ralph loop support for implementation issues, so that agents can run fresh-context issue execution loops once the repo has strong issues and tests.
+44. As a builder/operator, I want Codex SDK support, so that OpenAI-backed agent execution can be used where available.
+45. As a builder/operator, I want Claude Agent SDK support, so that Claude-backed agent execution can be used where available.
+46. As a builder/operator, I want model provider selection to automatically choose a compatible Agent Engine, so that setup is simple.
+47. As a power user, I want Model Provider and Agent Engine kept separate internally, so that the product can support future engines.
+48. As a builder/operator, I want explicit provider auth setup, so that API keys, local SDK auth, subscription-backed auth, and local models are not confused.
+49. As a builder/operator, I want provider cost awareness, so that I understand token or API spend risk before expensive tasks.
+50. As a builder/operator, I want local/open-source model options, so that I can reduce cost and improve privacy where practical.
+51. As a builder/operator, I want capabilities to be explicitly enabled, so that Plato cannot silently use discovered tools.
+52. As a builder/operator, I want a capability registry, so that skills, MCPs, tools, permissions, and providers are tracked.
+53. As a builder/operator, I want default skills to ship with the app, so that Plato is useful immediately.
+54. As a builder/operator, I want to add custom skills, so that Plato can adapt to my workflows.
+55. As a builder/operator, I want to disable default skills, so that I stay in control of behavior.
+56. As a builder/operator, I want browser automation as a core capability, so that Plato can research, inspect, summarize, fill forms, and assist with web workflows.
+57. As a builder/operator, I want browser automation to be visible and pausable, so that I can supervise sensitive web actions.
+58. As a builder/operator, I want submissions, purchases, destructive browser actions, and sensitive logged-in contexts approval-gated, so that Plato does not act dangerously.
+59. As a builder/operator, I want Plato to support file and app actions, so that it can help with day-to-day local productivity.
+60. As a builder/operator, I want Plato to draft communication before sending, so that I can approve messages before they leave my machine.
+61. As a builder/operator, I want focus-aware behavior, so that Plato does not interrupt me constantly.
+62. As a builder/operator, I want quiet and snooze modes, so that I can reduce companion activity during focused work.
+63. As a builder/operator, I want notifications tiered by urgency, so that normal updates stay quiet and approval prompts are clear.
+64. As a builder/operator, I want Plato to admit mistakes, explain what happened, repair when possible, and remember corrections, so that I can trust improvement over time.
+65. As a builder/operator, I want ambiguous high-impact actions to trigger one sharp clarifying question, so that Plato does not guess before changing external state.
+66. As a builder/operator, I want low-risk thinking or drafting to proceed with stated assumptions, so that collaboration does not stall.
+67. As a builder/operator, I want Plato to challenge weak plans, so that it has taste and improves outcomes.
+68. As a builder/operator, I want emotional state to affect expression and interaction style, so that Plato feels alive.
+69. As a builder/operator, I want emotional state not to affect truthfulness, permissions, or task correctness, so that expression does not compromise reliability.
+70. As a builder/operator, I want long-term emotional evolution based on editable memory and preferences, so that Plato adapts without random personality drift.
+71. As a builder/operator, I want launch-at-login as the default onboarding option, so that Plato can become a persistent companion.
+72. As a builder/operator, I want manual-only launch as an option, so that persistence remains a choice.
+73. As a builder/operator, I want onboarding to collect only core setup choices, so that I can start safely without a huge wizard.
+74. As a builder/operator, I want the product to be open source, so that it is inspectable and community-extensible.
+75. As a builder/operator, I want local-first behavior, so that memory, settings, tasks, soul, and secrets remain on my system unless I opt into sync later.
+76. As a builder/operator, I want optional encrypted cloud sync later, so that multi-device continuity can exist without becoming the default.
+77. As a builder/operator, I want internet-backed provider features to degrade clearly when unavailable, so that local ownership is not confused with offline intelligence.
+78. As a builder/operator, I want Plato's first product impression to be presence plus useful action, so that it feels alive and gets work done.
 
 ## Implementation Decisions
 
@@ -127,6 +130,10 @@ Plato should:
 - Local editable markdown backs soul/persona customization.
 - The avatar runtime is Live2D-first.
 - Product avatar states stay renderer-independent so future renderers can be added.
+- The product experience must define reusable visual and interaction rules before task, provider, and capability surfaces expand the UI.
+- Plato's first original character direction is a weird and memorable philosopher mascot with friendly edges.
+- Character implementation may start with static or lightweight animated assets, but it must preserve a renderer-independent boundary for Live2D or another future renderer.
+- Audio activation stays explicit: startup sound and click-to-enable audio are allowed, but passive audio behavior must remain user-controlled.
 - Voice uses separate STT, TTS, and wake-word provider adapters.
 - Voice providers can be cloud or local/open-source.
 - Wake-word detection should be local-first where possible.
@@ -189,6 +196,7 @@ Major modules to build over time:
 - For capability registry behavior, tests should cover discovery, enablement, disablement, permission checks, and skill invocation rules.
 - For voice, tests should cover STT/TTS/wake adapter boundaries rather than one vendor implementation.
 - For avatar behavior, tests should cover product state transitions and renderer-independent mappings.
+- For product experience work, visual evidence must cover the main shell, companion states, top navigation/control surface, settings/config, memory/soul surfaces, and audio activation path.
 
 ## Out of Scope
 
@@ -198,6 +206,7 @@ Major modules to build over time:
 - Adding the runnable Ralph loop command.
 - Implementing the monorepo scaffold.
 - Implementing Live2D assets or final character art.
+- Final brand polish before task, provider, and capability workflows exist.
 - Implementing cloud sync.
 - Building a marketplace for skills or plugins.
 - Supporting Windows or Linux before macOS-first behavior is proven.

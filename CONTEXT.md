@@ -214,8 +214,18 @@ The urgency level that determines how Plato surfaces updates, approvals, failure
 _Avoid_: Treating every update as equally interruptive
 
 **Floating Presence**:
-The companion's always-visible desktop layer that stays available while avoiding obstruction of the user's work.
-_Avoid_: Blocking overlay
+The companion's always-visible desktop layer that follows the currently active macOS Space while avoiding obstruction of the user's work.
+When the user switches Spaces, the presence should visibly arrive into the new Space with a subtle native-feeling transition instead of silently popping in.
+The presence should remember the user's preferred placement per working context, but default to adaptive bottom/right anchoring based on active screen activity so it stays available without covering the user's work. If bottom-right is busy, the first fallback is bottom-left.
+Clicking the presence should start or request listening/audio activation and produce an immediate emotional acknowledgement, including a visible sound-wave style animation while audio is active.
+The presence and nearby controls should use a restrained native macOS liquid-glass material treatment for shell, control, and audio affordances; the avatar identity should remain character-led rather than glass-led.
+Listening feedback should appear in a small speech/listening bubble below the avatar, with the bubble carrying the animated audio wave and short state text instead of making the avatar itself into an audio meter.
+Live transcripts and longer text interaction should stay in a separate expanded panel, not in the compact bubble.
+Clicking the compact bubble should open the expanded transcript/control panel.
+The expanded transcript/control panel should open as a separate centered panel where the user can review transcripts, chat with the companion, and manage only the current task's controls, while the compact Floating Presence remains the primary desktop companion layer.
+Current-task controls in the centered panel should be conditional: progress/status appears while a task is active, pause/cancel appears while work is running, and approve/reject appears only when the companion is waiting for approval.
+Avatar reactivity should be implemented in priority order: click-to-listen reaction first, thinking/speaking animation second, and Space arrival reaction third.
+_Avoid_: Blocking overlay, disappearing when the user switches Spaces, duplicating itself across every Space, or teleporting without feedback
 
 **Menu Bar Control Surface**:
 The macOS menu bar entry used for settings, memory, permissions, providers, soul editing, and task controls.
@@ -321,7 +331,15 @@ _Avoid_: Horizontal milestones such as database first, backend first, or fronten
 - The preferred **Desktop Shell** is Tauri.
 - The companion uses **Floating Presence** as its main desktop presence.
 - The companion uses a **Menu Bar Control Surface** for settings, memory, permissions, providers, soul editing, and tasks.
-- The **Floating Presence** should avoid blocking other apps and should remain draggable or dismissible.
+- The **Floating Presence** should avoid blocking other apps, remain draggable or dismissible, follow only the currently active macOS Space, visibly arrive when the active Space changes, and use adaptive bottom/right anchoring based on active screen activity with bottom-left as the first fallback.
+- Clicking the **Floating Presence** should start or request **Voice Interaction**, show an immediate emotional acknowledgement, and animate a sound-wave indicator while listening or speaking.
+- The **Floating Presence** and nearby controls should use restrained native macOS liquid-glass material for shell, controls, and audio affordances without turning the **Avatar** into generic glass UI.
+- Listening feedback should appear in a small speech/listening bubble below the **Avatar**, with the bubble carrying the animated sound wave and short state text such as listening, thinking, speaking, or waiting for approval.
+- Live transcripts and longer text interaction should stay in a separate expanded panel, not in the compact listening bubble.
+- Clicking the compact bubble should open the expanded transcript/control panel.
+- The expanded transcript/control panel should open as a separate centered panel where the user can review transcripts, chat with the companion, and manage only current-task controls. Broader app controls stay in the **Menu Bar Control Surface**.
+- Current-task controls in the centered panel should be conditional: progress/status while a task is active, pause/cancel while work is running, and approve/reject only while waiting for approval.
+- Avatar reactivity should be implemented in priority order: click-to-listen reaction first, thinking/speaking animation second, and Space arrival reaction third.
 - An **Avatar** expresses the current **Emotional State**.
 - **Soul** shapes the companion's durable personality across sessions.
 - **Soul** controls personality, expression, and user-customized persona, not permissions or safety.

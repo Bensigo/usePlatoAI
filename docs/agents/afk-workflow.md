@@ -54,6 +54,8 @@ BEGIN_REVIEW_FIX_ISSUES_JSON
 END_REVIEW_FIX_ISSUES_JSON
 ```
 
-Each object in `fix_issues` becomes a new GitHub issue labeled `review-fix`, `ready-for-agent`, and `afk`, so the next workflow wave can pick it up.
+Each object in `fix_issues` becomes a new GitHub issue labeled `review-fix`.
+
+Blocking review findings, defined as severity `P0` or `P1`, also get `ready-for-agent` plus `afk` so the next workflow wave can pick them up. Smaller findings stay `review-fix` only. A human must inspect those smaller issues and explicitly add `ready-for-agent` plus `afk` before unattended execution.
 
 Do not put `afk` on issues that require product judgment, credentials, spending money, external messages, destructive file changes, or any other human approval.
