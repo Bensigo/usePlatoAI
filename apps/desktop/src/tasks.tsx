@@ -42,7 +42,6 @@ const activeTaskStatuses: LocalTaskStatus[] = [
   "waiting_for_approval",
   "paused",
   "failed",
-  "cancelled",
 ];
 
 export function createMockTask(taskId: string, title: string): LocalTaskRecord {
