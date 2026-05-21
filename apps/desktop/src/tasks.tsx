@@ -76,6 +76,18 @@ export function mockTaskTrayVisualTasks(): LocalTaskRecord[] {
   ];
 }
 
+export function mockTaskTrayApprovalTasks(): LocalTaskRecord[] {
+  return [
+    {
+      ...createMockTask("mock-approval-browser", "Approve browser submission"),
+      status: "waiting_for_approval",
+      progress: 64,
+      statusMessage: "Mock browser action is waiting for approval.",
+      summary: "Review the pending action before Plato continues.",
+    },
+  ];
+}
+
 export function advanceMockTask(task: LocalTaskRecord): LocalTaskRecord {
   return applyLocalTaskTransition(task, "advance");
 }
@@ -149,8 +161,12 @@ export function applyLocalTaskTransition(
 }
 
 export function localTaskControlsFor(task: LocalTaskRecord): LocalTaskAction[] {
-  if (task.status === "running" || task.status === "waiting_for_approval") {
+  if (task.status === "running") {
     return ["pause", "cancel"];
+  }
+
+  if (task.status === "waiting_for_approval") {
+    return ["cancel"];
   }
 
   if (task.status === "paused") {
