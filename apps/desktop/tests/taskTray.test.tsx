@@ -137,7 +137,20 @@ describe("task tray and local mock tasks", () => {
       statusMessage: "Mock task cancelled",
       summary: "Cancelled Patch task tray at 58%.",
     });
-    expect(listActiveTasks([cancelledTask])).toEqual([cancelledTask]);
+    expect(listActiveTasks([cancelledTask])).toEqual([]);
+
+    const markup = renderToStaticMarkup(
+      <TaskTrayPanel
+        tasks={[cancelledTask]}
+        selectedTaskId={cancelledTask.taskId}
+        onStartMockTasks={() => undefined}
+        onSelectTask={() => undefined}
+        onTaskAction={() => undefined}
+      />,
+    );
+
+    expect(markup).toContain("cancelled");
+    expect(markup).toContain("Cancelled Patch task tray at 58%.");
     expect(() => applyLocalTaskTransition(cancelledTask, "resume")).toThrow(
       "Cannot resume a cancelled local task",
     );
