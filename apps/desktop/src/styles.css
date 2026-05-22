@@ -228,6 +228,29 @@ button {
   overflow-wrap: anywhere;
 }
 
+.capability-registry__controls {
+  display: flex;
+  margin-top: 14px;
+}
+
+.capability-registry__control {
+  min-height: 36px;
+  border: 1px solid rgba(31, 107, 89, 0.32);
+  border-radius: 8px;
+  background: #f5fbf8;
+  color: #1b4f43;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.86rem;
+  font-weight: 720;
+  line-height: 1.2;
+  padding: 8px 12px;
+}
+
+.capability-registry__control:hover {
+  background: #eaf6f1;
+}
+
 .task-tray {
   margin-top: 22px;
 }

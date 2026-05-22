@@ -7,6 +7,7 @@ import {
   type SecretStore,
 } from "@useplatoai/agent-engine";
 import {
+  defaultCapabilities,
   createMemoryCapabilityRegistryRepository,
   type CapabilityRecord,
 } from "@useplatoai/capabilities";
@@ -35,6 +36,22 @@ function factValue(label: string) {
   const labels = [...document.querySelectorAll("dt")];
   const match = labels.find((node) => node.textContent === label);
   return match?.nextElementSibling?.textContent ?? "";
+}
+
+function capabilityCard(capabilityId: string) {
+  const card = document.querySelector<HTMLElement>(
+    `[data-capability-id='${capabilityId}']`,
+  );
+  if (!card) {
+    throw new Error(`Capability card not found: ${capabilityId}`);
+  }
+  return card;
+}
+
+function deferredRender() {
+  return new Promise<void>((resolve) => {
+    setTimeout(resolve, 0);
+  });
 }
 
 describe("provider settings UI", () => {
@@ -71,6 +88,67 @@ describe("provider settings UI", () => {
     expect(document.body.textContent).toContain("Browser Automation");
     expect(document.body.textContent).toContain("Browser automation");
     expect(document.body.textContent).toContain("Available, disabled until enabled");
+  });
+
+  it("lets the user disable and re-enable a default skill from the settings surface", async () => {
+    const settings = renderProviderSettings(document.createElement("main"), {
+      capabilityRepository: createMemoryCapabilityRegistryRepository({
+        capabilities: defaultCapabilities,
+      }),
+    });
+
+    document.body.replaceChildren(settings.root);
+    await settings.ready;
+
+    expect(capabilityCard("project-context-skill").textContent).toContain(
+      "Default skill",
+    );
+    expect(capabilityCard("project-context-skill").textContent).toContain(
+      "Available and enabled",
+    );
+
+    capabilityCard("project-context-skill")
+      .querySelector<HTMLButtonElement>("[data-capability-action='disable']")
+      ?.click();
+    await deferredRender();
+
+    expect(capabilityCard("project-context-skill").textContent).toContain(
+      "Available, disabled until enabled",
+    );
+
+    capabilityCard("project-context-skill")
+      .querySelector<HTMLButtonElement>("[data-capability-action='enable']")
+      ?.click();
+    await deferredRender();
+
+    expect(capabilityCard("project-context-skill").textContent).toContain(
+      "Available and enabled",
+    );
+  });
+
+  it("blocks mocked task launch when its required default skill is disabled", async () => {
+    const projectContextSkill = defaultCapabilities.find(
+      (capability) => capability.id === "project-context-skill",
+    );
+    if (!projectContextSkill) {
+      throw new Error("Project Context Skill default capability is missing.");
+    }
+    const settings = renderProviderSettings(document.createElement("main"), {
+      capabilityRepository: createMemoryCapabilityRegistryRepository({
+        capabilities: [{ ...projectContextSkill, enabled: false }],
+      }),
+    });
+
+    document.body.replaceChildren(settings.root);
+    await settings.selectProvider("openai");
+
+    const task = await settings.launchMockedTask();
+
+    expect(task.status).toBe("blocked");
+    expect(factValue("Task status")).toBe("Blocked");
+    expect(factValue("Task result")).toContain(
+      "Capability is disabled and cannot be invoked: project-context-skill",
+    );
   });
 
   it("distinguishes provider auth modes and shows OpenAI with Codex SDK cost warnings", async () => {
