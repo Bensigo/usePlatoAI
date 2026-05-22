@@ -142,7 +142,13 @@ export interface AgentTaskResult {
   completedAt: string;
 }
 
-export type LocalTaskStatus = "running" | "completed" | "failed" | "blocked";
+export type LocalTaskStatus =
+  | "running"
+  | "paused"
+  | "waiting_for_approval"
+  | "completed"
+  | "failed"
+  | "blocked";
 
 export interface LocalTaskResult {
   kind: "mocked_agent_engine_result";
@@ -150,7 +156,7 @@ export interface LocalTaskResult {
 }
 
 export interface LocalTaskMetadata {
-  executionSource: "agent_engine" | "capability_policy";
+  executionSource: "agent_engine" | "capability_policy" | "browser_automation";
   verification: string;
   costAwareness: string;
 }
