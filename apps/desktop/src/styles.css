@@ -156,6 +156,78 @@ button {
   line-height: 1.45;
 }
 
+.capability-registry {
+  margin-top: 22px;
+}
+
+.capability-registry__title {
+  margin: 0 0 14px;
+  color: #14211e;
+  font-size: 1.45rem;
+  font-weight: 760;
+  line-height: 1.2;
+}
+
+.capability-registry__list {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.capability-registry__card {
+  border: 1px solid rgba(34, 45, 43, 0.16);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow: 0 12px 32px rgba(40, 47, 44, 0.08);
+  padding: 16px;
+}
+
+.capability-registry__card-title {
+  margin: 0 0 8px;
+  color: #14211e;
+  font-size: 1rem;
+  font-weight: 760;
+  line-height: 1.25;
+}
+
+.capability-registry__status,
+.capability-registry__description {
+  margin: 0;
+  color: #43534f;
+  font-size: 0.9rem;
+  font-weight: 560;
+  line-height: 1.45;
+}
+
+.capability-registry__status {
+  color: #1f6b59;
+  font-weight: 720;
+}
+
+.capability-registry__facts {
+  display: grid;
+  grid-template-columns: minmax(92px, 0.7fr) minmax(0, 1fr);
+  gap: 8px 10px;
+  margin: 14px 0 12px;
+}
+
+.capability-registry__fact-label {
+  color: #5d6d69;
+  font-size: 0.76rem;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.capability-registry__fact-value {
+  margin: 0;
+  color: #1c2b28;
+  font-size: 0.88rem;
+  font-weight: 560;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
 .task-tray {
   margin-top: 22px;
 }
@@ -211,6 +283,14 @@ button {
   }
 
   .provider-settings__facts {
+    grid-template-columns: 1fr;
+  }
+
+  .capability-registry__list {
+    grid-template-columns: 1fr;
+  }
+
+  .capability-registry__facts {
     grid-template-columns: 1fr;
   }
 }

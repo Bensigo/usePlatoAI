@@ -6,6 +6,10 @@ import {
   type SecretReference,
   type SecretStore,
 } from "@useplatoai/agent-engine";
+import {
+  createMemoryCapabilityRegistryRepository,
+  type CapabilityRecord,
+} from "@useplatoai/capabilities";
 
 import { renderProviderSettings } from "./provider-settings.js";
 
@@ -34,6 +38,41 @@ function factValue(label: string) {
 }
 
 describe("provider settings UI", () => {
+  it("shows enabled and available capabilities in the settings surface", async () => {
+    const capabilities: CapabilityRecord[] = [
+      {
+        id: "project-context-skill",
+        type: "skill",
+        displayName: "Project Context Skill",
+        status: "available",
+        enabled: true,
+      },
+      {
+        id: "browser-automation",
+        type: "browser_automation",
+        displayName: "Browser Automation",
+        status: "available",
+        enabled: false,
+      },
+    ];
+    const settings = renderProviderSettings(document.createElement("main"), {
+      capabilityRepository: createMemoryCapabilityRegistryRepository({
+        capabilities,
+      }),
+    });
+
+    document.body.replaceChildren(settings.root);
+    await settings.ready;
+
+    expect(document.body.textContent).toContain("Capability Registry");
+    expect(document.body.textContent).toContain("Project Context Skill");
+    expect(document.body.textContent).toContain("Skill");
+    expect(document.body.textContent).toContain("Enabled");
+    expect(document.body.textContent).toContain("Browser Automation");
+    expect(document.body.textContent).toContain("Browser automation");
+    expect(document.body.textContent).toContain("Available, disabled until enabled");
+  });
+
   it("distinguishes provider auth modes and shows OpenAI with Codex SDK cost warnings", async () => {
     const settings = renderSurface();
 

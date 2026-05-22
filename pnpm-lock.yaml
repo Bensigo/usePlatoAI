@@ -20,6 +20,9 @@ importers:
       '@useplatoai/agent-engine':
         specifier: workspace:*
         version: link:../../packages/agent-engine
+      '@useplatoai/capabilities':
+        specifier: workspace:*
+        version: link:../../packages/capabilities
     devDependencies:
       '@tauri-apps/cli':
         specifier: 2.11.1
@@ -32,6 +35,8 @@ importers:
         version: 7.2.4
 
   packages/agent-engine: {}
+
+  packages/capabilities: {}
 
 packages:
 
