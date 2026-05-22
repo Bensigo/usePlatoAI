@@ -90,14 +90,36 @@ export const avatarStartupSound = {
   playback: "user-activated",
 } as const;
 
+export const vendoredRiveAssetContract = {
+  artboard: "Avatar 1",
+  stateMachine: "avatar",
+  animations: {
+    idle: "idle",
+    happy: "happy",
+    sad: "sad",
+  },
+  inputs: {
+    isHappy: "isHappy",
+    isSad: "isSad",
+    mouth: "mouth",
+  },
+} as const;
+
+type RiveAssetInputs = typeof vendoredRiveAssetContract.inputs;
+type RiveInputName = RiveAssetInputs[keyof RiveAssetInputs];
+
+type RiveInputValues = Partial<Record<RiveInputName, boolean | number>>;
+
 type RiveRendererConfig = {
   primaryRenderer: "rive";
   companionState: AvatarCompanionState;
   command: AvatarAnimationCommand;
   rive: {
     src: string;
-    stateMachine: "Plato Companion";
+    artboard: typeof vendoredRiveAssetContract.artboard;
+    stateMachine: typeof vendoredRiveAssetContract.stateMachine;
     animation: string;
+    inputs: RiveInputValues;
   };
   fallback: {
     renderer: "svg";
@@ -108,35 +130,70 @@ type RiveRendererConfig = {
 const animationByState = {
   startup: {
     command: "startup.appear",
-    animation: "appear",
+    animation: vendoredRiveAssetContract.animations.idle,
+    inputs: {
+      isHappy: false,
+      isSad: false,
+      mouth: 0,
+    },
   },
   greet: {
     command: "greet.wave",
-    animation: "wave",
+    animation: vendoredRiveAssetContract.animations.happy,
+    inputs: {
+      isHappy: true,
+      isSad: false,
+      mouth: 0.1,
+    },
   },
   idle: {
     command: "idle.breathe",
-    animation: "livingIdle",
+    animation: vendoredRiveAssetContract.animations.idle,
+    inputs: {
+      isHappy: false,
+      isSad: false,
+      mouth: 0,
+    },
   },
   happy: {
     command: "mood.smile",
-    animation: "smile",
+    animation: vendoredRiveAssetContract.animations.happy,
+    inputs: {
+      isHappy: true,
+      isSad: false,
+      mouth: 0.2,
+    },
   },
   sad: {
     command: "mood.sad",
-    animation: "sad",
+    animation: vendoredRiveAssetContract.animations.sad,
+    inputs: {
+      isHappy: false,
+      isSad: true,
+      mouth: 0,
+    },
   },
   talking: {
     command: "voice.talk",
-    animation: "talk",
+    animation: vendoredRiveAssetContract.animations.idle,
+    inputs: {
+      isHappy: false,
+      isSad: false,
+      mouth: 0.75,
+    },
   },
   celebrating: {
     command: "celebration.dance",
-    animation: "dance",
+    animation: vendoredRiveAssetContract.animations.happy,
+    inputs: {
+      isHappy: true,
+      isSad: false,
+      mouth: 0.45,
+    },
   },
 } as const satisfies Record<
   AvatarCompanionState,
-  { command: AvatarAnimationCommand; animation: string }
+  { command: AvatarAnimationCommand; animation: string; inputs: RiveInputValues }
 >;
 
 export function getAvatarRendererConfig(
@@ -150,8 +207,10 @@ export function getAvatarRendererConfig(
     command: animation.command,
     rive: {
       src: avatarPackageAssets.rive.publicPath,
-      stateMachine: "Plato Companion",
+      artboard: vendoredRiveAssetContract.artboard,
+      stateMachine: vendoredRiveAssetContract.stateMachine,
       animation: animation.animation,
+      inputs: animation.inputs,
     },
     fallback: {
       renderer: "svg",
@@ -315,21 +374,47 @@ export function getLive2DAvatarSurfaceHook(
 type BrowserRiveCanvasProps = {
   className: string;
   src: string;
+  artboard: string;
   stateMachines: string;
   animations: string;
+  inputs: RiveInputValues;
 };
+
+function applyRiveInputs(
+  rive: {
+    stateMachineInputs: (
+      name: string,
+    ) => Array<{ name: string; value: boolean | number }>;
+  },
+  stateMachine: string,
+  inputs: RiveInputValues,
+) {
+  for (const input of rive.stateMachineInputs(stateMachine)) {
+    const nextValue = inputs[input.name as RiveInputName];
+
+    if (nextValue !== undefined) {
+      input.value = nextValue;
+    }
+  }
+}
 
 function BrowserRiveCanvas({
   className,
   src,
+  artboard,
   stateMachines,
   animations,
+  inputs,
 }: BrowserRiveCanvasProps) {
   const { RiveComponent } = useRive({
     src,
+    artboard,
     stateMachines,
     animations,
     autoplay: true,
+    onRiveReady: (rive) => {
+      applyRiveInputs(rive, stateMachines, inputs);
+    },
   });
 
   if (typeof window === "undefined") {
@@ -337,6 +422,7 @@ function BrowserRiveCanvas({
       <canvas
         className={className}
         data-rive-src={src}
+        data-rive-artboard={artboard}
         data-rive-state-machine={stateMachines}
         data-rive-animation={animations}
       />
@@ -347,6 +433,7 @@ function BrowserRiveCanvas({
     <RiveComponent
       className={className}
       data-rive-src={src}
+      data-rive-artboard={artboard}
       data-rive-state-machine={stateMachines}
       data-rive-animation={animations}
     />
@@ -365,16 +452,23 @@ export function AvatarRenderer({
       className="plato-rive-avatar"
       data-avatar-package="@useplatoai/avatar"
       data-avatar-renderer={config.primaryRenderer}
+      data-rive-artboard={config.rive.artboard}
       data-rive-state-machine={config.rive.stateMachine}
       data-rive-animation={config.rive.animation}
+      data-rive-input-is-happy={String(config.rive.inputs.isHappy ?? false)}
+      data-rive-input-is-sad={String(config.rive.inputs.isSad ?? false)}
+      data-rive-input-mouth={String(config.rive.inputs.mouth ?? 0)}
       data-fallback-renderer={config.fallback.renderer}
       data-fallback-src={config.fallback.src}
     >
       <BrowserRiveCanvas
+        key={config.command}
         className="plato-rive-canvas"
         src={config.rive.src}
+        artboard={config.rive.artboard}
         stateMachines={config.rive.stateMachine}
         animations={config.rive.animation}
+        inputs={config.rive.inputs}
       />
       <img
         className="plato-avatar-asset plato-avatar-fallback-asset"

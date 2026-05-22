@@ -350,8 +350,11 @@ describe("desktop app shell", () => {
     expect(markup).toContain("plato-avatar-asset");
     expect(markup).toContain('src="/avatar/plato/source/wise-owl-colour.svg"');
     expect(markup).toContain('data-avatar-renderer="rive"');
-    expect(markup).toContain('data-rive-state-machine="Plato Companion"');
-    expect(markup).toContain('data-rive-animation="wave"');
+    expect(markup).toContain('data-rive-artboard="Avatar 1"');
+    expect(markup).toContain('data-rive-state-machine="avatar"');
+    expect(markup).toContain('data-rive-animation="happy"');
+    expect(markup).toContain('data-rive-input-is-happy="true"');
+    expect(markup).toContain('data-rive-input-is-sad="false"');
     expect(markup).toContain("live2d-presence-mark");
     expect(markup).toContain("live2d-presence-core");
     expect(markup).toContain("live2d-presence-meter");
