@@ -168,6 +168,92 @@ button {
   line-height: 1.2;
 }
 
+.capability-registry__custom-skill-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 14px;
+  border: 1px solid rgba(34, 45, 43, 0.16);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow: 0 12px 32px rgba(40, 47, 44, 0.08);
+  padding: 16px;
+}
+
+.capability-registry__form-title {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: #14211e;
+  font-size: 1rem;
+  font-weight: 760;
+  line-height: 1.25;
+}
+
+.capability-registry__field {
+  display: grid;
+  gap: 6px;
+}
+
+.capability-registry__field-label {
+  color: #5d6d69;
+  font-size: 0.76rem;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.capability-registry__input,
+.capability-registry__textarea {
+  box-sizing: border-box;
+  width: 100%;
+  border: 1px solid rgba(34, 45, 43, 0.18);
+  border-radius: 7px;
+  background: #ffffff;
+  color: #1c2b28;
+  font: inherit;
+  font-size: 0.9rem;
+  line-height: 1.35;
+  padding: 9px 10px;
+}
+
+.capability-registry__textarea {
+  min-height: 84px;
+  resize: vertical;
+}
+
+.capability-registry__form-result {
+  align-self: center;
+  margin: 0;
+  color: #43534f;
+  font-size: 0.9rem;
+  font-weight: 620;
+  line-height: 1.4;
+}
+
+.capability-registry__form-result[data-result-state="valid"] {
+  color: #1f6b59;
+}
+
+.capability-registry__form-result[data-result-state="invalid"] {
+  color: #8f3428;
+}
+
+.capability-registry__custom-skill-submit {
+  min-height: 40px;
+  border: 1px solid #1f6b59;
+  border-radius: 7px;
+  background: #1f6b59;
+  color: #ffffff;
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 700;
+  line-height: 1.1;
+  padding: 0 14px;
+}
+
+.capability-registry__custom-skill-submit:hover {
+  background: #185646;
+}
+
 .capability-registry__list {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -310,6 +396,10 @@ button {
   }
 
   .capability-registry__list {
+    grid-template-columns: 1fr;
+  }
+
+  .capability-registry__custom-skill-form {
     grid-template-columns: 1fr;
   }
 

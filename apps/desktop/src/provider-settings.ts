@@ -23,11 +23,13 @@ import {
   assertCapabilityInvocationAllowed,
   createDefaultCapabilityRegistryRepository,
   getCapabilityRegistrySnapshot,
+  registerCustomSkill,
   setCapabilityEnabled,
   type CapabilityRecord,
   type CapabilityRegistryRepository,
   type CapabilityRegistrySnapshot,
   type CapabilityType,
+  type CustomSkillRegistrationResult,
 } from "@useplatoai/capabilities";
 
 export type ProviderOption = ModelProvider & {
@@ -216,6 +218,7 @@ export function renderProviderSettings(
   let renderVersion = 0;
   let latestTask: LocalTaskRecord | null = null;
   let currentTaskPromise: Promise<LocalTaskRecord | null> = Promise.resolve(null);
+  let customSkillRegistrationResult: CustomSkillRegistrationResult | null = null;
 
   async function render() {
     const currentRenderVersion = ++renderVersion;
@@ -386,6 +389,7 @@ export function renderProviderSettings(
     registry.append(
       element("h2", "capability-registry__title", "Capability Registry"),
       buildCapabilitySummary(snapshot),
+      buildCustomSkillRegistrationForm(),
     );
 
     const list = element("div", "capability-registry__list");
@@ -395,6 +399,95 @@ export function renderProviderSettings(
     registry.append(list);
 
     return registry;
+  }
+
+  function buildCustomSkillRegistrationForm() {
+    const form = element("form", "capability-registry__custom-skill-form");
+    form.dataset.customSkillForm = "true";
+    form.append(
+      element("h3", "capability-registry__form-title", "Register custom skill"),
+      buildCustomSkillInput(
+        "custom-skill-id",
+        "Stable id",
+        "daily-planning-skill",
+      ),
+      buildCustomSkillInput(
+        "custom-skill-display-name",
+        "Display name",
+        "Daily Planning Skill",
+      ),
+      buildCustomSkillTextArea(
+        "custom-skill-description",
+        "Description",
+        "Turns a rough day plan into a sequenced task list.",
+      ),
+      buildCustomSkillInput(
+        "custom-skill-source-reference",
+        "Local source reference",
+        "~/plato/skills/daily-planning/SKILL.md",
+      ),
+      buildCustomSkillRegistrationResult(),
+    );
+
+    const submit = element(
+      "button",
+      "capability-registry__custom-skill-submit",
+      "Register skill",
+    );
+    submit.type = "submit";
+    form.append(submit);
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      void handleCustomSkillRegistration(form);
+    });
+    return form;
+  }
+
+  function buildCustomSkillInput(
+    name: string,
+    labelText: string,
+    placeholder: string,
+  ) {
+    const label = element("label", "capability-registry__field");
+    const input = element("input", "capability-registry__input");
+    input.name = name;
+    input.placeholder = placeholder;
+    label.append(
+      element("span", "capability-registry__field-label", labelText),
+      input,
+    );
+    return label;
+  }
+
+  function buildCustomSkillTextArea(
+    name: string,
+    labelText: string,
+    placeholder: string,
+  ) {
+    const label = element("label", "capability-registry__field");
+    const textarea = element("textarea", "capability-registry__textarea");
+    textarea.name = name;
+    textarea.placeholder = placeholder;
+    label.append(
+      element("span", "capability-registry__field-label", labelText),
+      textarea,
+    );
+    return label;
+  }
+
+  function buildCustomSkillRegistrationResult() {
+    const result = element("p", "capability-registry__form-result");
+    result.dataset.customSkillRegistrationResult = "true";
+    if (!customSkillRegistrationResult) {
+      result.textContent = "No custom skill registered in this session.";
+      return result;
+    }
+
+    result.textContent = customSkillRegistrationResult.message;
+    result.dataset.resultState = customSkillRegistrationResult.ok
+      ? "valid"
+      : "invalid";
+    return result;
   }
 
   function buildCapabilitySummary(snapshot: CapabilityRegistrySnapshot) {
@@ -446,7 +539,7 @@ export function renderProviderSettings(
   }
 
   function buildCapabilityControls(capability: CapabilityRecord) {
-    if (capability.type !== "skill" || !capability.isDefault) {
+    if (!isControllableSkill(capability)) {
       return null;
     }
 
@@ -491,6 +584,23 @@ export function renderProviderSettings(
     enabled: boolean,
   ) {
     await setCapabilityEnabled(capabilityRepository, capabilityId, enabled);
+    await render();
+  }
+
+  async function handleCustomSkillRegistration(form: HTMLFormElement) {
+    const data = new FormData(form);
+    customSkillRegistrationResult = await registerCustomSkill(
+      capabilityRepository,
+      {
+        id: stringFormValue(data, "custom-skill-id"),
+        displayName: stringFormValue(data, "custom-skill-display-name"),
+        description: stringFormValue(data, "custom-skill-description"),
+        localSourceReference: stringFormValue(
+          data,
+          "custom-skill-source-reference",
+        ),
+      },
+    );
     await render();
   }
 
@@ -693,11 +803,27 @@ function capabilityStatusLabel(capability: CapabilityRecord): string {
 }
 
 function capabilitySourceLabel(capability: CapabilityRecord): string {
+  if (capability.source?.kind === "local") {
+    return `Local skill: ${capability.source.reference}`;
+  }
+
   if (capability.type === "skill" && capability.isDefault) {
     return "Default skill";
   }
 
   return "User or system capability";
+}
+
+function isControllableSkill(capability: CapabilityRecord): boolean {
+  return (
+    capability.type === "skill" &&
+    (Boolean(capability.isDefault) || capability.source?.kind === "local")
+  );
+}
+
+function stringFormValue(data: FormData, key: string): string {
+  const value = data.get(key);
+  return typeof value === "string" ? value : "";
 }
 
 function capabilityTypeLabel(type: CapabilityType): string {

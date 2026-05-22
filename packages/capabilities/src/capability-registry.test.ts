@@ -6,6 +6,7 @@ import {
   createMemoryCapabilityRegistryRepository,
   defaultCapabilities,
   getCapabilityRegistrySnapshot,
+  registerCustomSkill,
   setCapabilityEnabled,
   type CapabilityRecord,
 } from "./index.js";
@@ -162,5 +163,99 @@ describe("capability registry", () => {
     expect(snapshot.enabled).toEqual([]);
     expect(snapshot.disabled).toEqual([]);
     expect(snapshot.unavailable).toEqual([unavailableCapability]);
+  });
+
+  it("registers a custom local skill as a disabled capability with its source reference", async () => {
+    const repository = createMemoryCapabilityRegistryRepository();
+
+    const result = await registerCustomSkill(repository, {
+      id: "daily-planning-skill",
+      displayName: "Daily Planning Skill",
+      description: "Turns a rough day plan into a sequenced task list.",
+      localSourceReference: "~/plato/skills/daily-planning/SKILL.md",
+    });
+    const snapshot = await getCapabilityRegistrySnapshot(repository);
+
+    expect(result).toMatchObject({
+      ok: true,
+      capability: {
+        id: "daily-planning-skill",
+        type: "skill",
+        displayName: "Daily Planning Skill",
+        description: "Turns a rough day plan into a sequenced task list.",
+        status: "available",
+        enabled: false,
+        source: {
+          kind: "local",
+          reference: "~/plato/skills/daily-planning/SKILL.md",
+        },
+      },
+    });
+    expect(snapshot.disabled.map((capability) => capability.id)).toContain(
+      "daily-planning-skill",
+    );
+  });
+
+  it("rejects duplicate and invalid custom skill registrations with local validation results", async () => {
+    const repository = createMemoryCapabilityRegistryRepository();
+
+    await registerCustomSkill(repository, {
+      id: "daily-planning-skill",
+      displayName: "Daily Planning Skill",
+      description: "Turns a rough day plan into a sequenced task list.",
+      localSourceReference: "~/plato/skills/daily-planning/SKILL.md",
+    });
+
+    await expect(
+      registerCustomSkill(repository, {
+        id: "daily-planning-skill",
+        displayName: "Duplicate Skill",
+        description: "Should not replace the original registration.",
+        localSourceReference: "~/plato/skills/duplicate/SKILL.md",
+      }),
+    ).resolves.toEqual({
+      ok: false,
+      reason: "duplicate_id",
+      message: "A capability is already registered with id: daily-planning-skill",
+    });
+
+    await expect(
+      registerCustomSkill(repository, {
+        id: "Not Stable",
+        displayName: "Invalid Skill",
+        description: "Should not register.",
+        localSourceReference: "~/plato/skills/invalid/SKILL.md",
+      }),
+    ).resolves.toEqual({
+      ok: false,
+      reason: "invalid_id",
+      message:
+        "Custom skill id must use lowercase letters, numbers, dots, underscores, or hyphens.",
+    });
+  });
+
+  it("enables and disables a registered custom skill through the registry boundary", async () => {
+    const repository = createMemoryCapabilityRegistryRepository();
+
+    await registerCustomSkill(repository, {
+      id: "daily-planning-skill",
+      displayName: "Daily Planning Skill",
+      description: "Turns a rough day plan into a sequenced task list.",
+      localSourceReference: "~/plato/skills/daily-planning/SKILL.md",
+    });
+
+    await setCapabilityEnabled(repository, "daily-planning-skill", true);
+    let snapshot = await getCapabilityRegistrySnapshot(repository);
+
+    expect(snapshot.enabled.map((capability) => capability.id)).toContain(
+      "daily-planning-skill",
+    );
+
+    await setCapabilityEnabled(repository, "daily-planning-skill", false);
+    snapshot = await getCapabilityRegistrySnapshot(repository);
+
+    expect(snapshot.disabled.map((capability) => capability.id)).toContain(
+      "daily-planning-skill",
+    );
   });
 });
