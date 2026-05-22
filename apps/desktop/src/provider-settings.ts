@@ -598,6 +598,12 @@ export function renderProviderSettings(
     enabled: boolean,
   ) {
     await setCapabilityEnabled(capabilityRepository, capabilityId, enabled);
+    if (capabilityId === "browser-automation" && !enabled) {
+      const revoked = await revokeActiveBrowserAutomationTask();
+      if (revoked) {
+        return;
+      }
+    }
     await render();
   }
 
@@ -960,6 +966,30 @@ export function renderProviderSettings(
     pendingBrowserAction = null;
     const now = currentTimestamp();
 
+    if (decision === "approved") {
+      try {
+        await assertCapabilityInvocationAllowed(
+          capabilityRepository,
+          "browser-automation",
+        );
+      } catch {
+        await saveBrowserAutomationTask({
+          ...latestTask,
+          status: "blocked",
+          summary:
+            "Browser Automation was disabled before the mocked browser action could execute.",
+          metadata: {
+            ...latestTask.metadata,
+            verification:
+              "Pending browser action was blocked because Browser Automation was disabled before approval.",
+          },
+          updatedAt: now,
+          completedAt: now,
+        });
+        return;
+      }
+    }
+
     await saveBrowserAutomationTask({
       ...latestTask,
       status: decision === "approved" ? "completed" : "blocked",
@@ -977,6 +1007,35 @@ export function renderProviderSettings(
       updatedAt: now,
       completedAt: now,
     });
+  }
+
+  async function revokeActiveBrowserAutomationTask(): Promise<boolean> {
+    if (
+      !latestTask ||
+      latestTask.metadata.executionSource !== "browser_automation" ||
+      (latestTask.status !== "running" &&
+        latestTask.status !== "paused" &&
+        latestTask.status !== "waiting_for_approval")
+    ) {
+      return false;
+    }
+
+    pendingBrowserAction = null;
+    const now = currentTimestamp();
+    await saveBrowserAutomationTask({
+      ...latestTask,
+      status: "blocked",
+      summary:
+        "Browser Automation was disabled before the mocked browser action could execute.",
+      metadata: {
+        ...latestTask.metadata,
+        verification:
+          "Active browser automation task was cancelled because Browser Automation was disabled.",
+      },
+      updatedAt: now,
+      completedAt: now,
+    });
+    return true;
   }
 
   async function saveBrowserAutomationTask(task: LocalTaskRecord) {

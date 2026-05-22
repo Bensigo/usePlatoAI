@@ -363,6 +363,49 @@ describe("provider settings UI", () => {
     );
   });
 
+  it("blocks pending browser approvals when Browser Automation is disabled", async () => {
+    const settings = renderProviderSettings(document.createElement("main"), {
+      capabilityRepository: createMemoryCapabilityRegistryRepository({
+        capabilities: defaultCapabilities.map((capability) =>
+          capability.id === "browser-automation"
+            ? { ...capability, enabled: true }
+            : capability,
+        ),
+      }),
+      now: () => new Date("2026-05-22T10:00:00.000Z"),
+    });
+
+    document.body.replaceChildren(settings.root);
+    await settings.ready;
+
+    document
+      .querySelector<HTMLButtonElement>("[data-action='start-browser-automation']")
+      ?.click();
+    await deferredRender();
+    document
+      .querySelector<HTMLButtonElement>("[data-browser-action='submit_form']")
+      ?.click();
+    await deferredRender();
+
+    expect(factValue("Task status")).toBe("Waiting for approval");
+
+    capabilityCard("browser-automation")
+      .querySelector<HTMLButtonElement>("[data-capability-action='disable']")
+      ?.click();
+    await deferredRender();
+
+    expect(factValue("Task status")).toBe("Blocked");
+    expect(factValue("Task result")).toBe(
+      "Browser Automation was disabled before the mocked browser action could execute.",
+    );
+    expect(factValue("Verification")).toBe(
+      "Active browser automation task was cancelled because Browser Automation was disabled.",
+    );
+    expect(
+      document.querySelector("[data-action='approve-browser-action']"),
+    ).toBeNull();
+  });
+
   it("distinguishes provider auth modes and shows OpenAI with Codex SDK cost warnings", async () => {
     const settings = renderSurface();
 
