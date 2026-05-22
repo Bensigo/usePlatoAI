@@ -14,16 +14,16 @@
     "windows": [
       {
         "title": "usePlatoAI",
-        "width": 320,
-        "height": 560,
+        "width": 260,
+        "height": 280,
         "minWidth": 260,
-        "minHeight": 420,
+        "minHeight": 260,
         "resizable": false,
         "decorations": false,
         "transparent": true,
         "alwaysOnTop": true,
         "skipTaskbar": true,
-        "shadow": true
+        "shadow": false
       }
     ],
     "security": {

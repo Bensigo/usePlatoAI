@@ -1,7 +1,7 @@
 :root {
   font-family: var(--plato-font-family);
   color: var(--plato-color-text);
-  background: var(--plato-color-canvas);
+  background: transparent;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -14,9 +14,9 @@
 
 body {
   margin: 0;
-  min-width: 300px;
+  min-width: 260px;
   min-height: 100vh;
-  background: var(--plato-color-canvas);
+  background: transparent;
   overflow: hidden;
 }
 
