@@ -70,6 +70,7 @@ import {
 import {
   createMemoryTaskStore,
   createMockTask,
+  waitForMockTaskApproval,
   type LocalTaskRecord,
 } from "../src/tasks";
 import {
@@ -185,6 +186,63 @@ describe("desktop app shell", () => {
     expect(markup).not.toContain("Mute");
     expect(markup).not.toContain("Stop speech");
     expect(markup).not.toContain("Plato is hidden");
+    expect(markup).not.toContain('aria-label="Task tray"');
+    expect(markup).not.toContain("Parallel work");
+    expect(markup).not.toContain("Start two mock tasks");
+  });
+
+  it("keeps persisted tasks out of the normal companion-only desktop window", () => {
+    const approvalTask = waitForMockTaskApproval(
+      createMockTask("task-waiting", "Patch task tray"),
+    );
+    const markup = renderToStaticMarkup(
+      <App initialSettings={completedSettings} initialTasks={[approvalTask]} />,
+    );
+
+    expect(markup).toContain("Open current task controls: Approval needed");
+    expect(markup).not.toContain('aria-label="Task tray"');
+    expect(markup).not.toContain("Parallel work");
+    expect(markup).not.toContain("Patch task tray");
+  });
+
+  it("keeps the default desktop background transparent for the floating companion window", () => {
+    const styles = readFileSync(resolve(__dirname, "../src/styles.css"), "utf8");
+
+    expect(styles).toMatch(/:root\s*{[^}]*background:\s*transparent;/s);
+    expect(styles).toMatch(/body\s*{[^}]*background:\s*transparent;/s);
+  });
+
+  it("configures the default Tauri window as a companion-sized floating presence", () => {
+    const tauriConfig = JSON.parse(
+      readFileSync(resolve(__dirname, "../src-tauri/tauri.conf.json"), "utf8"),
+    ) as {
+      app: {
+        windows: Array<{
+          width: number;
+          height: number;
+          minWidth?: number;
+          minHeight?: number;
+          decorations?: boolean;
+          transparent?: boolean;
+          alwaysOnTop?: boolean;
+          resizable?: boolean;
+          skipTaskbar?: boolean;
+        }>;
+      };
+    };
+    const mainWindow = tauriConfig.app.windows[0];
+
+    expect(mainWindow).toMatchObject({
+      width: 260,
+      height: 280,
+      minWidth: 260,
+      minHeight: 260,
+      decorations: false,
+      transparent: true,
+      alwaysOnTop: true,
+      resizable: false,
+      skipTaskbar: true,
+    });
   });
 
   it("renders the expanded Plato controls when the compact opener is active", () => {
@@ -1001,7 +1059,7 @@ describe("desktop app shell", () => {
       "Open current task controls: Waiting for approval",
     );
     expect(failedMarkup).toContain("Open current task controls: Needs repair");
-    expect(failedMarkup).toContain("Mock task failed");
+    expect(failedMarkup).not.toContain('aria-label="Task tray"');
   });
 
   it("renders a centered chat panel with transcript and running-task controls", () => {

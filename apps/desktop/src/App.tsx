@@ -2577,22 +2577,24 @@ export function App({
         />
       ) : null}
 
-      <TaskTrayPanel
-        tasks={tasks}
-        selectedTaskId={selectedTaskId}
-        onStartMockTasks={startParallelMockTasks}
-        onSelectTask={setSelectedTaskId}
-        onApproveTask={(taskId) =>
-          void resolveSelectedApprovalTask(taskId, "approved")
-        }
-        onRejectTask={(taskId) =>
-          void resolveSelectedApprovalTask(taskId, "rejected")
-        }
-        onDismissApproval={(taskId) =>
-          void resolveSelectedApprovalTask(taskId, "dismissed")
-        }
-        onTaskAction={controlLocalTask}
-      />
+      {areControlsExpanded && tasks.length > 0 ? (
+        <TaskTrayPanel
+          tasks={tasks}
+          selectedTaskId={selectedTaskId}
+          onStartMockTasks={startParallelMockTasks}
+          onSelectTask={setSelectedTaskId}
+          onApproveTask={(taskId) =>
+            void resolveSelectedApprovalTask(taskId, "approved")
+          }
+          onRejectTask={(taskId) =>
+            void resolveSelectedApprovalTask(taskId, "rejected")
+          }
+          onDismissApproval={(taskId) =>
+            void resolveSelectedApprovalTask(taskId, "dismissed")
+          }
+          onTaskAction={controlLocalTask}
+        />
+      ) : null}
 
       <section className="companion-presence-zone" aria-label="Bottom Plato presence area">
         {isDismissed ? (
