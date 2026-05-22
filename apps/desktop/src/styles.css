@@ -482,6 +482,13 @@ button {
   animation: avatar-click-acknowledge 520ms ease-out;
 }
 
+.presence-card[data-presence-drag-mode="draggable"] .live2d-avatar-stage {
+  border-radius: 36% 36% 42% 42%;
+  box-shadow:
+    0 0 0 2px color-mix(in srgb, var(--plato-color-companion) 46%, transparent),
+    0 0 24px color-mix(in srgb, var(--plato-color-companion) 24%, transparent);
+}
+
 .presence-avatar-stack {
   position: relative;
   display: grid;
@@ -511,6 +518,14 @@ button {
   object-position: center bottom;
   user-select: none;
   pointer-events: none;
+}
+
+.avatar-action[data-presence-draggable="true"] {
+  cursor: grab;
+}
+
+.avatar-action[data-presence-draggable="true"]:active {
+  cursor: grabbing;
 }
 
 .plato-rive-avatar {

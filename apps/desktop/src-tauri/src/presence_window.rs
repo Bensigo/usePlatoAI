@@ -43,10 +43,18 @@ fn default_presence_placement(
     }
 }
 
-pub fn configure_floating_presence_window(window: &WebviewWindow) -> tauri::Result<()> {
+pub fn configure_floating_presence_window(
+    window: &WebviewWindow,
+    saved_position: Option<PhysicalPosition<i32>>,
+) -> tauri::Result<()> {
     window.set_visible_on_all_workspaces(false)?;
     configure_active_space_following(window)?;
-    place_default_presence_window(window)?;
+
+    if let Some(position) = saved_position {
+        window.set_position(Position::Physical(position))?;
+    } else {
+        place_default_presence_window(window)?;
+    }
 
     Ok(())
 }

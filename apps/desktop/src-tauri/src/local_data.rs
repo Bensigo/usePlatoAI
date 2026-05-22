@@ -10,6 +10,7 @@ use sha2::{Digest, Sha256};
 use crate::CompanionSettings;
 
 const COMPANION_SETTINGS_KEY: &str = "companion";
+const PRESENCE_WINDOW_POSITION_KEY: &str = "presence_window_position.v1";
 const DEFAULT_EXECUTION_AUTHORITY: ExecutionAuthorityMode = ExecutionAuthorityMode::AskFirst;
 
 pub struct LocalDataService {
@@ -34,6 +35,13 @@ pub struct TaskMetadata {
     pub title: String,
     pub status: String,
     pub metadata: Value,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PresenceWindowPosition {
+    pub x: i32,
+    pub y: i32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
@@ -419,6 +427,40 @@ impl LocalDataService {
         }
 
         transaction.commit().map_err(|error| error.to_string())
+    }
+
+    pub fn read_presence_window_position(&self) -> Result<Option<PresenceWindowPosition>, String> {
+        self.connection
+            .query_row(
+                "SELECT value_json FROM settings WHERE key = ?1",
+                [PRESENCE_WINDOW_POSITION_KEY],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()
+            .map_err(|error| error.to_string())?
+            .map(|position_json| decode_json(&position_json))
+            .transpose()
+    }
+
+    pub fn save_presence_window_position(
+        &self,
+        position: &PresenceWindowPosition,
+    ) -> Result<(), String> {
+        let position_json = encode_json(position)?;
+
+        self.connection
+            .execute(
+                "
+                INSERT INTO settings (key, value_json, updated_at)
+                VALUES (?1, ?2, CURRENT_TIMESTAMP)
+                ON CONFLICT(key) DO UPDATE SET
+                    value_json = excluded.value_json,
+                    updated_at = excluded.updated_at
+                ",
+                params![PRESENCE_WINDOW_POSITION_KEY, position_json],
+            )
+            .map(|_| ())
+            .map_err(|error| error.to_string())
     }
 
     pub fn read_execution_authority_policy(&self) -> Result<ExecutionAuthorityPolicy, String> {
@@ -2266,6 +2308,29 @@ mod tests {
                 .expect("retrieve task metadata")
                 .len(),
             1
+        );
+    }
+
+    #[test]
+    fn persists_presence_window_position_as_local_settings_data() {
+        let service = LocalDataService::in_memory().expect("create in-memory service");
+
+        assert_eq!(
+            service
+                .read_presence_window_position()
+                .expect("read missing position"),
+            None
+        );
+
+        service
+            .save_presence_window_position(&PresenceWindowPosition { x: 420, y: 260 })
+            .expect("save position");
+
+        assert_eq!(
+            service
+                .read_presence_window_position()
+                .expect("read saved position"),
+            Some(PresenceWindowPosition { x: 420, y: 260 })
         );
     }
 
