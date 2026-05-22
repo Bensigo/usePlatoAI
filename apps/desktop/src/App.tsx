@@ -91,6 +91,10 @@ import {
   type VoiceInteractionSnapshot,
   type VoiceSessionState,
 } from "./voiceInteraction";
+import {
+  runStartupCompanionSequence,
+  type StartupPresenceState,
+} from "./startupSequence";
 import { experienceTokenCss } from "./experienceTokens";
 import {
   TaskTrayPanel,
@@ -1799,6 +1803,8 @@ export function App({
       ? audioActivationSnapshotForState(initialAudioActivationState)
       : createAudioActivationSnapshot(),
   );
+  const [startupPresenceState, setStartupPresenceState] =
+    useState<StartupPresenceState>(null);
   const [isSettingsLoaded, setIsSettingsLoaded] = useState(
     () => initialSettings !== undefined,
   );
@@ -2303,7 +2309,7 @@ export function App({
     audioActivationState: audioActivation.state,
     voiceOutputPresenceState: voiceSession.presenceState,
     voiceInteractionSessionState: voiceInteraction.sessionState,
-    sharedPresenceState: taskAwarePresence.state,
+    sharedPresenceState: startupPresenceState ?? taskAwarePresence.state,
   });
   const avatarPresenceState = avatarPresenceStateFor(renderedPresenceState);
   const avatarSurfaceHook = getLive2DAvatarSurfaceHook(avatarPresenceState);
@@ -2382,6 +2388,17 @@ export function App({
       isCurrent = false;
     };
   }, [companionPresenceStateSource, durableTaskStore, initialTasks.length]);
+
+  useEffect(() => {
+    if (!isSettingsLoaded || !settings.onboardingComplete) {
+      return;
+    }
+
+    return runStartupCompanionSequence({
+      setPresenceState: setStartupPresenceState,
+      setAudioActivationSnapshot: setAudioActivation,
+    });
+  }, [isSettingsLoaded, settings.onboardingComplete]);
 
   useEffect(() => {
     if (typeof window === "undefined" || !("__TAURI_INTERNALS__" in window)) {

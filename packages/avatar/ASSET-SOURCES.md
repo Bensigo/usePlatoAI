@@ -25,4 +25,4 @@ Openclipart's FAQ states that its clipart is released under Creative Commons Zer
 ## Startup Sound Hook
 
 - Local file: `packages/avatar/assets/audio/plato-startup-chime.json`
-- Usage note: The avatar package owns the startup sound API contract now; real audio decoding/playback remains desktop-owned in a later slice.
+- Usage note: The avatar package owns the startup sound API contract; desktop owns app-launch and explicit activation playback.

@@ -135,7 +135,7 @@ describe("avatar package contract", () => {
       id: "plato-startup-chime",
       packagePath: "packages/avatar/assets/audio/plato-startup-chime.json",
       publicPath: "/avatar/plato/audio/plato-startup-chime.json",
-      playback: "user-activated",
+      playback: "app-launch-or-activation",
     });
   });
 

@@ -128,7 +128,7 @@ export function markAudioActivationResult(
       ...snapshot,
       state: "active",
       statusLabel: "Audio active",
-      detail: "Coming-online sound completed from an explicit app action.",
+      detail: "Coming-online sound completed for app launch or explicit activation.",
       startupSoundPlayed: true,
       lastError: null,
     };

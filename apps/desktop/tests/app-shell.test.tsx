@@ -101,11 +101,33 @@ import {
   experienceTokenCss,
   experienceTokens,
 } from "../src/experienceTokens";
+import {
+  hasStartupSoundAttempted,
+  resetStartupSoundReplayGuardForTests,
+  runStartupCompanionSequence,
+  startupPresenceReleaseDelayMs,
+  startupPresenceTimeline,
+  startupSoundReplayStorageKey,
+  type StartupPresenceState,
+} from "../src/startupSequence";
 
 const completedSettings: CompanionSettings = {
   ...defaultCompanionSettings,
   onboardingComplete: true,
 };
+
+function createStartupSequenceStorage() {
+  const values = new Map<string, string>();
+
+  return {
+    getItem(key: string) {
+      return values.get(key) ?? null;
+    },
+    setItem(key: string, value: string) {
+      values.set(key, value);
+    },
+  };
+}
 
 function nodeText(node: ReactNode): string {
   if (node === null || node === undefined || typeof node === "boolean") {
@@ -189,6 +211,102 @@ describe("desktop app shell", () => {
     expect(markup).not.toContain('aria-label="Task tray"');
     expect(markup).not.toContain("Parallel work");
     expect(markup).not.toContain("Start two mock tasks");
+  });
+
+  it("runs the launch startup sound and automatic greet-to-idle sequence", async () => {
+    vi.useFakeTimers();
+    resetStartupSoundReplayGuardForTests();
+
+    const storage = createStartupSequenceStorage();
+    const states: StartupPresenceState[] = [];
+    let audioActivation = createAudioActivationSnapshot();
+    const playSound = vi.fn().mockResolvedValue({ ok: true });
+
+    try {
+      const cleanup = runStartupCompanionSequence({
+        setPresenceState: (state) => states.push(state),
+        setAudioActivationSnapshot: (updater) => {
+          audioActivation = updater(audioActivation);
+        },
+        playSound,
+        storage,
+      });
+
+      expect(startupPresenceTimeline.map((step) => step.state)).toEqual([
+        "appearing",
+        "listening",
+        "idle",
+      ]);
+      expect(states).toEqual(["appearing"]);
+      expect(playSound).toHaveBeenCalledTimes(1);
+      expect(storage.getItem(startupSoundReplayStorageKey)).toBe("true");
+
+      await Promise.resolve();
+      expect(audioActivation.startupSoundPlayed).toBe(true);
+      expect(audioActivation.state).toBe("active");
+
+      vi.advanceTimersByTime(560);
+      expect(states).toEqual(["appearing", "listening"]);
+
+      vi.advanceTimersByTime(960);
+      expect(states).toEqual(["appearing", "listening", "idle"]);
+
+      vi.advanceTimersByTime(startupPresenceReleaseDelayMs - 1520);
+      expect(states).toEqual(["appearing", "listening", "idle", null]);
+
+      cleanup();
+    } finally {
+      resetStartupSoundReplayGuardForTests();
+      vi.useRealTimers();
+    }
+  });
+
+  it("prevents startup sound replay across renderer remounts", async () => {
+    resetStartupSoundReplayGuardForTests();
+
+    const storage = createStartupSequenceStorage();
+    const playSound = vi.fn().mockResolvedValue({
+      ok: false,
+      state: "unavailable",
+      message: "This runtime does not expose Web Audio.",
+    });
+    let firstAudioActivation = createAudioActivationSnapshot();
+    let secondAudioActivation = createAudioActivationSnapshot();
+
+    try {
+      const firstCleanup = runStartupCompanionSequence({
+        setPresenceState: () => undefined,
+        setAudioActivationSnapshot: (updater) => {
+          firstAudioActivation = updater(firstAudioActivation);
+        },
+        playSound,
+        storage,
+      });
+
+      await Promise.resolve();
+      expect(firstAudioActivation.state).toBe("unavailable");
+      expect(hasStartupSoundAttempted({ storage })).toBe(true);
+
+      firstCleanup();
+      resetStartupSoundReplayGuardForTests();
+
+      const secondCleanup = runStartupCompanionSequence({
+        setPresenceState: () => undefined,
+        setAudioActivationSnapshot: (updater) => {
+          secondAudioActivation = updater(secondAudioActivation);
+        },
+        playSound,
+        storage,
+      });
+
+      await Promise.resolve();
+      expect(playSound).toHaveBeenCalledTimes(1);
+      expect(secondAudioActivation.state).toBe("inactive");
+
+      secondCleanup();
+    } finally {
+      resetStartupSoundReplayGuardForTests();
+    }
   });
 
   it("keeps persisted tasks out of the normal companion-only desktop window", () => {
