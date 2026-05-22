@@ -104,7 +104,24 @@ fn save_presence_window_position(
     app: AppHandle,
     position: local_data::PresenceWindowPosition,
 ) -> Result<(), String> {
+    let position = if let Some(window) = app.get_webview_window("main") {
+        presence_window::enrich_presence_window_position(&window, position)
+            .map_err(|error| error.to_string())?
+    } else {
+        position
+    };
+
     local_data_service(&app)?.save_presence_window_position(&position)
+}
+
+#[tauri::command]
+fn reinforce_presence_window_layer(app: AppHandle) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window("main") {
+        presence_window::reinforce_presence_window_layer(&window)
+            .map_err(|error| error.to_string())?;
+    }
+
+    Ok(())
 }
 
 #[tauri::command]
@@ -297,6 +314,7 @@ pub fn run() {
             save_companion_settings,
             read_presence_window_position,
             save_presence_window_position,
+            reinforce_presence_window_layer,
             read_execution_authority_policy,
             read_recent_audit_history,
             read_soul_guidance,
@@ -356,11 +374,7 @@ pub fn run() {
                 let saved_position = local_data_service(app.handle())
                     .ok()
                     .and_then(|local_data| local_data.read_presence_window_position().ok())
-                    .flatten()
-                    .map(|position| tauri::PhysicalPosition {
-                        x: position.x,
-                        y: position.y,
-                    });
+                    .flatten();
 
                 presence_window::configure_floating_presence_window(&window, saved_position)?;
             }

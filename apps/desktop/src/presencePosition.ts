@@ -1,6 +1,7 @@
 export type PresenceWindowPosition = {
   x: number;
   y: number;
+  displayId?: string;
 };
 
 export type PresenceDragMode = "locked" | "draggable";
@@ -24,10 +25,16 @@ export function normalizePresenceWindowPosition(
     return null;
   }
 
-  return {
+  const normalized: PresenceWindowPosition = {
     x: Math.round(position.x),
     y: Math.round(position.y),
   };
+
+  if (typeof position.displayId === "string" && position.displayId.length > 0) {
+    normalized.displayId = position.displayId;
+  }
+
+  return normalized;
 }
 
 export function presenceDragModeAfterDoubleClick(

@@ -1,18 +1,35 @@
 use tauri::{PhysicalPosition, PhysicalRect, PhysicalSize, Position, WebviewWindow};
 
+use crate::local_data::PresenceWindowPosition;
+
 const PRESENCE_MARGIN: i32 = 18;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct PresencePlacement {
     x: i32,
     y: i32,
     anchor: PresenceAnchor,
+    display_id: Option<String>,
+    source: PresencePlacementSource,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum PresenceAnchor {
     BottomRight,
     BottomLeft,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PresencePlacementSource {
+    Default,
+    Saved,
+    Clamped,
+}
+
+#[derive(Debug, Clone)]
+struct PresenceDisplay {
+    id: Option<String>,
+    work_area: PhysicalRect<i32, u32>,
 }
 
 fn default_presence_placement(
@@ -33,42 +50,189 @@ fn default_presence_placement(
             x: preferred_x,
             y: bottom_y.max(work_y + PRESENCE_MARGIN),
             anchor: PresenceAnchor::BottomRight,
+            display_id: None,
+            source: PresencePlacementSource::Default,
         }
     } else {
         PresencePlacement {
             x: work_x + PRESENCE_MARGIN,
             y: bottom_y.max(work_y + PRESENCE_MARGIN),
             anchor: PresenceAnchor::BottomLeft,
+            display_id: None,
+            source: PresencePlacementSource::Default,
         }
     }
 }
 
 pub fn configure_floating_presence_window(
     window: &WebviewWindow,
-    saved_position: Option<PhysicalPosition<i32>>,
+    saved_position: Option<PresenceWindowPosition>,
 ) -> tauri::Result<()> {
+    reinforce_presence_window_layer(window)?;
     window.set_visible_on_all_workspaces(false)?;
     configure_active_space_following(window)?;
 
-    if let Some(position) = saved_position {
-        window.set_position(Position::Physical(position))?;
-    } else {
-        place_default_presence_window(window)?;
+    if let Some(placement) = placement_for_window(window, saved_position)? {
+        window.set_position(Position::Physical(PhysicalPosition {
+            x: placement.x,
+            y: placement.y,
+        }))?;
     }
 
     Ok(())
 }
 
-fn place_default_presence_window(window: &WebviewWindow) -> tauri::Result<()> {
-    let Some(monitor) = window.current_monitor()? else {
-        return Ok(());
+pub fn reinforce_presence_window_layer(window: &WebviewWindow) -> tauri::Result<()> {
+    window.set_always_on_top(true)?;
+    Ok(())
+}
+
+pub fn enrich_presence_window_position(
+    window: &WebviewWindow,
+    mut position: PresenceWindowPosition,
+) -> tauri::Result<PresenceWindowPosition> {
+    if position.display_id.is_none() {
+        position.display_id = window
+            .current_monitor()?
+            .and_then(|monitor| monitor_id(&monitor));
+    }
+
+    Ok(position)
+}
+
+fn placement_for_window(
+    window: &WebviewWindow,
+    saved_position: Option<PresenceWindowPosition>,
+) -> tauri::Result<Option<PresencePlacement>> {
+    let displays = presence_displays(window)?;
+    let current_display_id = window
+        .current_monitor()?
+        .and_then(|monitor| monitor_id(&monitor));
+    let primary_display_id = window
+        .primary_monitor()?
+        .and_then(|monitor| monitor_id(&monitor));
+
+    Ok(resolve_presence_placement(
+        saved_position,
+        &displays,
+        current_display_id.as_deref(),
+        primary_display_id.as_deref(),
+        window.outer_size()?,
+    ))
+}
+
+fn presence_displays(window: &WebviewWindow) -> tauri::Result<Vec<PresenceDisplay>> {
+    window.available_monitors().map(|monitors| {
+        monitors
+            .into_iter()
+            .map(|monitor| PresenceDisplay {
+                id: monitor_id(&monitor),
+                work_area: *monitor.work_area(),
+            })
+            .collect()
+    })
+}
+
+fn monitor_id(monitor: &tauri::Monitor) -> Option<String> {
+    monitor.name().map(ToOwned::to_owned)
+}
+
+fn resolve_presence_placement(
+    saved_position: Option<PresenceWindowPosition>,
+    displays: &[PresenceDisplay],
+    active_display_id: Option<&str>,
+    primary_display_id: Option<&str>,
+    window_size: PhysicalSize<u32>,
+) -> Option<PresencePlacement> {
+    if displays.is_empty() {
+        return None;
+    }
+
+    let default_display = display_by_id(displays, active_display_id)
+        .or_else(|| display_by_id(displays, primary_display_id))
+        .unwrap_or(&displays[0]);
+
+    let Some(saved_position) = saved_position else {
+        let mut placement = default_presence_placement(default_display.work_area, window_size);
+        placement.display_id = default_display.id.clone();
+        return Some(placement);
     };
 
-    let placement = default_presence_placement(*monitor.work_area(), window.outer_size()?);
-    window.set_position(Position::Physical(PhysicalPosition {
-        x: placement.x,
-        y: placement.y,
-    }))
+    let saved_display = saved_position
+        .display_id
+        .as_deref()
+        .and_then(|display_id| display_by_id(displays, Some(display_id)))
+        .or_else(|| display_containing_position(displays, saved_position.x, saved_position.y))
+        .unwrap_or(default_display);
+
+    let (x, y) = clamp_position_to_display(
+        PhysicalPosition {
+            x: saved_position.x,
+            y: saved_position.y,
+        },
+        saved_display.work_area,
+        window_size,
+    );
+    let source = if x == saved_position.x && y == saved_position.y {
+        PresencePlacementSource::Saved
+    } else {
+        PresencePlacementSource::Clamped
+    };
+
+    Some(PresencePlacement {
+        x,
+        y,
+        anchor: PresenceAnchor::BottomRight,
+        display_id: saved_display.id.clone(),
+        source,
+    })
+}
+
+fn display_by_id<'a>(
+    displays: &'a [PresenceDisplay],
+    display_id: Option<&str>,
+) -> Option<&'a PresenceDisplay> {
+    let display_id = display_id?;
+
+    displays
+        .iter()
+        .find(|display| display.id.as_deref() == Some(display_id))
+}
+
+fn display_containing_position(
+    displays: &[PresenceDisplay],
+    x: i32,
+    y: i32,
+) -> Option<&PresenceDisplay> {
+    displays.iter().find(|display| {
+        let area = display.work_area;
+        let left = area.position.x;
+        let top = area.position.y;
+        let right = left + area.size.width as i32;
+        let bottom = top + area.size.height as i32;
+
+        x >= left && x < right && y >= top && y < bottom
+    })
+}
+
+fn clamp_position_to_display(
+    position: PhysicalPosition<i32>,
+    work_area: PhysicalRect<i32, u32>,
+    window_size: PhysicalSize<u32>,
+) -> (i32, i32) {
+    let min_x = work_area.position.x + PRESENCE_MARGIN;
+    let min_y = work_area.position.y + PRESENCE_MARGIN;
+    let max_x = work_area.position.x + work_area.size.width as i32
+        - window_size.width as i32
+        - PRESENCE_MARGIN;
+    let max_y = work_area.position.y + work_area.size.height as i32
+        - window_size.height as i32
+        - PRESENCE_MARGIN;
+
+    (
+        position.x.clamp(min_x, max_x.max(min_x)),
+        position.y.clamp(min_y, max_y.max(min_y)),
+    )
 }
 
 #[cfg(target_os = "macos")]
@@ -118,6 +282,25 @@ mod tests {
         PhysicalSize { width, height }
     }
 
+    fn display(id: &str, x: i32, y: i32, width: u32, height: u32) -> PresenceDisplay {
+        PresenceDisplay {
+            id: Some(id.to_string()),
+            work_area: work_area(x, y, width, height),
+        }
+    }
+
+    fn saved_position(
+        x: i32,
+        y: i32,
+        display_id: Option<&str>,
+    ) -> crate::local_data::PresenceWindowPosition {
+        crate::local_data::PresenceWindowPosition {
+            x,
+            y,
+            display_id: display_id.map(str::to_string),
+        }
+    }
+
     #[test]
     fn default_presence_placement_favors_bottom_right() {
         let placement =
@@ -129,6 +312,8 @@ mod tests {
                 x: 1102,
                 y: 322,
                 anchor: PresenceAnchor::BottomRight,
+                display_id: None,
+                source: PresencePlacementSource::Default,
             }
         );
     }
@@ -144,6 +329,8 @@ mod tests {
                 x: 18,
                 y: 322,
                 anchor: PresenceAnchor::BottomLeft,
+                display_id: None,
+                source: PresencePlacementSource::Default,
             }
         );
     }
@@ -155,6 +342,117 @@ mod tests {
 
         assert_eq!(placement.y, 43);
         assert_eq!(placement.anchor, PresenceAnchor::BottomRight);
+    }
+
+    #[test]
+    fn resolves_default_position_on_active_display() {
+        let placement = resolve_presence_placement(
+            None,
+            &[
+                display("built-in", 0, 25, 1440, 875),
+                display("sidecar", 1440, 0, 1280, 900),
+            ],
+            Some("sidecar"),
+            Some("built-in"),
+            window_size(260, 280),
+        )
+        .expect("default placement");
+
+        assert_eq!(placement.x, 2442);
+        assert_eq!(placement.y, 602);
+        assert_eq!(placement.display_id.as_deref(), Some("sidecar"));
+        assert_eq!(placement.source, PresencePlacementSource::Default);
+    }
+
+    #[test]
+    fn keeps_saved_position_on_matching_display_when_visible() {
+        let placement = resolve_presence_placement(
+            Some(saved_position(1620, 520, Some("sidecar"))),
+            &[
+                display("built-in", 0, 25, 1440, 875),
+                display("sidecar", 1440, 0, 1280, 900),
+            ],
+            Some("built-in"),
+            Some("built-in"),
+            window_size(260, 280),
+        )
+        .expect("saved placement");
+
+        assert_eq!(placement.x, 1620);
+        assert_eq!(placement.y, 520);
+        assert_eq!(placement.display_id.as_deref(), Some("sidecar"));
+        assert_eq!(placement.source, PresencePlacementSource::Saved);
+    }
+
+    #[test]
+    fn clamps_saved_position_to_matching_display_when_offscreen() {
+        let placement = resolve_presence_placement(
+            Some(saved_position(4000, -200, Some("sidecar"))),
+            &[
+                display("built-in", 0, 25, 1440, 875),
+                display("sidecar", 1440, 0, 1280, 900),
+            ],
+            Some("built-in"),
+            Some("built-in"),
+            window_size(260, 280),
+        )
+        .expect("clamped placement");
+
+        assert_eq!(placement.x, 2442);
+        assert_eq!(placement.y, 18);
+        assert_eq!(placement.display_id.as_deref(), Some("sidecar"));
+        assert_eq!(placement.source, PresencePlacementSource::Clamped);
+    }
+
+    #[test]
+    fn clamps_saved_position_to_active_display_when_saved_display_is_missing() {
+        let placement = resolve_presence_placement(
+            Some(saved_position(2480, 520, Some("disconnected"))),
+            &[display("built-in", 0, 25, 1440, 875)],
+            Some("built-in"),
+            Some("built-in"),
+            window_size(260, 280),
+        )
+        .expect("fallback placement");
+
+        assert_eq!(placement.x, 1162);
+        assert_eq!(placement.y, 520);
+        assert_eq!(placement.display_id.as_deref(), Some("built-in"));
+        assert_eq!(placement.source, PresencePlacementSource::Clamped);
+    }
+
+    #[test]
+    fn migrates_legacy_saved_position_without_display_identity_by_containing_display() {
+        let placement = resolve_presence_placement(
+            Some(saved_position(1500, 520, None)),
+            &[
+                display("built-in", 0, 25, 1440, 875),
+                display("sidecar", 1440, 0, 1280, 900),
+            ],
+            Some("built-in"),
+            Some("built-in"),
+            window_size(260, 280),
+        )
+        .expect("migrated placement");
+
+        assert_eq!(placement.x, 1500);
+        assert_eq!(placement.y, 520);
+        assert_eq!(placement.display_id.as_deref(), Some("sidecar"));
+        assert_eq!(placement.source, PresencePlacementSource::Saved);
+    }
+
+    #[test]
+    fn returns_none_when_no_display_geometry_is_available() {
+        assert_eq!(
+            resolve_presence_placement(
+                Some(saved_position(1500, 520, None)),
+                &[],
+                None,
+                None,
+                window_size(260, 280),
+            ),
+            None
+        );
     }
 
     #[cfg(target_os = "macos")]

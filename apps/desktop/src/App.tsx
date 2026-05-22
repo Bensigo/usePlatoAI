@@ -153,6 +153,15 @@ async function movePresenceWindowToPosition(position: PresenceWindowPosition) {
   );
 }
 
+async function reinforcePresenceWindowLayer() {
+  if (!isTauriRuntime()) {
+    return;
+  }
+
+  const { invoke } = await import("@tauri-apps/api/core");
+  await invoke("reinforce_presence_window_layer");
+}
+
 function usePresenceState(source: PresenceStateSource) {
   return useSyncExternalStore(
     source.subscribe,
@@ -2507,6 +2516,7 @@ export function App({
 
         setPresencePosition(savedPosition);
         void movePresenceWindowToPosition(savedPosition);
+        void reinforcePresenceWindowLayer();
       })
       .catch(() => undefined);
 
@@ -2533,6 +2543,7 @@ export function App({
 
         setPresencePosition(nextPosition);
         void durablePresencePositionStore.save(nextPosition);
+        void reinforcePresenceWindowLayer();
 
         if (isPresenceDraggable) {
           schedulePresenceDragIdleExit();
@@ -2557,6 +2568,34 @@ export function App({
     isPresenceDraggable,
     schedulePresenceDragIdleExit,
   ]);
+
+  useEffect(() => {
+    if (!isTauriRuntime()) {
+      return;
+    }
+
+    let dispose: (() => void) | undefined;
+    let isCurrent = true;
+
+    getCurrentWindow()
+      .onFocusChanged(() => {
+        void reinforcePresenceWindowLayer();
+      })
+      .then((unlisten) => {
+        if (isCurrent) {
+          dispose = unlisten;
+          return;
+        }
+
+        unlisten();
+      })
+      .catch(() => undefined);
+
+    return () => {
+      isCurrent = false;
+      dispose?.();
+    };
+  }, []);
 
   useEffect(() => {
     if (!isSettingsLoaded || !settings.onboardingComplete) {

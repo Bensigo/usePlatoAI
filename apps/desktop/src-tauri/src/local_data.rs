@@ -37,11 +37,13 @@ pub struct TaskMetadata {
     pub metadata: Value,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PresenceWindowPosition {
     pub x: i32,
     pub y: i32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub display_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
@@ -2323,14 +2325,37 @@ mod tests {
         );
 
         service
-            .save_presence_window_position(&PresenceWindowPosition { x: 420, y: 260 })
+            .save_presence_window_position(&PresenceWindowPosition {
+                x: 420,
+                y: 260,
+                display_id: Some("built-in".to_string()),
+            })
             .expect("save position");
 
         assert_eq!(
             service
                 .read_presence_window_position()
                 .expect("read saved position"),
-            Some(PresenceWindowPosition { x: 420, y: 260 })
+            Some(PresenceWindowPosition {
+                x: 420,
+                y: 260,
+                display_id: Some("built-in".to_string()),
+            })
+        );
+    }
+
+    #[test]
+    fn reads_legacy_presence_window_position_without_display_identity() {
+        let position: PresenceWindowPosition =
+            decode_json(r#"{"x":420,"y":260}"#).expect("decode legacy position");
+
+        assert_eq!(
+            position,
+            PresenceWindowPosition {
+                x: 420,
+                y: 260,
+                display_id: None,
+            }
         );
     }
 
