@@ -18,7 +18,8 @@ Openclipart's FAQ states that its clipart is released under Creative Commons Zer
 - Source file: `examples/public/avatars.riv`
 - Local file: `packages/avatar/assets/rive/plato-companion.riv`
 - License: MIT, from the source repository license at https://github.com/rive-app/rive-react/blob/main/LICENSE
-- Attribution: Keep the MIT license/provenance in this document.
+- License notice: `packages/avatar/assets/rive/plato-companion.LICENSE.md`
+- Attribution: Keep the MIT copyright and permission notice with the vendored `.riv` asset.
 - Usage note: This is the first Rive runtime asset that establishes the Rive-backed avatar path. It is not the final bespoke Plato character export.
 
 ## Startup Sound Hook
