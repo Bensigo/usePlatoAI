@@ -39,6 +39,8 @@ import {
 } from "../src/audioActivation";
 import {
   Live2DAvatarSurface,
+  avatarCompanionStateFromTestCommand,
+  avatarCompanionStateForClickReaction,
   avatarPresenceStateFrom,
   avatarPresenceStates,
   fallbackRendererFor,
@@ -196,7 +198,7 @@ describe("desktop app shell", () => {
     expect(markup).toContain("Idle presence");
     expect(markup).toContain("data-live2d-motion-group=\"idle\"");
     expect(markup).toContain("data-live2d-expression=\"neutral\"");
-    expect(markup).toContain("Activate audio with Plato");
+    expect(markup).toContain("React with Plato");
     expect(markup).toContain("Open Plato controls");
     expect(markup).toContain("Drag Plato presence");
     expect(markup).toContain("Hide Plato presence");
@@ -597,13 +599,45 @@ describe("desktop app shell", () => {
     expect(avatarPresenceStateFrom("unknown")).toBeUndefined();
   });
 
-  it("renders Plato with a direct clickable audio affordance", () => {
+  it("routes a visible mascot click to a character reaction without opening controls", () => {
     const markup = renderToStaticMarkup(
       <App initialSettings={completedSettings} />,
     );
 
-    expect(markup).toContain("Activate audio with Plato");
+    expect(avatarCompanionStateForClickReaction()).toBe("happy");
+    expect(markup).toContain("React with Plato");
     expect(markup).toContain("avatar-action");
+    expect(markup).not.toContain('aria-label="Top Plato control surface"');
+    expect(markup).not.toContain("Voice output controls");
+  });
+
+  it("maps hidden avatar test commands to product companion states", () => {
+    expect(avatarCompanionStateFromTestCommand("greeting")).toBe("greet");
+    expect(avatarCompanionStateFromTestCommand("happy")).toBe("happy");
+    expect(avatarCompanionStateFromTestCommand("smile")).toBe("happy");
+    expect(avatarCompanionStateFromTestCommand("sad")).toBe("sad");
+    expect(avatarCompanionStateFromTestCommand("talking")).toBe("talking");
+    expect(avatarCompanionStateFromTestCommand("dance")).toBe("celebrating");
+    expect(avatarCompanionStateFromTestCommand("celebration")).toBe(
+      "celebrating",
+    );
+    expect(avatarCompanionStateFromTestCommand("asset-specific-happy")).toBeNull();
+  });
+
+  it("renders hidden avatar test commands without exposing normal UI controls", () => {
+    const markup = renderToStaticMarkup(
+      <App
+        initialSettings={completedSettings}
+        initialAvatarTestCommand="dance"
+      />,
+    );
+
+    expect(markup).toContain('data-avatar-companion-state="celebrating"');
+    expect(markup).toContain('data-avatar-command="celebration.dance"');
+    expect(markup).toContain('data-rive-input-is-happy="true"');
+    expect(markup).not.toContain("avatarTestCommand");
+    expect(markup).not.toContain("Hidden avatar test");
+    expect(markup).not.toContain('aria-label="Top Plato control surface"');
   });
 
   it("renders presence state through the shared source boundary", () => {
@@ -1759,6 +1793,18 @@ describe("desktop app shell", () => {
 
     expect(styles).toMatch(/\.presence-shell\s*{[^}]*pointer-events:\s*none;/s);
     expect(styles).toMatch(/\.control-surface\s*{[^}]*pointer-events:\s*auto;/s);
+  });
+
+  it("keeps transparent presence padding from becoming the desktop click target", () => {
+    const styles = readFileSync(
+      resolve(process.cwd(), "src/styles.css"),
+      "utf8",
+    );
+
+    expect(styles).toMatch(/\.presence-card\s*{[^}]*pointer-events:\s*none;/s);
+    expect(styles).toMatch(/\.presence-avatar-stack\s*{[^}]*pointer-events:\s*none;/s);
+    expect(styles).toMatch(/\.avatar-action\s*{[^}]*pointer-events:\s*auto;/s);
+    expect(styles).toMatch(/\.presence-controls\s*{[^}]*pointer-events:\s*auto;/s);
   });
 
   it("keeps the fixed Tauri window size from clipping the shell zones", () => {

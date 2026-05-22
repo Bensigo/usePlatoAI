@@ -25,6 +25,19 @@ export const avatarAnimationCommands = [
 
 export type AvatarAnimationCommand = (typeof avatarAnimationCommands)[number];
 
+export const avatarTestAnimationCommands = [
+  "greeting",
+  "happy",
+  "smile",
+  "sad",
+  "talking",
+  "dance",
+  "celebration",
+] as const;
+
+export type AvatarTestAnimationCommand =
+  (typeof avatarTestAnimationCommands)[number];
+
 export const avatarPresenceStates = [
   "appearing",
   "idle",
@@ -197,6 +210,34 @@ const animationByState = {
   AvatarCompanionState,
   { command: AvatarAnimationCommand; animation: string; inputs: RiveInputValues }
 >;
+
+const hiddenTestCommandStateByCommand = {
+  greeting: "greet",
+  happy: "happy",
+  smile: "happy",
+  sad: "sad",
+  talking: "talking",
+  dance: "celebrating",
+  celebration: "celebrating",
+} as const satisfies Record<AvatarTestAnimationCommand, AvatarCompanionState>;
+
+export function avatarCompanionStateForClickReaction(): AvatarCompanionState {
+  return "happy";
+}
+
+export function avatarCompanionStateFromTestCommand(
+  command: string | null | undefined,
+): AvatarCompanionState | null {
+  if (!command) {
+    return null;
+  }
+
+  return (
+    hiddenTestCommandStateByCommand[
+      command as AvatarTestAnimationCommand
+    ] ?? null
+  );
+}
 
 export function getAvatarRendererConfig(
   companionState: AvatarCompanionState,
@@ -477,6 +518,8 @@ export function AvatarRenderer({
       className="plato-rive-avatar"
       data-avatar-package="@useplatoai/avatar"
       data-avatar-renderer={config.primaryRenderer}
+      data-avatar-companion-state={config.companionState}
+      data-avatar-command={config.command}
       data-rive-artboard={config.rive.artboard}
       data-rive-runtime-state={runtimeState}
       data-rive-state-machine={config.rive.stateMachine}
@@ -514,10 +557,15 @@ export function AvatarRenderer({
 
 export function Live2DAvatarSurface({
   presenceState,
+  companionStateOverride,
 }: {
   presenceState: AvatarPresenceState;
+  companionStateOverride?: AvatarCompanionState;
 }) {
   const hook = getLive2DAvatarSurfaceHook(presenceState);
+  const rendererConfig = companionStateOverride
+    ? getAvatarRendererConfig(companionStateOverride)
+    : hook.rendererConfig;
 
   return (
     <figure
@@ -531,10 +579,12 @@ export function Live2DAvatarSurface({
         key={hook.rendererConfig.rive.src}
         className="live2d-avatar-stage"
         data-avatar-renderer="rive"
-        data-rive-asset={hook.rendererConfig.rive.src}
+        data-rive-asset={rendererConfig.rive.src}
+        data-avatar-companion-state={rendererConfig.companionState}
+        data-avatar-command={rendererConfig.command}
         aria-hidden="true"
       >
-        <AvatarRenderer companionState={hook.companionState} />
+        <AvatarRenderer companionState={rendererConfig.companionState} />
         <div
           className="live2d-presence-mark"
           data-avatar-fallback-surface="presence-mark"
@@ -549,7 +599,7 @@ export function Live2DAvatarSurface({
       <figcaption className="live2d-avatar-caption sr-only">
         <span>{hook.label}</span>
         <small>
-          Rive: {hook.rendererConfig.command} / {hook.expression}
+          Rive: {rendererConfig.command} / {hook.expression}
         </small>
       </figcaption>
     </figure>

@@ -52,7 +52,7 @@ describe("Milestone 005 redesign smoke coverage", () => {
 
     expect(shellMarkup).toContain('aria-label="Floating Plato presence"');
     expect(shellMarkup).toContain('aria-label="Open Plato controls"');
-    expect(shellMarkup).toContain("Activate audio with Plato");
+    expect(shellMarkup).toContain("React with Plato");
     expect(shellMarkup).not.toContain('aria-label="Top Plato control surface"');
     expect(shellMarkup).not.toContain('aria-label="Voice output controls"');
   });
