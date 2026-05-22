@@ -15,7 +15,18 @@ export interface CapabilityRecord {
   enabled: boolean;
   isDefault?: boolean;
   description?: string;
+  source?: CapabilitySourceReference;
 }
+
+export type CapabilitySourceReference =
+  | {
+      kind: "default";
+      reference: string;
+    }
+  | {
+      kind: "local";
+      reference: string;
+    };
 
 export interface CapabilityRegistrySnapshot {
   capabilities: CapabilityRecord[];
@@ -29,6 +40,29 @@ export interface CapabilityRegistryRepository {
   list(): CapabilityRecord[] | Promise<CapabilityRecord[]>;
   save(capability: CapabilityRecord): void | Promise<void>;
 }
+
+export interface CustomSkillRegistrationInput {
+  id: string;
+  displayName: string;
+  description: string;
+  localSourceReference: string;
+}
+
+export type CustomSkillRegistrationResult =
+  | {
+      ok: true;
+      capability: CapabilityRecord;
+      message: string;
+    }
+  | {
+      ok: false;
+      reason:
+        | "invalid_id"
+        | "missing_display_name"
+        | "missing_source_reference"
+        | "duplicate_id";
+      message: string;
+    };
 
 export const defaultCapabilities = [
   {
@@ -142,6 +176,71 @@ export async function setCapabilityEnabled(
   return updated;
 }
 
+export async function registerCustomSkill(
+  repository: CapabilityRegistryRepository,
+  input: CustomSkillRegistrationInput,
+): Promise<CustomSkillRegistrationResult> {
+  const id = input.id.trim();
+  const displayName = input.displayName.trim();
+  const description = input.description.trim();
+  const localSourceReference = input.localSourceReference.trim();
+
+  if (!isStableCapabilityId(id)) {
+    return {
+      ok: false,
+      reason: "invalid_id",
+      message:
+        "Custom skill id must use lowercase letters, numbers, dots, underscores, or hyphens.",
+    };
+  }
+
+  if (!displayName) {
+    return {
+      ok: false,
+      reason: "missing_display_name",
+      message: "Custom skill display name is required.",
+    };
+  }
+
+  if (!localSourceReference) {
+    return {
+      ok: false,
+      reason: "missing_source_reference",
+      message: "Custom skill local source reference is required.",
+    };
+  }
+
+  const capabilities = await repository.list();
+  if (capabilities.some((capability) => capability.id === id)) {
+    return {
+      ok: false,
+      reason: "duplicate_id",
+      message: `A capability is already registered with id: ${id}`,
+    };
+  }
+
+  const capability: CapabilityRecord = {
+    id,
+    type: "skill",
+    displayName,
+    description,
+    status: "available",
+    enabled: false,
+    source: {
+      kind: "local",
+      reference: localSourceReference,
+    },
+  };
+
+  await repository.save(capability);
+
+  return {
+    ok: true,
+    capability,
+    message: `Registered custom skill: ${displayName}`,
+  };
+}
+
 export async function assertCapabilityInvocationAllowed(
   repository: CapabilityRegistryRepository,
   capabilityId: string,
@@ -166,4 +265,8 @@ export async function assertCapabilityInvocationAllowed(
   }
 
   return capability;
+}
+
+function isStableCapabilityId(id: string): boolean {
+  return /^[a-z0-9][a-z0-9._-]*$/.test(id);
 }

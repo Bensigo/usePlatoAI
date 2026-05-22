@@ -126,6 +126,104 @@ describe("provider settings UI", () => {
     );
   });
 
+  it("registers a custom local skill and lets the user enable and disable it from the settings surface", async () => {
+    const settings = renderProviderSettings(document.createElement("main"), {
+      capabilityRepository: createMemoryCapabilityRegistryRepository({
+        capabilities: defaultCapabilities,
+      }),
+    });
+
+    document.body.replaceChildren(settings.root);
+    await settings.ready;
+
+    document.querySelector<HTMLInputElement>("[name='custom-skill-id']")!.value =
+      "daily-planning-skill";
+    document.querySelector<HTMLInputElement>(
+      "[name='custom-skill-display-name']",
+    )!.value = "Daily Planning Skill";
+    document.querySelector<HTMLTextAreaElement>(
+      "[name='custom-skill-description']",
+    )!.value = "Turns a rough day plan into a sequenced task list.";
+    document.querySelector<HTMLInputElement>(
+      "[name='custom-skill-source-reference']",
+    )!.value = "~/plato/skills/daily-planning/SKILL.md";
+
+    document.querySelector<HTMLFormElement>("[data-custom-skill-form]")!.requestSubmit();
+    await deferredRender();
+
+    expect(
+      document.querySelector("[data-custom-skill-registration-result]")?.textContent,
+    ).toContain("Registered custom skill: Daily Planning Skill");
+    expect(capabilityCard("daily-planning-skill").textContent).toContain(
+      "Daily Planning Skill",
+    );
+    expect(capabilityCard("daily-planning-skill").textContent).toContain(
+      "Local skill: ~/plato/skills/daily-planning/SKILL.md",
+    );
+    expect(capabilityCard("daily-planning-skill").textContent).toContain(
+      "Available, disabled until enabled",
+    );
+
+    capabilityCard("daily-planning-skill")
+      .querySelector<HTMLButtonElement>("[data-capability-action='enable']")
+      ?.click();
+    await deferredRender();
+
+    expect(capabilityCard("daily-planning-skill").textContent).toContain(
+      "Available and enabled",
+    );
+
+    capabilityCard("daily-planning-skill")
+      .querySelector<HTMLButtonElement>("[data-capability-action='disable']")
+      ?.click();
+    await deferredRender();
+
+    expect(capabilityCard("daily-planning-skill").textContent).toContain(
+      "Available, disabled until enabled",
+    );
+  });
+
+  it("shows local validation when custom skill registration is duplicate or invalid", async () => {
+    const settings = renderProviderSettings(document.createElement("main"), {
+      capabilityRepository: createMemoryCapabilityRegistryRepository({
+        capabilities: defaultCapabilities,
+      }),
+    });
+
+    document.body.replaceChildren(settings.root);
+    await settings.ready;
+
+    document.querySelector<HTMLInputElement>("[name='custom-skill-id']")!.value =
+      "project-context-skill";
+    document.querySelector<HTMLInputElement>(
+      "[name='custom-skill-display-name']",
+    )!.value = "Duplicate Project Context Skill";
+    document.querySelector<HTMLTextAreaElement>(
+      "[name='custom-skill-description']",
+    )!.value = "Should be rejected.";
+    document.querySelector<HTMLInputElement>(
+      "[name='custom-skill-source-reference']",
+    )!.value = "~/plato/skills/project-context/SKILL.md";
+
+    document.querySelector<HTMLFormElement>("[data-custom-skill-form]")!.requestSubmit();
+    await deferredRender();
+
+    expect(
+      document.querySelector("[data-custom-skill-registration-result]")?.textContent,
+    ).toContain("A capability is already registered with id: project-context-skill");
+
+    document.querySelector<HTMLInputElement>("[name='custom-skill-id']")!.value =
+      "Not Stable";
+    document.querySelector<HTMLFormElement>("[data-custom-skill-form]")!.requestSubmit();
+    await deferredRender();
+
+    expect(
+      document.querySelector("[data-custom-skill-registration-result]")?.textContent,
+    ).toContain(
+      "Custom skill id must use lowercase letters, numbers, dots, underscores, or hyphens.",
+    );
+  });
+
   it("blocks mocked task launch when its required default skill is disabled", async () => {
     const projectContextSkill = defaultCapabilities.find(
       (capability) => capability.id === "project-context-skill",
