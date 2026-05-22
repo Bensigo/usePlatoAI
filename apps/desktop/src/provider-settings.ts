@@ -21,10 +21,12 @@ import {
 } from "@useplatoai/agent-engine";
 import {
   assertCapabilityInvocationAllowed,
+  evaluateBrowserAutomationActionGate,
   createDefaultCapabilityRegistryRepository,
   getCapabilityRegistrySnapshot,
   registerCustomSkill,
   setCapabilityEnabled,
+  type BrowserAutomationActionKind,
   type CapabilityRecord,
   type CapabilityRegistryRepository,
   type CapabilityRegistrySnapshot,
@@ -104,6 +106,13 @@ const defaultMockedTaskAdapters = [
   createCodexSdkAgentEngineAdapter({ runtimeAvailable: true }),
   createClaudeAgentSdkAgentEngineAdapter({ runtimeAvailable: true }),
 ] satisfies AgentEngineAdapter[];
+
+const highImpactBrowserActions = [
+  "submit_form",
+  "purchase",
+  "destructive_action",
+  "sensitive_logged_in_context",
+] as const satisfies readonly BrowserAutomationActionKind[];
 
 const defaultProviders: ProviderOption[] = [
   {
@@ -219,6 +228,8 @@ export function renderProviderSettings(
   let latestTask: LocalTaskRecord | null = null;
   let currentTaskPromise: Promise<LocalTaskRecord | null> = Promise.resolve(null);
   let customSkillRegistrationResult: CustomSkillRegistrationResult | null = null;
+  let pendingBrowserAction: BrowserAutomationActionKind | null = null;
+  let browserAutomationEnabled = false;
 
   async function render() {
     const currentRenderVersion = ++renderVersion;
@@ -251,6 +262,7 @@ export function renderProviderSettings(
       return;
     }
 
+    browserAutomationEnabled = isBrowserAutomationEnabled(capabilitySnapshot);
     root.replaceChildren(
       buildShell(
         selectedProvider,
@@ -273,7 +285,7 @@ export function renderProviderSettings(
       buildProviderTabs(selectedProvider.id),
       buildProviderPanel(selectedProvider, authSnapshot, engineDisplayState),
       buildCapabilityRegistry(capabilitySnapshot),
-      buildTaskTray(latestTask),
+      buildTaskTray(latestTask, browserAutomationEnabled),
     );
     return shell;
   }
@@ -539,7 +551,7 @@ export function renderProviderSettings(
   }
 
   function buildCapabilityControls(capability: CapabilityRecord) {
-    if (!isControllableSkill(capability)) {
+    if (!isControllableCapability(capability)) {
       return null;
     }
 
@@ -548,7 +560,9 @@ export function renderProviderSettings(
     const button = element(
       "button",
       "capability-registry__control",
-      capability.enabled ? "Disable skill" : "Enable skill",
+      capability.enabled
+        ? `Disable ${capabilityControlNoun(capability)}`
+        : `Enable ${capabilityControlNoun(capability)}`,
     );
     button.type = "button";
     button.dataset.capabilityAction = action;
@@ -584,6 +598,12 @@ export function renderProviderSettings(
     enabled: boolean,
   ) {
     await setCapabilityEnabled(capabilityRepository, capabilityId, enabled);
+    if (capabilityId === "browser-automation" && !enabled) {
+      const revoked = await revokeActiveBrowserAutomationTask();
+      if (revoked) {
+        return;
+      }
+    }
     await render();
   }
 
@@ -604,11 +624,15 @@ export function renderProviderSettings(
     await render();
   }
 
-  function buildTaskTray(task: LocalTaskRecord | null) {
+  function buildTaskTray(
+    task: LocalTaskRecord | null,
+    browserAutomationEnabled: boolean,
+  ) {
     const tray = element("section", "task-tray");
     tray.append(
       element("h2", "task-tray__title", "Task Tray"),
       buildMockedTaskLauncher(),
+      buildBrowserAutomationLauncher(browserAutomationEnabled),
       task
         ? buildTaskRecord(task)
         : element("p", "task-tray__empty", "No tasks yet."),
@@ -630,14 +654,130 @@ export function renderProviderSettings(
     return button;
   }
 
+  function buildBrowserAutomationLauncher(browserAutomationEnabled: boolean) {
+    const group = element("div", "task-tray__browser-automation");
+    const button = element(
+      "button",
+      "task-tray__launch",
+      "Start browser automation demo",
+    );
+    button.type = "button";
+    button.dataset.action = "start-browser-automation";
+    button.disabled = !browserAutomationEnabled;
+    button.addEventListener("click", () => {
+      void startBrowserAutomationTask();
+    });
+    group.append(button);
+
+    if (!browserAutomationEnabled) {
+      group.append(
+        element(
+          "p",
+          "task-tray__hint",
+          "Enable Browser Automation before starting a mocked browser task.",
+        ),
+      );
+    }
+
+    return group;
+  }
+
   function buildTaskRecord(task: LocalTaskRecord) {
-    return buildSection("Current task", [
-      ["Task title", task.title],
-      ["Task status", taskStatusLabel(task.status)],
-      ["Task result", task.summary],
-      ["Verification", task.metadata.verification],
-      ["Cost", task.metadata.costAwareness],
-    ]);
+    const record = element("section", "task-tray__record");
+    record.append(
+      buildSection("Current task", [
+        ["Task title", task.title],
+        ["Task status", taskStatusLabel(task.status)],
+        ["Task result", task.summary],
+        ["Verification", task.metadata.verification],
+        ["Cost", task.metadata.costAwareness],
+      ]),
+    );
+
+    if (task.metadata.executionSource === "browser_automation") {
+      record.append(buildBrowserAutomationTaskControls(task));
+    }
+
+    return record;
+  }
+
+  function buildBrowserAutomationTaskControls(task: LocalTaskRecord) {
+    const controls = element("div", "task-tray__controls");
+
+    if (task.status === "running") {
+      controls.append(
+        buildTaskActionButton(
+          "Pause browser automation",
+          "pause-browser-automation",
+          () => {
+            void pauseBrowserAutomationTask();
+          },
+        ),
+      );
+
+      for (const actionKind of highImpactBrowserActions) {
+        controls.append(buildBrowserActionButton(actionKind));
+      }
+    }
+
+    if (task.status === "paused") {
+      controls.append(
+        buildTaskActionButton(
+          "Resume browser automation",
+          "resume-browser-automation",
+          () => {
+            void resumeBrowserAutomationTask();
+          },
+        ),
+      );
+    }
+
+    if (task.status === "waiting_for_approval") {
+      controls.append(
+        buildTaskActionButton(
+          "Approve",
+          "approve-browser-action",
+          () => {
+            void resolvePendingBrowserAction("approved");
+          },
+        ),
+        buildTaskActionButton(
+          "Reject",
+          "reject-browser-action",
+          () => {
+            void resolvePendingBrowserAction("rejected");
+          },
+        ),
+      );
+    }
+
+    return controls;
+  }
+
+  function buildBrowserActionButton(actionKind: BrowserAutomationActionKind) {
+    const button = element(
+      "button",
+      "task-tray__control",
+      browserActionLabel(actionKind),
+    );
+    button.type = "button";
+    button.dataset.browserAction = actionKind;
+    button.addEventListener("click", () => {
+      void requestBrowserAction(actionKind);
+    });
+    return button;
+  }
+
+  function buildTaskActionButton(
+    label: string,
+    action: string,
+    handler: () => void,
+  ) {
+    const button = element("button", "task-tray__control", label);
+    button.type = "button";
+    button.dataset.action = action;
+    button.addEventListener("click", handler);
+    return button;
   }
 
   async function launchMockedTask(): Promise<LocalTaskRecord> {
@@ -663,7 +803,9 @@ export function renderProviderSettings(
       createdAt: (options.now ?? (() => new Date()))().toISOString(),
       updatedAt: (options.now ?? (() => new Date()))().toISOString(),
     };
-    root.querySelector(".task-tray")?.replaceWith(buildTaskTray(latestTask));
+    root
+      .querySelector(".task-tray")
+      ?.replaceWith(buildTaskTray(latestTask, browserAutomationEnabled));
 
     currentTaskPromise = runPolicyCheckedMockedTask(provider);
 
@@ -672,6 +814,239 @@ export function renderProviderSettings(
       throw new Error("Mocked task did not return a task record.");
     }
     return task;
+  }
+
+  async function startBrowserAutomationTask(): Promise<LocalTaskRecord> {
+    const now = currentTimestamp();
+    pendingBrowserAction = null;
+
+    try {
+      await assertCapabilityInvocationAllowed(
+        capabilityRepository,
+        "browser-automation",
+      );
+    } catch (error) {
+      const blockedTask: LocalTaskRecord = {
+        id: `task-browser-${Date.now().toString(36)}`,
+        title: "Browser automation demo",
+        status: "blocked",
+        summary:
+          error instanceof Error
+            ? error.message
+            : "Browser automation capability blocked.",
+        metadata: {
+          executionSource: "capability_policy",
+          verification:
+            "Browser automation did not start because the capability policy blocked invocation.",
+          costAwareness:
+            "Mocked browser automation only; no browser page was changed.",
+        },
+        createdAt: now,
+        updatedAt: now,
+      };
+      currentTaskPromise = Promise.resolve(blockedTask);
+      return saveBrowserAutomationTask(blockedTask);
+    }
+
+    const task: LocalTaskRecord = {
+      id: `task-browser-${Date.now().toString(36)}`,
+      title: "Browser automation demo",
+      status: "running",
+      summary: "Mocked browser automation is running visibly in the task tray.",
+      metadata: {
+        executionSource: "browser_automation",
+        verification:
+          "Browser automation capability was enabled before the mocked browser task started.",
+        costAwareness:
+          "Mocked browser automation only; no browser page was changed.",
+      },
+      createdAt: now,
+      updatedAt: now,
+    };
+    currentTaskPromise = Promise.resolve(task);
+    return saveBrowserAutomationTask(task);
+  }
+
+  async function pauseBrowserAutomationTask() {
+    if (
+      !latestTask ||
+      latestTask.metadata.executionSource !== "browser_automation"
+    ) {
+      return;
+    }
+
+    await saveBrowserAutomationTask({
+      ...latestTask,
+      status: "paused",
+      summary: "Mocked browser automation is paused by the user.",
+      metadata: {
+        ...latestTask.metadata,
+        verification:
+          "User paused the visible mocked browser automation task before further browser action.",
+      },
+      updatedAt: currentTimestamp(),
+    });
+  }
+
+  async function resumeBrowserAutomationTask() {
+    if (
+      !latestTask ||
+      latestTask.metadata.executionSource !== "browser_automation"
+    ) {
+      return;
+    }
+
+    await saveBrowserAutomationTask({
+      ...latestTask,
+      status: "running",
+      summary: "Mocked browser automation resumed and is visible in the task tray.",
+      metadata: {
+        ...latestTask.metadata,
+        verification: "User resumed the visible mocked browser automation task.",
+      },
+      updatedAt: currentTimestamp(),
+    });
+  }
+
+  async function requestBrowserAction(actionKind: BrowserAutomationActionKind) {
+    if (
+      !latestTask ||
+      latestTask.metadata.executionSource !== "browser_automation" ||
+      latestTask.status !== "running"
+    ) {
+      return;
+    }
+
+    const gate = evaluateBrowserAutomationActionGate({
+      kind: actionKind,
+      label: browserActionLabel(actionKind),
+    });
+
+    if (gate.decision === "waiting_for_approval") {
+      pendingBrowserAction = actionKind;
+      await saveBrowserAutomationTask({
+        ...latestTask,
+        status: "waiting_for_approval",
+        summary: gate.reason,
+        metadata: {
+          ...latestTask.metadata,
+          verification: gate.verification,
+        },
+        updatedAt: currentTimestamp(),
+      });
+      return;
+    }
+
+    await saveBrowserAutomationTask({
+      ...latestTask,
+      status: "completed",
+      summary: `${browserActionLabel(actionKind)} completed without approval.`,
+      metadata: {
+        ...latestTask.metadata,
+        verification: gate.verification,
+      },
+      updatedAt: currentTimestamp(),
+      completedAt: currentTimestamp(),
+    });
+  }
+
+  async function resolvePendingBrowserAction(
+    decision: "approved" | "rejected",
+  ) {
+    if (
+      !latestTask ||
+      latestTask.metadata.executionSource !== "browser_automation" ||
+      latestTask.status !== "waiting_for_approval" ||
+      !pendingBrowserAction
+    ) {
+      return;
+    }
+
+    const actionLabel = browserActionLabel(pendingBrowserAction);
+    pendingBrowserAction = null;
+    const now = currentTimestamp();
+
+    if (decision === "approved") {
+      try {
+        await assertCapabilityInvocationAllowed(
+          capabilityRepository,
+          "browser-automation",
+        );
+      } catch {
+        await saveBrowserAutomationTask({
+          ...latestTask,
+          status: "blocked",
+          summary:
+            "Browser Automation was disabled before the mocked browser action could execute.",
+          metadata: {
+            ...latestTask.metadata,
+            verification:
+              "Pending browser action was blocked because Browser Automation was disabled before approval.",
+          },
+          updatedAt: now,
+          completedAt: now,
+        });
+        return;
+      }
+    }
+
+    await saveBrowserAutomationTask({
+      ...latestTask,
+      status: decision === "approved" ? "completed" : "blocked",
+      summary:
+        decision === "approved"
+          ? `Approved ${actionLabel}. Mocked browser action completed.`
+          : `Rejected ${actionLabel}. Mocked browser action did not execute.`,
+      metadata: {
+        ...latestTask.metadata,
+        verification:
+          decision === "approved"
+            ? "User approved the high-impact mocked browser action before execution."
+            : "User rejected the high-impact mocked browser action; no browser change occurred.",
+      },
+      updatedAt: now,
+      completedAt: now,
+    });
+  }
+
+  async function revokeActiveBrowserAutomationTask(): Promise<boolean> {
+    if (
+      !latestTask ||
+      latestTask.metadata.executionSource !== "browser_automation" ||
+      (latestTask.status !== "running" &&
+        latestTask.status !== "paused" &&
+        latestTask.status !== "waiting_for_approval")
+    ) {
+      return false;
+    }
+
+    pendingBrowserAction = null;
+    const now = currentTimestamp();
+    await saveBrowserAutomationTask({
+      ...latestTask,
+      status: "blocked",
+      summary:
+        "Browser Automation was disabled before the mocked browser action could execute.",
+      metadata: {
+        ...latestTask.metadata,
+        verification:
+          "Active browser automation task was cancelled because Browser Automation was disabled.",
+      },
+      updatedAt: now,
+      completedAt: now,
+    });
+    return true;
+  }
+
+  async function saveBrowserAutomationTask(task: LocalTaskRecord) {
+    latestTask = task;
+    await repository.save(task);
+    await render();
+    return task;
+  }
+
+  function currentTimestamp() {
+    return (options.now ?? (() => new Date()))().toISOString();
   }
 
   async function runPolicyCheckedMockedTask(provider: ProviderOption) {
@@ -781,6 +1156,14 @@ function taskStatusLabel(status: LocalTaskRecord["status"]): string {
     return "Completed";
   }
 
+  if (status === "paused") {
+    return "Paused";
+  }
+
+  if (status === "waiting_for_approval") {
+    return "Waiting for approval";
+  }
+
   if (status === "failed") {
     return "Failed";
   }
@@ -790,6 +1173,14 @@ function taskStatusLabel(status: LocalTaskRecord["status"]): string {
   }
 
   return "Running";
+}
+
+function isBrowserAutomationEnabled(
+  snapshot: CapabilityRegistrySnapshot,
+): boolean {
+  return snapshot.enabled.some(
+    (capability) => capability.id === "browser-automation",
+  );
 }
 
 function capabilityStatusLabel(capability: CapabilityRecord): string {
@@ -814,11 +1205,55 @@ function capabilitySourceLabel(capability: CapabilityRecord): string {
   return "User or system capability";
 }
 
-function isControllableSkill(capability: CapabilityRecord): boolean {
+function isControllableCapability(capability: CapabilityRecord): boolean {
+  if (capability.status !== "available") {
+    return false;
+  }
+
+  if (capability.type === "browser_automation") {
+    return true;
+  }
+
   return (
     capability.type === "skill" &&
     (Boolean(capability.isDefault) || capability.source?.kind === "local")
   );
+}
+
+function capabilityControlNoun(capability: CapabilityRecord): string {
+  if (capability.type === "browser_automation") {
+    return "Browser Automation";
+  }
+
+  return "skill";
+}
+
+function browserActionLabel(actionKind: BrowserAutomationActionKind): string {
+  if (actionKind === "submit_form") {
+    return "Submit form";
+  }
+
+  if (actionKind === "purchase") {
+    return "Purchase";
+  }
+
+  if (actionKind === "destructive_action") {
+    return "Destructive action";
+  }
+
+  if (actionKind === "sensitive_logged_in_context") {
+    return "Sensitive logged-in context";
+  }
+
+  if (actionKind === "navigate_page") {
+    return "Navigate page";
+  }
+
+  if (actionKind === "summarize_page") {
+    return "Summarize page";
+  }
+
+  return "Inspect page";
 }
 
 function stringFormValue(data: FormData, key: string): string {

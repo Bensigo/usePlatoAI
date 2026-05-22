@@ -249,6 +249,163 @@ describe("provider settings UI", () => {
     );
   });
 
+  it("requires browser automation capability enablement before starting the mocked browser task", async () => {
+    const settings = renderProviderSettings(document.createElement("main"), {
+      capabilityRepository: createMemoryCapabilityRegistryRepository({
+        capabilities: defaultCapabilities,
+      }),
+    });
+
+    document.body.replaceChildren(settings.root);
+    await settings.ready;
+
+    const startButton = document.querySelector<HTMLButtonElement>(
+      "[data-action='start-browser-automation']",
+    );
+    expect(startButton?.disabled).toBe(true);
+    expect(document.body.textContent).toContain(
+      "Enable Browser Automation before starting a mocked browser task.",
+    );
+
+    capabilityCard("browser-automation")
+      .querySelector<HTMLButtonElement>("[data-capability-action='enable']")
+      ?.click();
+    await deferredRender();
+
+    document
+      .querySelector<HTMLButtonElement>("[data-action='start-browser-automation']")
+      ?.click();
+    await deferredRender();
+
+    expect(factValue("Task title")).toBe("Browser automation demo");
+    expect(factValue("Task status")).toBe("Running");
+
+    document
+      .querySelector<HTMLButtonElement>("[data-action='pause-browser-automation']")
+      ?.click();
+    await deferredRender();
+
+    expect(factValue("Task status")).toBe("Paused");
+
+    document
+      .querySelector<HTMLButtonElement>("[data-action='resume-browser-automation']")
+      ?.click();
+    await deferredRender();
+
+    expect(factValue("Task status")).toBe("Running");
+  });
+
+  it("shows approval gates and approval metadata for high-impact mocked browser actions", async () => {
+    const settings = renderProviderSettings(document.createElement("main"), {
+      capabilityRepository: createMemoryCapabilityRegistryRepository({
+        capabilities: defaultCapabilities.map((capability) =>
+          capability.id === "browser-automation"
+            ? { ...capability, enabled: true }
+            : capability,
+        ),
+      }),
+      now: () => new Date("2026-05-22T10:00:00.000Z"),
+    });
+
+    document.body.replaceChildren(settings.root);
+    await settings.ready;
+
+    document
+      .querySelector<HTMLButtonElement>("[data-action='start-browser-automation']")
+      ?.click();
+    await deferredRender();
+
+    document
+      .querySelector<HTMLButtonElement>("[data-browser-action='submit_form']")
+      ?.click();
+    await deferredRender();
+
+    expect(factValue("Task status")).toBe("Waiting for approval");
+    expect(factValue("Task result")).toContain(
+      "Submit form requires explicit approval before browser execution.",
+    );
+    expect(factValue("Verification")).toBe(
+      "Mocked browser automation stopped before the high-impact action executed.",
+    );
+
+    document
+      .querySelector<HTMLButtonElement>("[data-action='approve-browser-action']")
+      ?.click();
+    await deferredRender();
+
+    expect(factValue("Task status")).toBe("Completed");
+    expect(factValue("Task result")).toBe(
+      "Approved Submit form. Mocked browser action completed.",
+    );
+    expect(factValue("Verification")).toBe(
+      "User approved the high-impact mocked browser action before execution.",
+    );
+
+    document
+      .querySelector<HTMLButtonElement>("[data-action='start-browser-automation']")
+      ?.click();
+    await deferredRender();
+    document
+      .querySelector<HTMLButtonElement>("[data-browser-action='purchase']")
+      ?.click();
+    await deferredRender();
+    document
+      .querySelector<HTMLButtonElement>("[data-action='reject-browser-action']")
+      ?.click();
+    await deferredRender();
+
+    expect(factValue("Task status")).toBe("Blocked");
+    expect(factValue("Task result")).toBe(
+      "Rejected Purchase. Mocked browser action did not execute.",
+    );
+    expect(factValue("Verification")).toBe(
+      "User rejected the high-impact mocked browser action; no browser change occurred.",
+    );
+  });
+
+  it("blocks pending browser approvals when Browser Automation is disabled", async () => {
+    const settings = renderProviderSettings(document.createElement("main"), {
+      capabilityRepository: createMemoryCapabilityRegistryRepository({
+        capabilities: defaultCapabilities.map((capability) =>
+          capability.id === "browser-automation"
+            ? { ...capability, enabled: true }
+            : capability,
+        ),
+      }),
+      now: () => new Date("2026-05-22T10:00:00.000Z"),
+    });
+
+    document.body.replaceChildren(settings.root);
+    await settings.ready;
+
+    document
+      .querySelector<HTMLButtonElement>("[data-action='start-browser-automation']")
+      ?.click();
+    await deferredRender();
+    document
+      .querySelector<HTMLButtonElement>("[data-browser-action='submit_form']")
+      ?.click();
+    await deferredRender();
+
+    expect(factValue("Task status")).toBe("Waiting for approval");
+
+    capabilityCard("browser-automation")
+      .querySelector<HTMLButtonElement>("[data-capability-action='disable']")
+      ?.click();
+    await deferredRender();
+
+    expect(factValue("Task status")).toBe("Blocked");
+    expect(factValue("Task result")).toBe(
+      "Browser Automation was disabled before the mocked browser action could execute.",
+    );
+    expect(factValue("Verification")).toBe(
+      "Active browser automation task was cancelled because Browser Automation was disabled.",
+    );
+    expect(
+      document.querySelector("[data-action='approve-browser-action']"),
+    ).toBeNull();
+  });
+
   it("distinguishes provider auth modes and shows OpenAI with Codex SDK cost warnings", async () => {
     const settings = renderSurface();
 

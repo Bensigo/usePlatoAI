@@ -7,6 +7,30 @@ export type CapabilityType =
 
 export type CapabilityStatus = "available" | "unavailable";
 
+export type BrowserAutomationActionKind =
+  | "inspect_page"
+  | "navigate_page"
+  | "summarize_page"
+  | "submit_form"
+  | "purchase"
+  | "destructive_action"
+  | "sensitive_logged_in_context";
+
+export type BrowserAutomationActionGateDecision =
+  | "allowed"
+  | "waiting_for_approval";
+
+export interface BrowserAutomationActionGateInput {
+  kind: BrowserAutomationActionKind;
+  label: string;
+}
+
+export interface BrowserAutomationActionGateResult {
+  decision: BrowserAutomationActionGateDecision;
+  reason: string;
+  verification: string;
+}
+
 export interface CapabilityRecord {
   id: string;
   type: CapabilityType;
@@ -265,6 +289,67 @@ export async function assertCapabilityInvocationAllowed(
   }
 
   return capability;
+}
+
+export function browserAutomationActionRequiresApproval(
+  actionKind: BrowserAutomationActionKind,
+): boolean {
+  return (
+    actionKind === "submit_form" ||
+    actionKind === "purchase" ||
+    actionKind === "destructive_action" ||
+    actionKind === "sensitive_logged_in_context"
+  );
+}
+
+export function evaluateBrowserAutomationActionGate(
+  input: BrowserAutomationActionGateInput,
+): BrowserAutomationActionGateResult {
+  if (browserAutomationActionRequiresApproval(input.kind)) {
+    return {
+      decision: "waiting_for_approval",
+      reason: `${browserAutomationActionPolicyLabel(input.kind)} requires explicit approval before browser execution.`,
+      verification:
+        "Mocked browser automation stopped before the high-impact action executed.",
+    };
+  }
+
+  return {
+    decision: "allowed",
+    reason: `${input.label} is a low-impact mocked browser action.`,
+    verification:
+      "Mocked browser automation policy allowed the browser action without an approval gate.",
+  };
+}
+
+function browserAutomationActionPolicyLabel(
+  actionKind: BrowserAutomationActionKind,
+): string {
+  if (actionKind === "submit_form") {
+    return "Submit form";
+  }
+
+  if (actionKind === "purchase") {
+    return "Purchase";
+  }
+
+  if (actionKind === "destructive_action") {
+    return "Destructive action";
+  }
+
+  if (actionKind === "sensitive_logged_in_context") {
+    return "Sensitive logged-in context";
+  }
+
+  if (actionKind === "navigate_page") {
+    return "Navigate page";
+  }
+
+  if (actionKind === "summarize_page") {
+    return "Summarize page";
+  }
+
+  return "Inspect page";
 }
 
 function isStableCapabilityId(id: string): boolean {

@@ -367,6 +367,54 @@ button {
   background: #185646;
 }
 
+.task-tray__launch:disabled {
+  border-color: rgba(34, 45, 43, 0.16);
+  background: #d9dfdb;
+  color: #687570;
+  cursor: not-allowed;
+}
+
+.task-tray__browser-automation {
+  margin-bottom: 12px;
+}
+
+.task-tray__hint {
+  margin: 0 0 10px;
+  color: #5d6d69;
+  font-size: 0.88rem;
+  font-weight: 560;
+  line-height: 1.4;
+}
+
+.task-tray__record {
+  display: grid;
+  gap: 12px;
+}
+
+.task-tray__controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.task-tray__control {
+  min-height: 36px;
+  border: 1px solid rgba(31, 107, 89, 0.32);
+  border-radius: 7px;
+  background: #f5fbf8;
+  color: #1b4f43;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.84rem;
+  font-weight: 720;
+  line-height: 1.2;
+  padding: 8px 11px;
+}
+
+.task-tray__control:hover {
+  background: #eaf6f1;
+}
+
 .task-tray__empty {
   margin: 0;
   color: #5d6d69;
