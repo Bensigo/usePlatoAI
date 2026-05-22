@@ -74,7 +74,7 @@ button {
   background: transparent;
   box-shadow: none;
   backdrop-filter: none;
-  pointer-events: auto;
+  pointer-events: none;
 }
 
 .restore-card {
@@ -97,6 +97,7 @@ button {
   align-items: center;
   gap: var(--plato-space-xs);
   opacity: 0;
+  pointer-events: auto;
   transition: opacity var(--plato-motion-fast);
 }
 
@@ -464,6 +465,7 @@ button {
   background: transparent;
   color: inherit;
   line-height: 1;
+  pointer-events: auto;
 }
 
 .avatar-action:focus-visible {
@@ -485,6 +487,7 @@ button {
   display: grid;
   justify-items: center;
   padding-top: 44px;
+  pointer-events: none;
 }
 
 .live2d-avatar-stage {

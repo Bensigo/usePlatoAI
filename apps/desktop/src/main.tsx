@@ -3,6 +3,10 @@ import { createRoot } from "react-dom/client";
 
 import { App } from "./App";
 import { audioActivationStateFrom } from "./audioActivation";
+import {
+  avatarCompanionStateFromTestCommand,
+  type AvatarTestAnimationCommand,
+} from "./avatarSurface";
 import { isControlSurfaceId } from "./controlSurface";
 import { normalizePresenceState } from "./presenceState";
 import { defaultCompanionSettings } from "./settings";
@@ -31,6 +35,11 @@ const initialAudioActivationState = audioActivationStateFrom(
 const initialVoiceSessionState = voiceSessionStateFrom(
   searchParams.get("voiceState"),
 );
+const avatarTestCommand = searchParams.get("avatarTestCommand");
+const initialAvatarTestCommand =
+  avatarCompanionStateFromTestCommand(avatarTestCommand) === null
+    ? undefined
+    : (avatarTestCommand as AvatarTestAnimationCommand);
 const initialSettings =
   !("__TAURI_INTERNALS__" in window) &&
   searchParams.get("onboardingComplete") === "true"
@@ -61,6 +70,7 @@ createRoot(root).render(
       initialActiveEntry={initialActiveEntry}
       initialControlsExpanded={initialControlsExpanded}
       initialAudioActivationState={initialAudioActivationState}
+      initialAvatarTestCommand={initialAvatarTestCommand}
       initialPresenceState={initialPresenceState}
       initialVoiceSessionState={initialVoiceSessionState}
       initialSettings={initialSettings}

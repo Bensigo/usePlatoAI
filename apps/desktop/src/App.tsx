@@ -20,9 +20,13 @@ import {
 } from "./controlSurface";
 import {
   Live2DAvatarSurface,
+  avatarCompanionStateForClickReaction,
+  avatarCompanionStateFromTestCommand,
   getLive2DAvatarSurfaceHook,
   isAvatarPresenceState,
+  type AvatarCompanionState,
   type AvatarPresenceState,
+  type AvatarTestAnimationCommand,
 } from "./avatarSurface";
 import {
   createMemoryPresenceStateSource,
@@ -1732,6 +1736,7 @@ export function App({
   initialSettings,
   initialActiveEntry = "voice",
   initialPresenceState = "idle",
+  initialAvatarTestCommand,
   initialControlsExpanded = false,
   settingsStore,
   trustFoundationStore,
@@ -1747,6 +1752,7 @@ export function App({
   initialSettings?: CompanionSettings;
   initialActiveEntry?: ControlSurfaceId;
   initialPresenceState?: CompanionPresenceState;
+  initialAvatarTestCommand?: AvatarTestAnimationCommand;
   initialControlsExpanded?: boolean;
   initialAudioActivationState?: AudioActivationState;
   initialVoiceSessionState?: VoiceSessionState;
@@ -1794,6 +1800,12 @@ export function App({
   );
   const [isDismissed, setIsDismissed] = useState(false);
   const [hasAvatarClickReaction, setHasAvatarClickReaction] = useState(false);
+  const [avatarReactionCompanionState, setAvatarReactionCompanionState] =
+    useState<AvatarCompanionState | null>(null);
+  const [avatarTestCompanionState, setAvatarTestCompanionState] =
+    useState<AvatarCompanionState | null>(() =>
+      avatarCompanionStateFromTestCommand(initialAvatarTestCommand),
+    );
   const [settings, setSettings] = useState<CompanionSettings>(
     () => initialSettings ?? defaultCompanionSettings,
   );
@@ -1937,16 +1949,13 @@ export function App({
       clearTimeout(avatarReactionTimer.current);
     }
 
+    setAvatarReactionCompanionState(avatarCompanionStateForClickReaction());
     setHasAvatarClickReaction(true);
     avatarReactionTimer.current = setTimeout(() => {
       setHasAvatarClickReaction(false);
+      setAvatarReactionCompanionState(null);
       avatarReactionTimer.current = null;
     }, 520);
-  }
-
-  function openVoiceControls() {
-    setActiveEntry("voice");
-    setAreControlsExpanded(true);
   }
 
   function openCenteredChatPanel() {
@@ -1975,10 +1984,8 @@ export function App({
     });
   }
 
-  function activateAvatarListening() {
+  function reactToAvatarClick() {
     acknowledgeAvatarClick();
-    openVoiceControls();
-    activateVoiceListening();
   }
 
   function stopVoiceInteraction() {
@@ -2313,6 +2320,8 @@ export function App({
   });
   const avatarPresenceState = avatarPresenceStateFor(renderedPresenceState);
   const avatarSurfaceHook = getLive2DAvatarSurfaceHook(avatarPresenceState);
+  const activeAvatarCompanionState =
+    avatarTestCompanionState ?? avatarReactionCompanionState ?? undefined;
   const showCenteredChatPanelOpener = shouldShowCenteredChatPanelOpener({
     voiceInteractionSessionState: voiceInteraction.sessionState,
     currentTaskState: taskAwarePresence,
@@ -2426,6 +2435,36 @@ export function App({
 
     return () => {
       dispose?.();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    function handleAvatarTestCommand(event: Event) {
+      const command =
+        event instanceof CustomEvent && typeof event.detail === "string"
+          ? event.detail
+          : null;
+      const companionState = avatarCompanionStateFromTestCommand(command);
+
+      if (companionState) {
+        setAvatarTestCompanionState(companionState);
+      }
+    }
+
+    window.addEventListener(
+      "plato-avatar-test-command",
+      handleAvatarTestCommand,
+    );
+
+    return () => {
+      window.removeEventListener(
+        "plato-avatar-test-command",
+        handleAvatarTestCommand,
+      );
     };
   }, []);
 
@@ -2671,10 +2710,13 @@ export function App({
               <button
                 className="avatar-action"
                 type="button"
-                onClick={activateAvatarListening}
-                aria-label={`Activate audio with ${settings.companionName}`}
+                onClick={reactToAvatarClick}
+                aria-label={`React with ${settings.companionName}`}
               >
-                <Live2DAvatarSurface presenceState={avatarPresenceState} />
+                <Live2DAvatarSurface
+                  presenceState={avatarPresenceState}
+                  companionStateOverride={activeAvatarCompanionState}
+                />
               </button>
             </div>
 
