@@ -13,6 +13,7 @@ export interface CapabilityRecord {
   displayName: string;
   status: CapabilityStatus;
   enabled: boolean;
+  isDefault?: boolean;
   description?: string;
 }
 
@@ -36,7 +37,17 @@ export const defaultCapabilities = [
     displayName: "Project Context Skill",
     status: "available",
     enabled: true,
+    isDefault: true,
     description: "Reads project context, architecture docs, and workflow rules.",
+  },
+  {
+    id: "issue-tracker-skill",
+    type: "skill",
+    displayName: "Issue Tracker Skill",
+    status: "available",
+    enabled: true,
+    isDefault: true,
+    description: "Reads GitHub issues and pull requests.",
   },
   {
     id: "browser-automation",
@@ -129,4 +140,30 @@ export async function setCapabilityEnabled(
   };
   await repository.save(updated);
   return updated;
+}
+
+export async function assertCapabilityInvocationAllowed(
+  repository: CapabilityRegistryRepository,
+  capabilityId: string,
+): Promise<CapabilityRecord> {
+  const capabilities = await repository.list();
+  const capability = capabilities.find(
+    (candidate) => candidate.id === capabilityId,
+  );
+
+  if (!capability) {
+    throw new Error(`Unknown capability: ${capabilityId}`);
+  }
+
+  if (capability.status !== "available") {
+    throw new Error(`Capability is unavailable: ${capabilityId}`);
+  }
+
+  if (!capability.enabled) {
+    throw new Error(
+      `Capability is disabled and cannot be invoked: ${capabilityId}`,
+    );
+  }
+
+  return capability;
 }

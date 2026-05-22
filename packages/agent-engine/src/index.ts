@@ -150,7 +150,7 @@ export interface LocalTaskResult {
 }
 
 export interface LocalTaskMetadata {
-  executionSource: "agent_engine";
+  executionSource: "agent_engine" | "capability_policy";
   verification: string;
   costAwareness: string;
 }

@@ -20,8 +20,10 @@ import {
   type SecretStore,
 } from "@useplatoai/agent-engine";
 import {
+  assertCapabilityInvocationAllowed,
   createDefaultCapabilityRegistryRepository,
   getCapabilityRegistrySnapshot,
+  setCapabilityEnabled,
   type CapabilityRecord,
   type CapabilityRegistryRepository,
   type CapabilityRegistrySnapshot,
@@ -406,6 +408,7 @@ export function renderProviderSettings(
 
   function buildCapabilityCard(capability: CapabilityRecord) {
     const card = element("article", "capability-registry__card");
+    card.dataset.capabilityId = capability.id;
     card.append(
       element("h3", "capability-registry__card-title", capability.displayName),
       element(
@@ -415,6 +418,7 @@ export function renderProviderSettings(
       ),
       buildCapabilityDetails([
         ["Type", capabilityTypeLabel(capability.type)],
+        ["Source", capabilitySourceLabel(capability)],
         ["Enabled state", capability.enabled ? "Enabled" : "Disabled"],
         [
           "Availability",
@@ -433,7 +437,34 @@ export function renderProviderSettings(
       );
     }
 
+    const controls = buildCapabilityControls(capability);
+    if (controls) {
+      card.append(controls);
+    }
+
     return card;
+  }
+
+  function buildCapabilityControls(capability: CapabilityRecord) {
+    if (capability.type !== "skill" || !capability.isDefault) {
+      return null;
+    }
+
+    const controls = element("div", "capability-registry__controls");
+    const action = capability.enabled ? "disable" : "enable";
+    const button = element(
+      "button",
+      "capability-registry__control",
+      capability.enabled ? "Disable skill" : "Enable skill",
+    );
+    button.type = "button";
+    button.dataset.capabilityAction = action;
+    button.dataset.capabilityId = capability.id;
+    button.addEventListener("click", () => {
+      void updateCapabilityEnabled(capability.id, !capability.enabled);
+    });
+    controls.append(button);
+    return controls;
   }
 
   function buildCapabilityDetails(rows: readonly (readonly [string, string])[]) {
@@ -452,6 +483,14 @@ export function renderProviderSettings(
       throw new Error(`Unknown provider: ${providerId}`);
     }
     selectedProviderId = providerId;
+    await render();
+  }
+
+  async function updateCapabilityEnabled(
+    capabilityId: string,
+    enabled: boolean,
+  ) {
+    await setCapabilityEnabled(capabilityRepository, capabilityId, enabled);
     await render();
   }
 
@@ -516,11 +555,49 @@ export function renderProviderSettings(
     };
     root.querySelector(".task-tray")?.replaceWith(buildTaskTray(latestTask));
 
-    currentTaskPromise = runMockedEngineBackedTask({
+    currentTaskPromise = runPolicyCheckedMockedTask(provider);
+
+    const task = await currentTaskPromise;
+    if (!task) {
+      throw new Error("Mocked task did not return a task record.");
+    }
+    return task;
+  }
+
+  async function runPolicyCheckedMockedTask(provider: ProviderOption) {
+    try {
+      await assertCapabilityInvocationAllowed(
+        capabilityRepository,
+        "project-context-skill",
+      );
+    } catch (error) {
+      const now = (options.now ?? (() => new Date()))().toISOString();
+      const blockedTask: LocalTaskRecord = {
+        id: latestTask?.id ?? `task-${Date.now().toString(36)}`,
+        title: "Summarize the current issue.",
+        status: "blocked",
+        summary: error instanceof Error ? error.message : "Capability blocked.",
+        metadata: {
+          executionSource: "capability_policy",
+          verification:
+            "Default skill invocation was blocked by the Capability Registry policy.",
+          costAwareness:
+            "No provider API call or token spend occurred because execution was blocked before engine launch.",
+        },
+        createdAt: latestTask?.createdAt ?? now,
+        updatedAt: now,
+      };
+      latestTask = blockedTask;
+      await repository.save(blockedTask);
+      await render();
+      return blockedTask;
+    }
+
+    return runMockedEngineBackedTask({
       provider,
       instruction: "Summarize the current issue.",
       authorityMode: "ask_first",
-      requiredCapabilities: ["github"],
+      requiredCapabilities: ["project-context-skill"],
       adapters: mockedTaskAdapters,
       catalog: mockedTaskCatalog,
       secretStore: mockedTaskSecretStore,
@@ -531,12 +608,6 @@ export function renderProviderSettings(
         await render();
       },
     });
-
-    const task = await currentTaskPromise;
-    if (!task) {
-      throw new Error("Mocked task did not return a task record.");
-    }
-    return task;
   }
 
   const ready = render();
@@ -619,6 +690,14 @@ function capabilityStatusLabel(capability: CapabilityRecord): string {
   return capability.enabled
     ? "Available and enabled"
     : "Available, disabled until enabled";
+}
+
+function capabilitySourceLabel(capability: CapabilityRecord): string {
+  if (capability.type === "skill" && capability.isDefault) {
+    return "Default skill";
+  }
+
+  return "User or system capability";
 }
 
 function capabilityTypeLabel(type: CapabilityType): string {
