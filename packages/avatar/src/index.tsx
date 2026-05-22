@@ -89,7 +89,7 @@ export const avatarStartupSound = {
   id: "plato-startup-chime",
   packagePath: avatarPackageAssets.startupSound.packagePath,
   publicPath: avatarPackageAssets.startupSound.publicPath,
-  playback: "user-activated",
+  playback: "app-launch-or-activation",
 } as const;
 
 export const vendoredRiveAssetContract = {
