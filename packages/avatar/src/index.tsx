@@ -1,4 +1,5 @@
 import { useRive } from "@rive-app/react-canvas";
+import { useCallback, useMemo, useState } from "react";
 
 export const avatarCompanionStates = [
   "startup",
@@ -39,6 +40,7 @@ export type AvatarPresenceState = (typeof avatarPresenceStates)[number];
 
 export type AvatarRendererKind = "rive" | "svg";
 export type AvatarFallbackReason = "missing-rive-asset" | "unsupported-runtime";
+export type RiveRuntimeState = "loading" | "ready" | "failed";
 
 export type AvatarPackageAsset = {
   packagePath: string;
@@ -317,6 +319,8 @@ type BrowserRiveCanvasProps = {
   src: string;
   stateMachines: string;
   animations: string;
+  onLoad: () => void;
+  onLoadError: () => void;
 };
 
 function BrowserRiveCanvas({
@@ -324,13 +328,21 @@ function BrowserRiveCanvas({
   src,
   stateMachines,
   animations,
+  onLoad,
+  onLoadError,
 }: BrowserRiveCanvasProps) {
-  const { RiveComponent } = useRive({
-    src,
-    stateMachines,
-    animations,
-    autoplay: true,
-  });
+  const riveParameters = useMemo(
+    () => ({
+      src,
+      stateMachines,
+      animations,
+      autoplay: true,
+      onLoad,
+      onLoadError,
+    }),
+    [animations, onLoad, onLoadError, src, stateMachines],
+  );
+  const { RiveComponent } = useRive(riveParameters);
 
   if (typeof window === "undefined") {
     return (
@@ -359,15 +371,26 @@ export function AvatarRenderer({
   companionState: AvatarCompanionState;
 }) {
   const config = getAvatarRendererConfig(companionState);
+  const [runtimeState, setRuntimeState] =
+    useState<RiveRuntimeState>("loading");
+  const fallbackState = runtimeState === "failed" ? "visible" : "hidden";
+  const markRiveReady = useCallback(() => {
+    setRuntimeState("ready");
+  }, []);
+  const markRiveFailed = useCallback(() => {
+    setRuntimeState("failed");
+  }, []);
 
   return (
     <div
       className="plato-rive-avatar"
       data-avatar-package="@useplatoai/avatar"
       data-avatar-renderer={config.primaryRenderer}
+      data-rive-runtime-state={runtimeState}
       data-rive-state-machine={config.rive.stateMachine}
       data-rive-animation={config.rive.animation}
       data-fallback-renderer={config.fallback.renderer}
+      data-avatar-fallback-state={fallbackState}
       data-fallback-src={config.fallback.src}
     >
       <BrowserRiveCanvas
@@ -375,6 +398,8 @@ export function AvatarRenderer({
         src={config.rive.src}
         stateMachines={config.rive.stateMachine}
         animations={config.rive.animation}
+        onLoad={markRiveReady}
+        onLoadError={markRiveFailed}
       />
       <img
         className="plato-avatar-asset plato-avatar-fallback-asset"
@@ -382,6 +407,7 @@ export function AvatarRenderer({
         alt=""
         decoding="async"
         draggable={false}
+        hidden={fallbackState === "hidden"}
         data-avatar-fallback-surface="commercial-safe-mascot"
       />
     </div>
