@@ -510,6 +510,38 @@ button {
   pointer-events: none;
 }
 
+.plato-rive-avatar {
+  position: relative;
+  z-index: 2;
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+}
+
+.plato-rive-canvas {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  opacity: 1;
+}
+
+.plato-avatar-fallback-asset {
+  max-width: 100%;
+  max-height: 100%;
+  opacity: 0;
+}
+
+.plato-rive-avatar[data-rive-runtime-state="failed"] .plato-rive-canvas {
+  opacity: 0;
+}
+
+.plato-rive-avatar[data-rive-runtime-state="failed"] .plato-avatar-fallback-asset {
+  opacity: 1;
+}
+
 .live2d-presence-mark {
   position: absolute;
   inset: 8px 10px 18px;

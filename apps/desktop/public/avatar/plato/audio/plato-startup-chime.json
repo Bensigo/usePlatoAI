@@ -1,0 +1,7 @@
+{
+  "id": "plato-startup-chime",
+  "description": "Avatar-owned startup sound hook. Actual audio playback wiring belongs to a later desktop audio slice.",
+  "durationMs": 900,
+  "notes": ["C5", "E5", "G5"],
+  "playback": "user-activated"
+}
