@@ -1,6 +1,7 @@
 import "./styles.css";
 
 import {
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -34,6 +35,16 @@ import {
   type PresenceStateSnapshot,
   type PresenceStateSource,
 } from "./presenceState";
+import {
+  createTauriPresencePositionStore,
+  normalizePresenceWindowPosition,
+  presenceDragIdleTimeoutMs,
+  presenceDragModeAfterDoubleClick,
+  shouldStartPresenceWindowDrag,
+  type PresenceDragMode,
+  type PresencePositionStore,
+  type PresenceWindowPosition,
+} from "./presencePosition";
 import {
   createTauriSettingsStore,
   defaultCompanionSettings,
@@ -114,13 +125,32 @@ import {
   type TaskStore,
 } from "./tasks";
 
-function startPresenceDrag(event: MouseEvent<HTMLButtonElement>) {
+function isTauriRuntime() {
+  return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+}
+
+function startPresenceDrag(
+  event: MouseEvent<HTMLButtonElement>,
+  options: { onDragStart?: () => void } = {},
+) {
   if (event.button !== 0) {
     return;
   }
 
   event.preventDefault();
+  options.onDragStart?.();
   void getCurrentWindow().startDragging();
+}
+
+async function movePresenceWindowToPosition(position: PresenceWindowPosition) {
+  if (!isTauriRuntime()) {
+    return;
+  }
+
+  const { PhysicalPosition } = await import("@tauri-apps/api/dpi");
+  await getCurrentWindow().setPosition(
+    new PhysicalPosition(position.x, position.y),
+  );
 }
 
 function usePresenceState(source: PresenceStateSource) {
@@ -1743,6 +1773,7 @@ export function App({
   soulGuidanceStore,
   memoryStore,
   taskStore,
+  presencePositionStore,
   initialTasks = [],
   initialSelectedTaskId = null,
   presenceStateSource,
@@ -1761,6 +1792,7 @@ export function App({
   soulGuidanceStore?: SoulGuidanceStore;
   memoryStore?: MemoryStore;
   taskStore?: TaskStore;
+  presencePositionStore?: PresencePositionStore;
   initialTasks?: LocalTaskRecord[];
   initialSelectedTaskId?: string | null;
   presenceStateSource?: PresenceStateSource;
@@ -1791,6 +1823,10 @@ export function App({
   const durableTaskStore = useMemo(
     () => taskStore ?? createTauriTaskStore(),
     [taskStore],
+  );
+  const durablePresencePositionStore = useMemo(
+    () => presencePositionStore ?? createTauriPresencePositionStore(),
+    [presencePositionStore],
   );
   const presence = usePresenceState(companionPresenceStateSource);
   const [activeEntry, setActiveEntry] =
@@ -1836,13 +1872,21 @@ export function App({
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(
     initialSelectedTaskId ?? initialTasks[0]?.taskId ?? null,
   );
+  const [presenceDragMode, setPresenceDragMode] =
+    useState<PresenceDragMode>("locked");
+  const [presencePosition, setPresencePosition] =
+    useState<PresenceWindowPosition | null>(null);
   const latestTasks = useRef<LocalTaskRecord[]>(initialTasks);
   const voiceTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
   const taskTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
   const avatarReactionTimer = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
+  const presenceDragIdleTimer = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
   const correctionPromptRequestId = useRef(0);
+  const isPresenceDraggable = presenceDragMode === "draggable";
 
   function clearVoiceTimers() {
     for (const timer of voiceTimers.current) {
@@ -1859,6 +1903,21 @@ export function App({
 
     taskTimers.current = [];
   }
+
+  const clearPresenceDragIdleTimer = useCallback(() => {
+    if (presenceDragIdleTimer.current) {
+      clearTimeout(presenceDragIdleTimer.current);
+      presenceDragIdleTimer.current = null;
+    }
+  }, []);
+
+  const schedulePresenceDragIdleExit = useCallback(() => {
+    clearPresenceDragIdleTimer();
+    presenceDragIdleTimer.current = setTimeout(() => {
+      setPresenceDragMode("locked");
+      presenceDragIdleTimer.current = null;
+    }, presenceDragIdleTimeoutMs);
+  }, [clearPresenceDragIdleTimer]);
 
   useEffect(() => {
     latestTasks.current = tasks;
@@ -1984,8 +2043,46 @@ export function App({
     });
   }
 
-  function reactToAvatarClick() {
+  function reactToAvatarClick(event: MouseEvent<HTMLButtonElement>) {
+    if (event.detail >= 2) {
+      togglePresenceDragMode(event);
+      return;
+    }
+
+    if (isPresenceDraggable) {
+      return;
+    }
+
     acknowledgeAvatarClick();
+  }
+
+  function togglePresenceDragMode(event: MouseEvent<HTMLButtonElement>) {
+    event.preventDefault();
+    setPresenceDragMode((currentMode) => {
+      const nextMode = presenceDragModeAfterDoubleClick(currentMode);
+
+      if (nextMode === "locked") {
+        clearPresenceDragIdleTimer();
+      }
+
+      return nextMode;
+    });
+  }
+
+  function startAvatarDrag(event: MouseEvent<HTMLButtonElement>) {
+    if (!shouldStartPresenceWindowDrag(presenceDragMode, event.button)) {
+      return;
+    }
+
+    startPresenceDrag(event, {
+      onDragStart: clearPresenceDragIdleTimer,
+    });
+  }
+
+  function stopAvatarDrag() {
+    if (isPresenceDraggable) {
+      schedulePresenceDragIdleExit();
+    }
   }
 
   function stopVoiceInteraction() {
@@ -2399,6 +2496,69 @@ export function App({
   }, [companionPresenceStateSource, durableTaskStore, initialTasks.length]);
 
   useEffect(() => {
+    let isCurrent = true;
+
+    durablePresencePositionStore
+      .read()
+      .then((savedPosition) => {
+        if (!isCurrent || !savedPosition) {
+          return;
+        }
+
+        setPresencePosition(savedPosition);
+        void movePresenceWindowToPosition(savedPosition);
+      })
+      .catch(() => undefined);
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [durablePresencePositionStore]);
+
+  useEffect(() => {
+    if (!isTauriRuntime()) {
+      return;
+    }
+
+    let dispose: (() => void) | undefined;
+    let isCurrent = true;
+
+    getCurrentWindow()
+      .onMoved(({ payload }) => {
+        const nextPosition = normalizePresenceWindowPosition(payload);
+
+        if (!nextPosition) {
+          return;
+        }
+
+        setPresencePosition(nextPosition);
+        void durablePresencePositionStore.save(nextPosition);
+
+        if (isPresenceDraggable) {
+          schedulePresenceDragIdleExit();
+        }
+      })
+      .then((unlisten) => {
+        if (isCurrent) {
+          dispose = unlisten;
+          return;
+        }
+
+        unlisten();
+      })
+      .catch(() => undefined);
+
+    return () => {
+      isCurrent = false;
+      dispose?.();
+    };
+  }, [
+    durablePresencePositionStore,
+    isPresenceDraggable,
+    schedulePresenceDragIdleExit,
+  ]);
+
+  useEffect(() => {
     if (!isSettingsLoaded || !settings.onboardingComplete) {
       return;
     }
@@ -2476,9 +2636,10 @@ export function App({
         clearTimeout(avatarReactionTimer.current);
       }
 
+      clearPresenceDragIdleTimer();
       clearTaskTimers();
     },
-    [],
+    [clearPresenceDragIdleTimer],
   );
 
   async function completeOnboarding(updatedSettings: CompanionSettings) {
@@ -2661,6 +2822,10 @@ export function App({
               hasAvatarClickReaction ? " presence-click-reaction" : ""
             }`}
             aria-label="Floating Plato presence"
+            data-presence-drag-mode={presenceDragMode}
+            data-presence-position={
+              presencePosition ? `${presencePosition.x},${presencePosition.y}` : "default"
+            }
           >
             <div className="presence-controls">
               <button
@@ -2711,7 +2876,12 @@ export function App({
                 className="avatar-action"
                 type="button"
                 onClick={reactToAvatarClick}
+                onMouseDown={startAvatarDrag}
+                onMouseUp={stopAvatarDrag}
+                onMouseLeave={stopAvatarDrag}
                 aria-label={`React with ${settings.companionName}`}
+                aria-pressed={isPresenceDraggable}
+                data-presence-draggable={String(isPresenceDraggable)}
               >
                 <Live2DAvatarSurface
                   presenceState={avatarPresenceState}

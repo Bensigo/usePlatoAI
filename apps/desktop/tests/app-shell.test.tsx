@@ -63,6 +63,13 @@ import {
   presenceStateSnapshot,
 } from "../src/presenceState";
 import {
+  createMemoryPresencePositionStore,
+  presenceDragIdleTimeoutMs,
+  presenceDragModeAfterDoubleClick,
+  presenceDragModeAfterIdle,
+  shouldStartPresenceWindowDrag,
+} from "../src/presencePosition";
+import {
   type CompanionSettings,
   createMemorySettingsStore,
   defaultCompanionSettings,
@@ -609,6 +616,55 @@ describe("desktop app shell", () => {
     expect(markup).toContain("avatar-action");
     expect(markup).not.toContain('aria-label="Top Plato control surface"');
     expect(markup).not.toContain("Voice output controls");
+  });
+
+  it("toggles mascot draggable mode by double-click and exits after drag idle", () => {
+    expect(presenceDragModeAfterDoubleClick("locked")).toBe("draggable");
+    expect(presenceDragModeAfterDoubleClick("draggable")).toBe("locked");
+    expect(shouldStartPresenceWindowDrag("locked", 0)).toBe(false);
+    expect(shouldStartPresenceWindowDrag("draggable", 0)).toBe(true);
+    expect(shouldStartPresenceWindowDrag("draggable", 2)).toBe(false);
+    expect(
+      presenceDragModeAfterIdle({
+        mode: "draggable",
+        dragStoppedAt: 1_000,
+        now: 1_000 + presenceDragIdleTimeoutMs - 1,
+      }),
+    ).toBe("draggable");
+    expect(
+      presenceDragModeAfterIdle({
+        mode: "draggable",
+        dragStoppedAt: 1_000,
+        now: 1_000 + presenceDragIdleTimeoutMs,
+      }),
+    ).toBe("locked");
+  });
+
+  it("persists the dragged companion window position through the position store", async () => {
+    const positionStore = createMemoryPresencePositionStore();
+
+    await expect(positionStore.read()).resolves.toBeNull();
+    await positionStore.save({ x: 420, y: 260 });
+    await expect(positionStore.read()).resolves.toEqual({ x: 420, y: 260 });
+  });
+
+  it("renders the mascot drag-mode contract and subtle visual cue without a settings panel", () => {
+    const markup = renderToStaticMarkup(
+      <App initialSettings={completedSettings} />,
+    );
+    const styles = readFileSync(resolve(__dirname, "../src/styles.css"), "utf8");
+
+    expect(markup).toContain('data-presence-drag-mode="locked"');
+    expect(markup).toContain('data-presence-draggable="false"');
+    expect(markup).toContain("React with Plato");
+    expect(markup).not.toContain("position control");
+    expect(markup).not.toContain("Position settings");
+    expect(styles).toMatch(
+      /\.presence-card\[data-presence-drag-mode="draggable"\]\s+\.live2d-avatar-stage\s*{[^}]*box-shadow:/s,
+    );
+    expect(styles).toMatch(
+      /\.avatar-action\[data-presence-draggable="true"\]\s*{[^}]*cursor:\s*grab;/s,
+    );
   });
 
   it("maps hidden avatar test commands to product companion states", () => {
@@ -1805,6 +1861,16 @@ describe("desktop app shell", () => {
     expect(styles).toMatch(/\.presence-avatar-stack\s*{[^}]*pointer-events:\s*none;/s);
     expect(styles).toMatch(/\.avatar-action\s*{[^}]*pointer-events:\s*auto;/s);
     expect(styles).toMatch(/\.presence-controls\s*{[^}]*pointer-events:\s*auto;/s);
+  });
+
+  it("allows the Tauri window APIs required for draggable persisted position", () => {
+    const capability = readFileSync(
+      resolve(process.cwd(), "src-tauri/capabilities/default.json"),
+      "utf8",
+    );
+
+    expect(capability).toContain("core:window:allow-start-dragging");
+    expect(capability).toContain("core:window:allow-set-position");
   });
 
   it("keeps the fixed Tauri window size from clipping the shell zones", () => {
