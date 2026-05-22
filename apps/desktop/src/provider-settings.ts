@@ -19,6 +19,14 @@ import {
   type SecretReference,
   type SecretStore,
 } from "@useplatoai/agent-engine";
+import {
+  createDefaultCapabilityRegistryRepository,
+  getCapabilityRegistrySnapshot,
+  type CapabilityRecord,
+  type CapabilityRegistryRepository,
+  type CapabilityRegistrySnapshot,
+  type CapabilityType,
+} from "@useplatoai/capabilities";
 
 export type ProviderOption = ModelProvider & {
   authLabel: string;
@@ -35,6 +43,7 @@ type EngineDisplayState = {
 
 export interface ProviderSettingsSurface {
   root: HTMLElement;
+  ready: Promise<void>;
   currentTask: Promise<LocalTaskRecord | null>;
   selectProvider(providerId: string): Promise<void>;
   launchMockedTask(): Promise<LocalTaskRecord>;
@@ -174,6 +183,7 @@ export interface ProviderSettingsOptions {
   secretStore?: SecretStore;
   mockedTaskSecretStore?: SecretStore;
   repository?: LocalTaskRepository;
+  capabilityRepository?: CapabilityRegistryRepository;
   now?: () => Date;
 }
 
@@ -198,6 +208,8 @@ export function renderProviderSettings(
     createMemoryLocalTaskRepository({
       now: options.now,
     });
+  const capabilityRepository =
+    options.capabilityRepository ?? createDefaultCapabilityRegistryRepository();
   let selectedProviderId = providerOptions[0]?.id ?? "";
   let renderVersion = 0;
   let latestTask: LocalTaskRecord | null = null;
@@ -214,26 +226,33 @@ export function renderProviderSettings(
       return;
     }
 
-    const [authSnapshot, engineDisplayState] = await Promise.all([
-      selectedProvider.authState
-        ? getProviderAuthAvailabilitySnapshot(
-            selectedProvider.authState,
-            secretStore,
-          )
-        : Promise.resolve<ProviderAuthAvailabilitySnapshot>({
-            mode: selectedProvider.authMode,
-            availability: "not_configured",
-            hasSecretReference: false,
-          }),
-      getEngineDisplayState(selectedProvider, catalog, adapters, secretStore),
-    ]);
+    const [authSnapshot, engineDisplayState, capabilitySnapshot] =
+      await Promise.all([
+        selectedProvider.authState
+          ? getProviderAuthAvailabilitySnapshot(
+              selectedProvider.authState,
+              secretStore,
+            )
+          : Promise.resolve<ProviderAuthAvailabilitySnapshot>({
+              mode: selectedProvider.authMode,
+              availability: "not_configured",
+              hasSecretReference: false,
+            }),
+        getEngineDisplayState(selectedProvider, catalog, adapters, secretStore),
+        getCapabilityRegistrySnapshot(capabilityRepository),
+      ]);
 
     if (currentRenderVersion !== renderVersion) {
       return;
     }
 
     root.replaceChildren(
-      buildShell(selectedProvider, authSnapshot, engineDisplayState),
+      buildShell(
+        selectedProvider,
+        authSnapshot,
+        engineDisplayState,
+        capabilitySnapshot,
+      ),
     );
   }
 
@@ -241,12 +260,14 @@ export function renderProviderSettings(
     selectedProvider: ProviderOption,
     authSnapshot: ProviderAuthAvailabilitySnapshot,
     engineDisplayState: EngineDisplayState,
+    capabilitySnapshot: CapabilityRegistrySnapshot,
   ) {
     const shell = element("section", "provider-settings");
     shell.append(
       buildHeader(),
       buildProviderTabs(selectedProvider.id),
       buildProviderPanel(selectedProvider, authSnapshot, engineDisplayState),
+      buildCapabilityRegistry(capabilitySnapshot),
       buildTaskTray(latestTask),
     );
     return shell;
@@ -358,6 +379,74 @@ export function renderProviderSettings(
     return warning;
   }
 
+  function buildCapabilityRegistry(snapshot: CapabilityRegistrySnapshot) {
+    const registry = element("section", "capability-registry");
+    registry.append(
+      element("h2", "capability-registry__title", "Capability Registry"),
+      buildCapabilitySummary(snapshot),
+    );
+
+    const list = element("div", "capability-registry__list");
+    for (const capability of snapshot.capabilities) {
+      list.append(buildCapabilityCard(capability));
+    }
+    registry.append(list);
+
+    return registry;
+  }
+
+  function buildCapabilitySummary(snapshot: CapabilityRegistrySnapshot) {
+    return buildSection("Capability state", [
+      ["Enabled", String(snapshot.enabled.length)],
+      ["Available", String(snapshot.available.length)],
+      ["Disabled", String(snapshot.disabled.length)],
+      ["Unavailable", String(snapshot.unavailable.length)],
+    ]);
+  }
+
+  function buildCapabilityCard(capability: CapabilityRecord) {
+    const card = element("article", "capability-registry__card");
+    card.append(
+      element("h3", "capability-registry__card-title", capability.displayName),
+      element(
+        "p",
+        "capability-registry__status",
+        capabilityStatusLabel(capability),
+      ),
+      buildCapabilityDetails([
+        ["Type", capabilityTypeLabel(capability.type)],
+        ["Enabled state", capability.enabled ? "Enabled" : "Disabled"],
+        [
+          "Availability",
+          capability.status === "available" ? "Available" : "Unavailable",
+        ],
+      ]),
+    );
+
+    if (capability.description) {
+      card.append(
+        element(
+          "p",
+          "capability-registry__description",
+          capability.description,
+        ),
+      );
+    }
+
+    return card;
+  }
+
+  function buildCapabilityDetails(rows: readonly (readonly [string, string])[]) {
+    const list = element("dl", "capability-registry__facts");
+    for (const [label, value] of rows) {
+      list.append(
+        element("dt", "capability-registry__fact-label", label),
+        element("dd", "capability-registry__fact-value", value),
+      );
+    }
+    return list;
+  }
+
   async function selectProvider(providerId: string) {
     if (!providerOptions.some((provider) => provider.id === providerId)) {
       throw new Error(`Unknown provider: ${providerId}`);
@@ -450,10 +539,11 @@ export function renderProviderSettings(
     return task;
   }
 
-  void render();
+  const ready = render();
 
   return {
     root,
+    ready,
     get currentTask() {
       return currentTaskPromise;
     },
@@ -519,6 +609,32 @@ function taskStatusLabel(status: LocalTaskRecord["status"]): string {
   }
 
   return "Running";
+}
+
+function capabilityStatusLabel(capability: CapabilityRecord): string {
+  if (capability.status !== "available") {
+    return "Unavailable";
+  }
+
+  return capability.enabled
+    ? "Available and enabled"
+    : "Available, disabled until enabled";
+}
+
+function capabilityTypeLabel(type: CapabilityType): string {
+  if (type === "mcp_server") {
+    return "MCP server";
+  }
+
+  if (type === "provider_adapter") {
+    return "Provider adapter";
+  }
+
+  if (type === "browser_automation") {
+    return "Browser automation";
+  }
+
+  return type[0].toUpperCase() + type.slice(1);
 }
 
 function authStatusLabel(snapshot: ProviderAuthAvailabilitySnapshot): string {
