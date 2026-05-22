@@ -146,12 +146,14 @@ describe("avatar package contract", () => {
 
     expect(markup).toContain('data-avatar-package="@useplatoai/avatar"');
     expect(markup).toContain('data-avatar-renderer="rive"');
+    expect(markup).toContain('data-rive-runtime-state="loading"');
     expect(markup).toContain('data-rive-artboard="Avatar 1"');
     expect(markup).toContain('data-rive-state-machine="avatar"');
     expect(markup).toContain('data-rive-animation="happy"');
     expect(markup).toContain('data-rive-input-is-happy="true"');
     expect(markup).toContain('data-rive-input-is-sad="false"');
     expect(markup).toContain('data-fallback-renderer="svg"');
+    expect(markup).toContain('data-avatar-fallback-state="hidden"');
     expect(markup).toContain("/avatar/plato/rive/plato-companion.riv");
     expect(markup).toContain("/avatar/plato/source/wise-owl-colour.svg");
   });

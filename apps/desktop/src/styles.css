@@ -525,12 +525,21 @@ button {
   z-index: 1;
   width: 100%;
   height: 100%;
-  opacity: 0.001;
+  opacity: 1;
 }
 
 .plato-avatar-fallback-asset {
   max-width: 100%;
   max-height: 100%;
+  opacity: 0;
+}
+
+.plato-rive-avatar[data-rive-runtime-state="failed"] .plato-rive-canvas {
+  opacity: 0;
+}
+
+.plato-rive-avatar[data-rive-runtime-state="failed"] .plato-avatar-fallback-asset {
+  opacity: 1;
 }
 
 .live2d-presence-mark {

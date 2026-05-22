@@ -380,6 +380,19 @@ describe("desktop app shell", () => {
     });
   });
 
+  it("keeps the Rive canvas visible and hides the SVG fallback until runtime failure", () => {
+    const styles = readFileSync(resolve(__dirname, "../src/styles.css"), "utf8");
+
+    expect(styles).not.toContain("opacity: 0.001");
+    expect(styles).toContain(".plato-rive-canvas");
+    expect(styles).toContain(
+      '.plato-rive-avatar[data-rive-runtime-state="failed"] .plato-rive-canvas',
+    );
+    expect(styles).toContain(
+      '.plato-rive-avatar[data-rive-runtime-state="failed"] .plato-avatar-fallback-asset',
+    );
+  });
+
   it("renders the floating presence from an injected presence state", () => {
     const markup = renderToStaticMarkup(
       <App
