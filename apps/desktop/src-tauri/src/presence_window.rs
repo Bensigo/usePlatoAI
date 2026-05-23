@@ -105,18 +105,18 @@ fn placement_for_window(
     saved_position: Option<PresenceWindowPosition>,
 ) -> tauri::Result<Option<PresencePlacement>> {
     let displays = presence_displays(window)?;
-    let current_display_id = window
+    let current_display = window
         .current_monitor()?
-        .and_then(|monitor| monitor_id(&monitor));
-    let primary_display_id = window
+        .map(|monitor| presence_display_for_monitor(&monitor));
+    let primary_display = window
         .primary_monitor()?
-        .and_then(|monitor| monitor_id(&monitor));
+        .map(|monitor| presence_display_for_monitor(&monitor));
 
     Ok(resolve_presence_placement(
         saved_position,
         &displays,
-        current_display_id.as_deref(),
-        primary_display_id.as_deref(),
+        current_display.as_ref(),
+        primary_display.as_ref(),
         window.outer_size()?,
     ))
 }
@@ -133,6 +133,13 @@ fn presence_displays(window: &WebviewWindow) -> tauri::Result<Vec<PresenceDispla
     })
 }
 
+fn presence_display_for_monitor(monitor: &tauri::Monitor) -> PresenceDisplay {
+    PresenceDisplay {
+        id: monitor_id(monitor),
+        work_area: *monitor.work_area(),
+    }
+}
+
 fn monitor_id(monitor: &tauri::Monitor) -> Option<String> {
     monitor.name().map(ToOwned::to_owned)
 }
@@ -140,17 +147,15 @@ fn monitor_id(monitor: &tauri::Monitor) -> Option<String> {
 fn resolve_presence_placement(
     saved_position: Option<PresenceWindowPosition>,
     displays: &[PresenceDisplay],
-    active_display_id: Option<&str>,
-    primary_display_id: Option<&str>,
+    active_display: Option<&PresenceDisplay>,
+    primary_display: Option<&PresenceDisplay>,
     window_size: PhysicalSize<u32>,
 ) -> Option<PresencePlacement> {
     if displays.is_empty() {
         return None;
     }
 
-    let default_display = display_by_unique_id(displays, active_display_id)
-        .or_else(|| display_by_unique_id(displays, primary_display_id))
-        .unwrap_or(&displays[0]);
+    let default_display = active_display.or(primary_display).unwrap_or(&displays[0]);
 
     let Some(saved_position) = saved_position else {
         let mut placement = default_presence_placement(default_display.work_area, window_size);
@@ -361,8 +366,8 @@ mod tests {
                 display("built-in", 0, 25, 1440, 875),
                 display("sidecar", 1440, 0, 1280, 900),
             ],
-            Some("sidecar"),
-            Some("built-in"),
+            Some(&display("sidecar", 1440, 0, 1280, 900)),
+            Some(&display("built-in", 0, 25, 1440, 875)),
             window_size(260, 280),
         )
         .expect("default placement");
@@ -374,6 +379,28 @@ mod tests {
     }
 
     #[test]
+    fn resolves_default_position_on_duplicate_named_active_display() {
+        let active_display = display("Studio Display", 1440, 0, 1280, 900);
+        let primary_display = display("Studio Display", 0, 25, 1440, 875);
+        let placement = resolve_presence_placement(
+            None,
+            &[
+                display("Studio Display", 0, 25, 1440, 875),
+                display("Studio Display", 1440, 0, 1280, 900),
+            ],
+            Some(&active_display),
+            Some(&primary_display),
+            window_size(260, 280),
+        )
+        .expect("default placement");
+
+        assert_eq!(placement.x, 2442);
+        assert_eq!(placement.y, 602);
+        assert_eq!(placement.display_id.as_deref(), Some("Studio Display"));
+        assert_eq!(placement.source, PresencePlacementSource::Default);
+    }
+
+    #[test]
     fn keeps_saved_position_on_matching_display_when_visible() {
         let placement = resolve_presence_placement(
             Some(saved_position(1620, 520, Some("sidecar"))),
@@ -381,8 +408,8 @@ mod tests {
                 display("built-in", 0, 25, 1440, 875),
                 display("sidecar", 1440, 0, 1280, 900),
             ],
-            Some("built-in"),
-            Some("built-in"),
+            Some(&display("built-in", 0, 25, 1440, 875)),
+            Some(&display("built-in", 0, 25, 1440, 875)),
             window_size(260, 280),
         )
         .expect("saved placement");
@@ -401,8 +428,8 @@ mod tests {
                 display("built-in", 0, 25, 1440, 875),
                 display("sidecar", 1440, 0, 1280, 900),
             ],
-            Some("built-in"),
-            Some("built-in"),
+            Some(&display("built-in", 0, 25, 1440, 875)),
+            Some(&display("built-in", 0, 25, 1440, 875)),
             window_size(260, 280),
         )
         .expect("clamped placement");
@@ -418,8 +445,8 @@ mod tests {
         let placement = resolve_presence_placement(
             Some(saved_position(2480, 520, Some("disconnected"))),
             &[display("built-in", 0, 25, 1440, 875)],
-            Some("built-in"),
-            Some("built-in"),
+            Some(&display("built-in", 0, 25, 1440, 875)),
+            Some(&display("built-in", 0, 25, 1440, 875)),
             window_size(260, 280),
         )
         .expect("fallback placement");
@@ -438,8 +465,8 @@ mod tests {
                 display("built-in", 0, 25, 1440, 875),
                 display("sidecar", 1440, 0, 1280, 900),
             ],
-            Some("built-in"),
-            Some("built-in"),
+            Some(&display("built-in", 0, 25, 1440, 875)),
+            Some(&display("built-in", 0, 25, 1440, 875)),
             window_size(260, 280),
         )
         .expect("migrated placement");
@@ -458,8 +485,8 @@ mod tests {
                 display("Studio Display", 0, 25, 1440, 875),
                 display("Studio Display", 1440, 0, 1280, 900),
             ],
-            Some("Studio Display"),
-            Some("Studio Display"),
+            Some(&display("Studio Display", 1440, 0, 1280, 900)),
+            Some(&display("Studio Display", 0, 25, 1440, 875)),
             window_size(260, 280),
         )
         .expect("duplicate-name placement");
@@ -479,8 +506,8 @@ mod tests {
                 display("Studio Display", 1440, 0, 1280, 900),
                 display("Studio Display", 2720, 0, 1280, 900),
             ],
-            Some("built-in"),
-            Some("built-in"),
+            Some(&display("built-in", 0, 25, 1440, 875)),
+            Some(&display("built-in", 0, 25, 1440, 875)),
             window_size(260, 280),
         )
         .expect("fallback placement");
