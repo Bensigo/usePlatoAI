@@ -12,6 +12,17 @@ The skills speak in terms of five canonical triage roles. This file maps those r
 
 When a skill mentions a role, use the corresponding GitHub label from this table.
 
+Additional workflow state labels:
+
+| Label | Meaning |
+| --- | --- |
+| `afk` | Issue is approved for unattended AFK execution |
+| `afk-in-progress` | Issue is currently claimed by an AFK worker |
+| `review-fix` | Follow-up issue created from PR review feedback |
+| `pr-reviewed` | Implementation issue has completed automated PR review |
+
+Use labels as state, not decoration. Remove stale state labels when an issue leaves that state.
+
 ## Blocked Issues
 
 Do not apply `ready-for-agent` while an issue has open blockers in its `## Blocked by` section.

@@ -38,6 +38,18 @@ Every implementation PR must include a `Visual evidence` section:
 - For flows that depend on motion, interaction, or before/after state, prefer a short video.
 - If the change has no visual surface, write `No visual surface` and explain what verification proves the change.
 
+Every implementation PR must include an `Acceptance Criteria Coverage` section:
+
+```markdown
+## Acceptance Criteria Coverage
+
+| Criterion | Implementation Evidence | Verification |
+|---|---|---|
+| AC1 | <What changed to satisfy it> | <Test, check, screenshot, log, or manual path> |
+```
+
+If an issue's acceptance criteria cannot be satisfied or verified, mark the issue blocked instead of opening a PR that claims completion.
+
 ## Blocked Issues
 
 Use a `## Blocked by` section to record issue dependencies.

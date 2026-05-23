@@ -12,6 +12,7 @@ Read:
 - `docs/agents/`
 - the assigned GitHub issue, including body, labels, and comments
 - linked PRD and milestone files referenced by the issue
+- relevant project memory from `scripts/memory recall`
 - recent commits, if useful for understanding what just changed
 
 ## Task Selection
@@ -40,6 +41,8 @@ Implement the smallest vertical change that satisfies the issue.
 
 Use the repo docs as constraints:
 
+- Run `scripts/memory recall` for the issue title, feature, and key terms before editing.
+- Treat project memory as advisory; verify it against current code, docs, issue, PRD, and architecture docs.
 - Do not invent scope beyond the issue, milestone, PRD, context, or architecture baseline.
 - Prefer user-visible vertical behavior over isolated horizontal setup.
 - If the issue is underspecified, stop and report the missing information instead of guessing.
@@ -76,8 +79,10 @@ The PR must include:
 
 - issue reference
 - summary
+- acceptance criteria coverage mapping each criterion to implementation evidence and verification evidence
 - verification notes
 - visual evidence: screenshot or short video for UI-visible work, or an explicit `No visual surface` note for non-visual changes
+- memory updates, if any
 - any known blockers
 
 ## Completion
