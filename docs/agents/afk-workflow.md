@@ -36,6 +36,8 @@ The workflow:
 8. Removes queue labels from the source issue and marks it `pr-reviewed`.
 9. Repeats until no queued issues remain or `--max-waves` is reached.
 
+AFK consumes a clean queue. It should not decide whether blocked issues have become ready. Keep blocked-but-AFK-safe issues labeled `afk` only, and let the merge pipeline add `ready-for-agent` once all blockers close.
+
 ## Parallelism
 
 The default concurrency is `2`.
@@ -59,3 +61,15 @@ Each object in `fix_issues` becomes a new GitHub issue labeled `review-fix`.
 Blocking review findings, defined as severity `P0` or `P1`, also get `ready-for-agent` plus `afk` so the next workflow wave can pick them up. Smaller findings stay `review-fix` only. A human must inspect those smaller issues and explicitly add `ready-for-agent` plus `afk` before unattended execution.
 
 Do not put `afk` on issues that require product judgment, credentials, spending money, external messages, destructive file changes, or any other human approval.
+
+## Unblocked Issues
+
+When a PR merges, run:
+
+```bash
+scripts/promote-unblocked-issues --pr <number>
+```
+
+The promotion script checks the merged PR's closing issues, finds open issues whose `## Blocked by` section references those closed issues, and adds `ready-for-agent` only when every listed blocker is closed.
+
+The script never adds `afk`. If an issue was already judged AFK-safe, it keeps `afk` while blocked and becomes eligible for this workflow when promotion adds `ready-for-agent`.

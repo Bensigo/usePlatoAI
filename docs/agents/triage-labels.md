@@ -11,3 +11,9 @@ The skills speak in terms of five canonical triage roles. This file maps those r
 | `wontfix` | `wontfix` | Will not be actioned |
 
 When a skill mentions a role, use the corresponding GitHub label from this table.
+
+## Blocked Issues
+
+Do not apply `ready-for-agent` while an issue has open blockers in its `## Blocked by` section.
+
+Blocked issues may carry `afk` before they are ready when the unattended safety judgment has already been made. After a blocking PR merges and all blockers are closed, `scripts/promote-unblocked-issues --pr <number>` adds `ready-for-agent` without adding or removing `afk`.

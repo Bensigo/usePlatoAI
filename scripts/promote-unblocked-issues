@@ -1,0 +1,255 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  cat <<'USAGE'
+Usage:
+  scripts/promote-unblocked-issues --pr NUMBER [--pr-url URL]
+
+Promotes open issues to ready-for-agent after a merged PR closes their blockers.
+
+The script:
+
+1. Finds issues closed by the PR.
+2. Scans open issues for a ## Blocked by section that references those closed issues.
+3. Adds ready-for-agent only when every listed blocker is closed.
+4. Never adds afk; unattended eligibility must be pre-approved separately.
+
+Test-only environment:
+  PROMOTE_UNBLOCKED_MOCK_CLOSING_ISSUES  Newline-separated issue numbers closed by the PR.
+  PROMOTE_UNBLOCKED_MOCK_CLOSED_ISSUES   Comma-separated issue numbers treated as closed.
+  PROMOTE_UNBLOCKED_MOCK_OPEN_ISSUES     JSON array shaped like gh issue list output.
+  PROMOTE_UNBLOCKED_MOCK_COMMAND_LOG     File where mock edit/comment commands are recorded.
+USAGE
+}
+
+die() {
+  echo "promote-unblocked-issues: $*" >&2
+  exit 1
+}
+
+need() {
+  command -v "$1" >/dev/null 2>&1 || die "missing required command: $1"
+}
+
+repo_root() {
+  git rev-parse --show-toplevel
+}
+
+pr_closing_issue_numbers() {
+  local pr="$1"
+
+  if [[ -n "${PROMOTE_UNBLOCKED_MOCK_CLOSING_ISSUES:-}" ]]; then
+    printf '%s\n' "$PROMOTE_UNBLOCKED_MOCK_CLOSING_ISSUES" | awk 'NF' | sort -nu
+    return 0
+  fi
+
+  local refs
+  refs="$(gh pr view "$pr" --json closingIssuesReferences --jq '.closingIssuesReferences[]?.number' 2>/dev/null || true)"
+  if [[ -n "$refs" ]]; then
+    printf '%s\n' "$refs" | sort -nu
+    return 0
+  fi
+
+  gh pr view "$pr" --json title,body --jq '[.title, (.body // "")] | join("\n")' \
+    | rg -io '(close[sd]?|fix(e[sd])?|resolve[sd]?)[^#\n]*(#[0-9]+[ ,]*)+' \
+    | rg -o '#[0-9]+' \
+    | tr -d '#' \
+    | sort -nu || true
+}
+
+extract_blocker_numbers_from_body() {
+  awk '
+    BEGIN { in_blocked_by = 0 }
+    /^[[:space:]]*##[[:space:]]+Blocked by[[:space:]]*$/ { in_blocked_by = 1; next }
+    in_blocked_by && /^[[:space:]]*##[[:space:]]+/ { in_blocked_by = 0 }
+    in_blocked_by { print }
+    /^[[:space:]-]*Blocked by[[:space:]]*:/ { print }
+  ' \
+    | rg -o '#[0-9]+' \
+    | tr -d '#' \
+    | sort -nu || true
+}
+
+issue_has_label_json() {
+  local issue_json="$1"
+  local label="$2"
+
+  jq -e --arg label "$label" 'any(.labels[]?; .name == $label)' <<< "$issue_json" >/dev/null
+}
+
+issue_is_closed() {
+  local issue="$1"
+
+  if [[ -n "${PROMOTE_UNBLOCKED_MOCK_CLOSED_ISSUES:-}" ]]; then
+    [[ ",${PROMOTE_UNBLOCKED_MOCK_CLOSED_ISSUES}," == *",${issue},"* ]]
+    return
+  fi
+
+  [[ "$(gh issue view "$issue" --json state --jq .state 2>/dev/null || true)" == "CLOSED" ]]
+}
+
+wait_for_issue_closures() {
+  local issue
+
+  for issue in "$@"; do
+    local attempt
+    for attempt in $(seq 1 12); do
+      issue_is_closed "$issue" && break
+      [[ "$attempt" -eq 12 ]] || sleep 5
+    done
+  done
+}
+
+open_issues_json() {
+  if [[ -n "${PROMOTE_UNBLOCKED_MOCK_OPEN_ISSUES:-}" ]]; then
+    printf '%s\n' "$PROMOTE_UNBLOCKED_MOCK_OPEN_ISSUES"
+    return 0
+  fi
+
+  gh issue list --state open --limit 1000 --json number,title,url,body,labels
+}
+
+add_ready_for_agent() {
+  local issue="$1"
+
+  if [[ -n "${PROMOTE_UNBLOCKED_MOCK_COMMAND_LOG:-}" ]]; then
+    printf 'issue edit %s --add-label ready-for-agent\n' "$issue" >> "$PROMOTE_UNBLOCKED_MOCK_COMMAND_LOG"
+    return 0
+  fi
+
+  gh issue edit "$issue" --add-label "ready-for-agent" >/dev/null
+}
+
+comment_unblocked() {
+  local issue="$1"
+  local pr_url="$2"
+
+  local comment_body
+  comment_body="$(cat <<BODY
+Unblocked after ${pr_url} merged and all blockers in the Blocked by section are closed.
+
+Added \`ready-for-agent\`.
+BODY
+)"
+
+  if [[ -n "${PROMOTE_UNBLOCKED_MOCK_COMMAND_LOG:-}" ]]; then
+    printf 'issue comment %s\n' "$issue" >> "$PROMOTE_UNBLOCKED_MOCK_COMMAND_LOG"
+    return 0
+  fi
+
+  gh issue comment "$issue" --body "$comment_body" >/dev/null 2>&1 || true
+}
+
+promote_unblocked_issues_after_merge() {
+  local pr="$1"
+  local pr_url="$2"
+  shift 2
+
+  if [[ "$#" -eq 0 ]]; then
+    echo "No closing issues found for PR #${pr}; skipping dependent issue promotion."
+    return 0
+  fi
+
+  wait_for_issue_closures "$@" || true
+
+  local open_issues
+  open_issues="$(open_issues_json)"
+
+  local issue_json
+  while IFS= read -r issue_json; do
+    [[ -n "$issue_json" ]] || continue
+
+    local number title body blockers blocker all_closed references_closed_issue
+    number="$(jq -r .number <<< "$issue_json")"
+    title="$(jq -r .title <<< "$issue_json")"
+    body="$(jq -r '.body // ""' <<< "$issue_json")"
+    blockers="$(printf '%s\n' "$body" | extract_blocker_numbers_from_body)"
+    [[ -n "$blockers" ]] || continue
+
+    references_closed_issue=0
+    for blocker in "$@"; do
+      if grep -Fxq "$blocker" <<< "$blockers"; then
+        references_closed_issue=1
+        break
+      fi
+    done
+    [[ "$references_closed_issue" -eq 1 ]] || continue
+
+    all_closed=1
+    while IFS= read -r blocker; do
+      [[ -n "$blocker" ]] || continue
+      if ! issue_is_closed "$blocker"; then
+        all_closed=0
+        echo "Issue #${number} still blocked by #${blocker}; not promoting."
+        break
+      fi
+    done <<< "$blockers"
+    [[ "$all_closed" -eq 1 ]] || continue
+
+    if issue_has_label_json "$issue_json" "ready-for-agent"; then
+      echo "Issue #${number} is unblocked and already has ready-for-agent."
+      continue
+    fi
+
+    add_ready_for_agent "$number"
+    comment_unblocked "$number" "$pr_url"
+    echo "Promoted issue #${number} to ready-for-agent: ${title}"
+  done < <(jq -c '.[]' <<< "$open_issues")
+}
+
+main() {
+  local pr=""
+  local pr_url=""
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --pr)
+        pr="${2:-}"
+        [[ -n "$pr" ]] || die "--pr requires a number"
+        shift 2
+        ;;
+      --pr-url)
+        pr_url="${2:-}"
+        [[ -n "$pr_url" ]] || die "--pr-url requires a URL"
+        shift 2
+        ;;
+      -h|--help)
+        usage
+        exit 0
+        ;;
+      *)
+        die "unknown option: $1"
+        ;;
+    esac
+  done
+
+  [[ -n "$pr" ]] || { usage; exit 1; }
+
+  need git
+  need jq
+  need rg
+
+  if [[ -z "${PROMOTE_UNBLOCKED_MOCK_OPEN_ISSUES:-}" ]]; then
+    need gh
+  fi
+
+  local root
+  root="$(repo_root)"
+  cd "$root"
+
+  if [[ -z "$pr_url" ]]; then
+    pr_url="$(gh pr view "$pr" --json url --jq .url)"
+  fi
+
+  local closing_issues=()
+  local closing_issue
+  while IFS= read -r closing_issue; do
+    [[ -n "$closing_issue" ]] || continue
+    closing_issues+=("$closing_issue")
+  done < <(pr_closing_issue_numbers "$pr")
+
+  promote_unblocked_issues_after_merge "$pr" "$pr_url" "${closing_issues[@]}"
+}
+
+main "$@"
