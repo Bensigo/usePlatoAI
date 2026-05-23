@@ -9,7 +9,7 @@ Files:
 
 - `native-restart-external-finder-focused.png` - captured after restarting `pnpm --filter @useplatoai/desktop tauri dev`; Plato relaunches visible on the external display.
 - `native-external-finder-focused.png` - captured after focusing Finder; Plato remains visible on the external display after focus changes.
-- `native-overlapping-finder-focused.png` - captured with Finder focused and a normal Finder window positioned under Plato on the external display; Plato's approval bubble and avatar remain visible above the overlapping native window.
+- `native-overlapping-finder-focused.png` - sanitized capture based on Finder focused with a normal Finder window positioned under Plato on the external display; live local folder contents are replaced with dummy rows while Plato's approval bubble and avatar remain visible above the overlapping native window.
 
 Relevant checks:
 
