@@ -78,6 +78,17 @@ issue_has_label_json() {
   jq -e --arg label "$label" 'any(.labels[]?; .name == $label)' <<< "$issue_json" >/dev/null
 }
 
+issue_has_conflicting_readiness_label_json() {
+  local issue_json="$1"
+
+  jq -e '
+    any(.labels[]?; .name == "needs-triage"
+      or .name == "needs-info"
+      or .name == "ready-for-human"
+      or .name == "wontfix")
+  ' <<< "$issue_json" >/dev/null
+}
+
 issue_is_closed() {
   local issue="$1"
 
@@ -189,6 +200,11 @@ promote_unblocked_issues_after_merge() {
 
     if issue_has_label_json "$issue_json" "ready-for-agent"; then
       echo "Issue #${number} is unblocked and already has ready-for-agent."
+      continue
+    fi
+
+    if issue_has_conflicting_readiness_label_json "$issue_json"; then
+      echo "Issue #${number} is unblocked but has a conflicting triage label; not promoting."
       continue
     fi
 
