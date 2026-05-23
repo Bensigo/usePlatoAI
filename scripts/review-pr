@@ -47,7 +47,9 @@ review_prompt() {
   local pr="$1"
   local title="$2"
   local url="$3"
-  local prompt_file="review/prompt.md"
+  local prompt_file="docs/agents/pr-review.md"
+
+  [[ -f "$prompt_file" ]] || die "missing PR review instructions: $prompt_file"
 
   cat <<PROMPT
 Review exactly one pull request: #${pr}.
@@ -64,6 +66,8 @@ Repo-specific instructions:
 - Start from a clean checkout of the pull request head branch.
 - Compare against the pull request base branch.
 - Read the PR body, linked issue, milestone, PRD, architecture baseline, and agent docs.
+- Run scripts/memory recall for the PR title, linked issue, and key terms.
+- Treat project memory as advisory; verify it against current code, docs, issue, PRD, and architecture docs.
 - Do not edit files.
 - Do not commit, push, close, or merge anything.
 - Return findings first, ordered by severity.
@@ -92,9 +96,9 @@ run_codex_review() {
   fi
 
   if [[ ${#extra_args[@]} -gt 0 ]]; then
-    codex exec "${output_args[@]}" "${extra_args[@]}" - <<< "$prompt"
+    codex exec review --base "$base" "${output_args[@]}" "${extra_args[@]}" "$prompt"
   else
-    codex exec "${output_args[@]}" - <<< "$prompt"
+    codex exec review --base "$base" "${output_args[@]}" "$prompt"
   fi
 }
 

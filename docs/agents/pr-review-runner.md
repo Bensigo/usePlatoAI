@@ -30,7 +30,7 @@ The runner:
 2. Reads PR metadata from GitHub.
 3. Fetches the PR base and head branches.
 4. Checks out the PR head branch.
-5. Runs `codex exec review --base <base>` with `review/prompt.md`.
+5. Runs `codex exec review --base <base>` with `docs/agents/pr-review.md`.
 6. Writes the final review message to `--output` when provided.
 
 The review agent must not edit files, commit, push, close, or merge anything.

@@ -95,24 +95,28 @@ Follow the repo workflow:
 2. Read CONTEXT.md, docs/architecture/baseline.md, AGENTS.md, and docs/agents/.
 3. Read GitHub issue #${issue_number}, including labels, body, and comments.
 4. Read the linked PRD and milestone if the issue references them.
-5. Create or switch to a branch for issue #${issue_number}.
-6. Implement the smallest vertical change that satisfies the issue.
-7. Run relevant verification.
-8. Commit only the intended changes.
-9. Push the branch.
-10. Open or update a pull request.
-11. Include verification notes in the PR.
-12. Include visual evidence in the PR: screenshot or short video for UI-visible work, or an explicit "No visual surface" note for non-visual changes.
-13. Exit after this single issue.
+5. Run scripts/memory recall for the issue title, feature, and key terms.
+6. Create or switch to a branch for issue #${issue_number}.
+7. Implement the smallest vertical change that satisfies the issue.
+8. Run relevant verification.
+9. Commit only the intended changes.
+10. Push the branch.
+11. Open or update a pull request.
+12. Include acceptance criteria coverage in the PR.
+13. Include verification notes in the PR.
+14. Include visual evidence in the PR: screenshot or short video for UI-visible work, or an explicit "No visual surface" note for non-visual changes.
+15. Exit after this single issue.
 
 Rules:
 
 - One issue only. Do not continue to another issue.
 - Do not commit directly to main.
+- Treat project memory as advisory; verify it against current code, docs, issue, PRD, and architecture docs.
 - Do not invent scope beyond the issue, milestone, PRD, context, or architecture baseline.
 - If the issue is underspecified, stop and report the missing information instead of guessing.
 - If verification cannot run, record the blocker in the PR notes.
 - Do not leave a UI-visible PR without a screenshot or short video in the PR body.
+- In the PR body, map every acceptance criterion to implementation evidence and verification evidence.
 PROMPT
 }
 
