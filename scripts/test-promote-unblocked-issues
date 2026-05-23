@@ -1,0 +1,95 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+root="$(git rev-parse --show-toplevel)"
+cd "$root"
+
+command_log="$(mktemp)"
+open_issues='[
+  {
+    "number": 20,
+    "title": "AFK-safe blocked issue",
+    "body": "## Blocked by\n\n- #10\n",
+    "labels": [{"name": "afk"}]
+  },
+  {
+    "number": 21,
+    "title": "Still blocked issue",
+    "body": "## Blocked by\n\n- #10\n- #11\n",
+    "labels": [{"name": "afk"}]
+  },
+  {
+    "number": 22,
+    "title": "Human review needed",
+    "body": "## Blocked by\n\n- #10\n",
+    "labels": []
+  },
+  {
+    "number": 23,
+    "title": "Already ready",
+    "body": "## Blocked by\n\n- #10\n",
+    "labels": [{"name": "ready-for-agent"}, {"name": "afk"}]
+  },
+  {
+    "number": 24,
+    "title": "Unrelated blocker",
+    "body": "## Blocked by\n\n- #99\n",
+    "labels": [{"name": "afk"}]
+  },
+  {
+    "number": 25,
+    "title": "Needs info before agent",
+    "body": "## Blocked by\n\n- #10\n",
+    "labels": [{"name": "needs-info"}, {"name": "afk"}]
+  },
+  {
+    "number": 26,
+    "title": "Human-only implementation",
+    "body": "## Blocked by\n\n- #10\n",
+    "labels": [{"name": "ready-for-human"}]
+  }
+]'
+
+output="$(
+  PROMOTE_UNBLOCKED_MOCK_CLOSING_ISSUES=$'10\n' \
+  PROMOTE_UNBLOCKED_MOCK_CLOSED_ISSUES="10" \
+  PROMOTE_UNBLOCKED_MOCK_OPEN_ISSUES="$open_issues" \
+  PROMOTE_UNBLOCKED_MOCK_COMMAND_LOG="$command_log" \
+    scripts/promote-unblocked-issues --pr 42 --pr-url https://example.test/pull/42
+)"
+
+grep -q "Promoted issue #20 to ready-for-agent: AFK-safe blocked issue" <<< "$output"
+grep -q "Promoted issue #22 to ready-for-agent: Human review needed" <<< "$output"
+grep -q "Issue #21 still blocked by #11; not promoting." <<< "$output"
+grep -q "Issue #23 is unblocked and already has ready-for-agent." <<< "$output"
+grep -q "Issue #25 is unblocked but has a conflicting triage label; not promoting." <<< "$output"
+grep -q "Issue #26 is unblocked but has a conflicting triage label; not promoting." <<< "$output"
+
+grep -q "issue edit 20 --add-label ready-for-agent" "$command_log"
+grep -q "issue edit 22 --add-label ready-for-agent" "$command_log"
+grep -q "issue comment 20" "$command_log"
+grep -q "issue comment 22" "$command_log"
+
+if grep -q "issue edit 21" "$command_log"; then
+  echo "expected issue #21 to stay blocked" >&2
+  exit 1
+fi
+
+if grep -q "issue edit 25" "$command_log"; then
+  echo "expected issue #25 to keep needs-info out of the agent queue" >&2
+  exit 1
+fi
+
+if grep -q "issue edit 26" "$command_log"; then
+  echo "expected issue #26 to stay human-only" >&2
+  exit 1
+fi
+
+if grep -q -- "--add-label afk" "$command_log"; then
+  echo "merge promotion must not add afk automatically" >&2
+  exit 1
+fi
+
+rm -f "$command_log"
+
+echo "promote unblocked issues tests passed"
