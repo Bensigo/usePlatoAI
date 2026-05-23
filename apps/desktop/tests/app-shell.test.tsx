@@ -22,6 +22,7 @@ import {
   isActiveCorrectionPromptTransition,
   isActionableCurrentTaskState,
   loadPersistedLocalTasks,
+  loadPersistedPresencePosition,
   openControlSurfaceEntryFromEvent,
   renderedPresenceStateFor,
   shouldSurfaceTaskStateNearCompanion,
@@ -646,6 +647,32 @@ describe("desktop app shell", () => {
     await expect(positionStore.read()).resolves.toBeNull();
     await positionStore.save({ x: 420, y: 260 });
     await expect(positionStore.read()).resolves.toEqual({ x: 420, y: 260 });
+  });
+
+  it("loads a saved offscreen companion position for UI state without moving the startup window", async () => {
+    const positionStore = createMemoryPresencePositionStore({
+      x: 4_000,
+      y: -200,
+      displayId: "disconnected",
+    });
+    let appliedPosition: Awaited<ReturnType<typeof positionStore.read>> = null;
+
+    const didApply = await loadPersistedPresencePosition({
+      positionStore,
+      setPresencePosition: (nextPosition) => {
+        appliedPosition =
+          typeof nextPosition === "function"
+            ? nextPosition(appliedPosition)
+            : nextPosition;
+      },
+    });
+
+    expect(didApply).toBe(true);
+    expect(appliedPosition).toEqual({
+      x: 4_000,
+      y: -200,
+      displayId: "disconnected",
+    });
   });
 
   it("renders the mascot drag-mode contract and subtle visual cue without a settings panel", () => {

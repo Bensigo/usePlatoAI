@@ -142,15 +142,13 @@ function startPresenceDrag(
   void getCurrentWindow().startDragging();
 }
 
-async function movePresenceWindowToPosition(position: PresenceWindowPosition) {
+async function reinforcePresenceWindowLayer() {
   if (!isTauriRuntime()) {
     return;
   }
 
-  const { PhysicalPosition } = await import("@tauri-apps/api/dpi");
-  await getCurrentWindow().setPosition(
-    new PhysicalPosition(position.x, position.y),
-  );
+  const { invoke } = await import("@tauri-apps/api/core");
+  await invoke("reinforce_presence_window_layer");
 }
 
 function usePresenceState(source: PresenceStateSource) {
@@ -302,6 +300,25 @@ export async function loadPersistedLocalTasks({
     currentTaskId ?? savedTasks[0]?.taskId ?? null,
   );
   presenceStateSource.setState(currentTaskPresenceStateForLocalTasks(savedTasks));
+}
+
+export async function loadPersistedPresencePosition({
+  positionStore,
+  setPresencePosition,
+  shouldApply = () => true,
+}: {
+  positionStore: PresencePositionStore;
+  setPresencePosition: Dispatch<SetStateAction<PresenceWindowPosition | null>>;
+  shouldApply?: () => boolean;
+}): Promise<boolean> {
+  const savedPosition = await positionStore.read();
+
+  if (!shouldApply() || !savedPosition) {
+    return false;
+  }
+
+  setPresencePosition(savedPosition);
+  return true;
 }
 
 export function isCurrentTaskControlState(state: string) {
@@ -2498,15 +2515,15 @@ export function App({
   useEffect(() => {
     let isCurrent = true;
 
-    durablePresencePositionStore
-      .read()
-      .then((savedPosition) => {
-        if (!isCurrent || !savedPosition) {
-          return;
+    loadPersistedPresencePosition({
+      positionStore: durablePresencePositionStore,
+      setPresencePosition,
+      shouldApply: () => isCurrent,
+    })
+      .then((didApply) => {
+        if (didApply) {
+          void reinforcePresenceWindowLayer();
         }
-
-        setPresencePosition(savedPosition);
-        void movePresenceWindowToPosition(savedPosition);
       })
       .catch(() => undefined);
 
@@ -2533,6 +2550,7 @@ export function App({
 
         setPresencePosition(nextPosition);
         void durablePresencePositionStore.save(nextPosition);
+        void reinforcePresenceWindowLayer();
 
         if (isPresenceDraggable) {
           schedulePresenceDragIdleExit();
@@ -2557,6 +2575,34 @@ export function App({
     isPresenceDraggable,
     schedulePresenceDragIdleExit,
   ]);
+
+  useEffect(() => {
+    if (!isTauriRuntime()) {
+      return;
+    }
+
+    let dispose: (() => void) | undefined;
+    let isCurrent = true;
+
+    getCurrentWindow()
+      .onFocusChanged(() => {
+        void reinforcePresenceWindowLayer();
+      })
+      .then((unlisten) => {
+        if (isCurrent) {
+          dispose = unlisten;
+          return;
+        }
+
+        unlisten();
+      })
+      .catch(() => undefined);
+
+    return () => {
+      isCurrent = false;
+      dispose?.();
+    };
+  }, []);
 
   useEffect(() => {
     if (!isSettingsLoaded || !settings.onboardingComplete) {
