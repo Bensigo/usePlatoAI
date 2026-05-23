@@ -142,17 +142,6 @@ function startPresenceDrag(
   void getCurrentWindow().startDragging();
 }
 
-async function movePresenceWindowToPosition(position: PresenceWindowPosition) {
-  if (!isTauriRuntime()) {
-    return;
-  }
-
-  const { PhysicalPosition } = await import("@tauri-apps/api/dpi");
-  await getCurrentWindow().setPosition(
-    new PhysicalPosition(position.x, position.y),
-  );
-}
-
 async function reinforcePresenceWindowLayer() {
   if (!isTauriRuntime()) {
     return;
@@ -311,6 +300,25 @@ export async function loadPersistedLocalTasks({
     currentTaskId ?? savedTasks[0]?.taskId ?? null,
   );
   presenceStateSource.setState(currentTaskPresenceStateForLocalTasks(savedTasks));
+}
+
+export async function loadPersistedPresencePosition({
+  positionStore,
+  setPresencePosition,
+  shouldApply = () => true,
+}: {
+  positionStore: PresencePositionStore;
+  setPresencePosition: Dispatch<SetStateAction<PresenceWindowPosition | null>>;
+  shouldApply?: () => boolean;
+}): Promise<boolean> {
+  const savedPosition = await positionStore.read();
+
+  if (!shouldApply() || !savedPosition) {
+    return false;
+  }
+
+  setPresencePosition(savedPosition);
+  return true;
 }
 
 export function isCurrentTaskControlState(state: string) {
@@ -2507,16 +2515,15 @@ export function App({
   useEffect(() => {
     let isCurrent = true;
 
-    durablePresencePositionStore
-      .read()
-      .then((savedPosition) => {
-        if (!isCurrent || !savedPosition) {
-          return;
+    loadPersistedPresencePosition({
+      positionStore: durablePresencePositionStore,
+      setPresencePosition,
+      shouldApply: () => isCurrent,
+    })
+      .then((didApply) => {
+        if (didApply) {
+          void reinforcePresenceWindowLayer();
         }
-
-        setPresencePosition(savedPosition);
-        void movePresenceWindowToPosition(savedPosition);
-        void reinforcePresenceWindowLayer();
       })
       .catch(() => undefined);
 
