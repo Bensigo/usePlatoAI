@@ -115,6 +115,20 @@ fn save_presence_window_position(
 }
 
 #[tauri::command]
+fn follow_presence_window_to_active_display(
+    app: AppHandle,
+) -> Result<Option<local_data::PresenceWindowPosition>, String> {
+    let saved_position = local_data_service(&app)?.read_presence_window_position()?;
+
+    if let Some(window) = app.get_webview_window("main") {
+        return presence_window::follow_presence_window_to_active_display(&window, saved_position)
+            .map_err(|error| error.to_string());
+    }
+
+    Ok(None)
+}
+
+#[tauri::command]
 fn reinforce_presence_window_layer(app: AppHandle) -> Result<(), String> {
     if let Some(window) = app.get_webview_window("main") {
         presence_window::reinforce_presence_window_layer(&window)
@@ -314,6 +328,7 @@ pub fn run() {
             save_companion_settings,
             read_presence_window_position,
             save_presence_window_position,
+            follow_presence_window_to_active_display,
             reinforce_presence_window_layer,
             read_execution_authority_policy,
             read_recent_audit_history,

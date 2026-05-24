@@ -122,3 +122,12 @@ export function createTauriPresencePositionStore(): PresencePositionStore {
     },
   };
 }
+
+export async function followPresenceWindowToActiveDisplay() {
+  if (!isTauriRuntime()) {
+    return;
+  }
+
+  const { invoke } = await import("@tauri-apps/api/core");
+  await invoke("follow_presence_window_to_active_display");
+}
