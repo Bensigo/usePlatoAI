@@ -5,6 +5,7 @@ export const avatarCompanionStates = [
   "startup",
   "greet",
   "idle",
+  "listening",
   "happy",
   "sad",
   "talking",
@@ -17,6 +18,7 @@ export const avatarAnimationCommands = [
   "startup.appear",
   "greet.wave",
   "idle.breathe",
+  "voice.listen",
   "mood.smile",
   "mood.sad",
   "voice.talk",
@@ -235,8 +237,8 @@ export const avatarPackageAssets = {
     publicPath: "/avatar/plato/source/wise-owl-colour.svg",
   },
   startupSound: {
-    packagePath: "packages/avatar/assets/audio/plato-startup-chime.json",
-    publicPath: "/avatar/plato/audio/plato-startup-chime.json",
+    packagePath: "packages/avatar/assets/audio/plato-startup-chime.wav",
+    publicPath: "/avatar/plato/audio/plato-startup-chime.wav",
   },
 } as const satisfies Record<string, AvatarPackageAsset>;
 
@@ -268,6 +270,9 @@ export const avatarStartupSound = {
   packagePath: avatarPackageAssets.startupSound.packagePath,
   publicPath: avatarPackageAssets.startupSound.publicPath,
   playback: "app-launch-or-activation",
+  durationMs: 960,
+  format: "audio/wav",
+  source: "generated-useplatoai",
 } as const;
 
 export const vendoredRiveAssetContract = {
@@ -347,6 +352,15 @@ const animationByState = {
       mouth: 0,
     },
   },
+  listening: {
+    command: "voice.listen",
+    animation: vendoredRiveAssetContract.animations.idle,
+    inputs: {
+      isHappy: false,
+      isSad: false,
+      mouth: 0.08,
+    },
+  },
   happy: {
     command: "mood.smile",
     animation: vendoredRiveAssetContract.animations.happy,
@@ -387,6 +401,82 @@ const animationByState = {
   AvatarCompanionState,
   { command: AvatarAnimationCommand; animation: string; inputs: RiveInputValues }
 >;
+
+export const avatarLaunchSequence = [
+  {
+    delayMs: 0,
+    presenceState: "appearing",
+    companionState: "startup",
+    command: "startup.appear",
+  },
+  {
+    delayMs: 560,
+    presenceState: "listening",
+    companionState: "greet",
+    command: "greet.wave",
+  },
+  {
+    delayMs: 1520,
+    presenceState: "idle",
+    companionState: "idle",
+    command: "idle.breathe",
+  },
+] as const satisfies ReadonlyArray<{
+  delayMs: number;
+  presenceState: string;
+  companionState: AvatarCompanionState;
+  command: AvatarAnimationCommand;
+}>;
+
+export const avatarIdleWavePolicy = {
+  companionState: "greet",
+  command: "greet.wave",
+  initialDelayMs: 8_500,
+  minimumIntervalMs: 18_000,
+  activeStateBackoffMs: 6_000,
+  waveDurationMs: 960,
+  pausedPresenceStates: [
+    "appearing",
+    "listening",
+    "thinking",
+    "speaking",
+    "focused",
+    "waiting_for_approval",
+    "waitingApproval",
+    "muted",
+    "error",
+    "task_running",
+    "task_paused",
+    "sleeping",
+  ],
+} as const;
+
+export function millisecondsUntilNextAvatarIdleWave({
+  presenceState,
+  nowMs,
+  lastWaveAtMs,
+}: {
+  presenceState: string;
+  nowMs: number;
+  lastWaveAtMs: number | null;
+}) {
+  if (
+    avatarIdleWavePolicy.pausedPresenceStates.some(
+      (pausedPresenceState) => pausedPresenceState === presenceState,
+    )
+  ) {
+    return avatarIdleWavePolicy.activeStateBackoffMs;
+  }
+
+  if (lastWaveAtMs === null) {
+    return avatarIdleWavePolicy.initialDelayMs;
+  }
+
+  return Math.max(
+    0,
+    avatarIdleWavePolicy.minimumIntervalMs - (nowMs - lastWaveAtMs),
+  );
+}
 
 const hiddenTestCommandStateByCommand = {
   greeting: "greet",
@@ -450,7 +540,7 @@ export function fallbackRendererFor(reason: AvatarFallbackReason) {
 const presenceToCompanionState = {
   appearing: "startup",
   idle: "idle",
-  listening: "greet",
+  listening: "listening",
   thinking: "idle",
   speaking: "talking",
   waitingApproval: "sad",

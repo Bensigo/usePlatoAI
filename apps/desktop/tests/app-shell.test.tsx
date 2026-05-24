@@ -40,6 +40,8 @@ import {
 } from "../src/audioActivation";
 import {
   Live2DAvatarSurface,
+  avatarIdleWavePolicy,
+  avatarStartupSound,
   avatarCompanionStateFromTestCommand,
   avatarCompanionStateForClickReaction,
   avatarEyeDirectionFromCursor,
@@ -115,8 +117,10 @@ import {
 } from "../src/experienceTokens";
 import {
   hasStartupSoundAttempted,
+  millisecondsUntilNextStartupIdleWave,
   resetStartupSoundReplayGuardForTests,
   runStartupCompanionSequence,
+  startupCompanionStateForPresenceState,
   startupPresenceReleaseDelayMs,
   startupPresenceTimeline,
   startupSoundReplayStorageKey,
@@ -249,6 +253,7 @@ describe("desktop app shell", () => {
         "listening",
         "idle",
       ]);
+      expect(startupCompanionStateForPresenceState("listening")).toBe("greet");
       expect(states).toEqual(["appearing"]);
       expect(playSound).toHaveBeenCalledTimes(1);
       expect(storage.getItem(startupSoundReplayStorageKey)).toBe("true");
@@ -271,6 +276,77 @@ describe("desktop app shell", () => {
       resetStartupSoundReplayGuardForTests();
       vi.useRealTimers();
     }
+  });
+
+  it("plays the avatar-owned bundled startup sound asset", async () => {
+    const audioInstances: Array<{
+      src: string;
+      preload: string;
+      volume: number;
+      play: ReturnType<typeof vi.fn>;
+      pause: ReturnType<typeof vi.fn>;
+    }> = [];
+
+    class MockAudioElement {
+      src: string;
+      preload = "";
+      volume = 1;
+      currentTime = 0;
+      play = vi.fn().mockResolvedValue(undefined);
+      pause = vi.fn();
+
+      constructor(src?: string) {
+        this.src = src ?? "";
+        audioInstances.push(this);
+      }
+    }
+
+    const result = await playComingOnlineSound({
+      AudioElementConstructor: MockAudioElement,
+      setTimeoutFn: (callback: () => void) => {
+        callback();
+        return 0;
+      },
+    });
+
+    expect(result).toEqual({ ok: true });
+    expect(audioInstances).toHaveLength(1);
+    expect(audioInstances[0].src).toBe(avatarStartupSound.publicPath);
+    expect(audioInstances[0].preload).toBe("auto");
+    expect(audioInstances[0].volume).toBeLessThan(0.5);
+    expect(audioInstances[0].play).toHaveBeenCalledTimes(1);
+    expect(audioInstances[0].pause).toHaveBeenCalledTimes(1);
+  });
+
+  it("rate-limits occasional idle waves and backs off during active states", () => {
+    expect(
+      millisecondsUntilNextStartupIdleWave({
+        renderedPresenceState: "idle",
+        nowMs: 1_000,
+        lastWaveAtMs: null,
+      }),
+    ).toBe(avatarIdleWavePolicy.initialDelayMs);
+    expect(
+      millisecondsUntilNextStartupIdleWave({
+        renderedPresenceState: "idle",
+        nowMs: 10_000,
+        lastWaveAtMs: 1_000,
+      }),
+    ).toBe(9_000);
+    expect(
+      millisecondsUntilNextStartupIdleWave({
+        renderedPresenceState: "focused",
+        nowMs: 10_000,
+        lastWaveAtMs: 1_000,
+      }),
+    ).toBe(avatarIdleWavePolicy.activeStateBackoffMs);
+    expect(
+      millisecondsUntilNextStartupIdleWave({
+        renderedPresenceState: "task_running",
+        nowMs: 25_000,
+        lastWaveAtMs: 1_000,
+      }),
+    ).toBe(avatarIdleWavePolicy.activeStateBackoffMs);
   });
 
   it("prevents startup sound replay across renderer remounts", async () => {
@@ -425,6 +501,20 @@ describe("desktop app shell", () => {
     expect(css).toContain("var(--plato-elevation-avatar)");
   });
 
+  it("scopes greet wave animation away from normal listening presence", () => {
+    const css = readFileSync(resolve(__dirname, "../src/styles.css"), "utf8");
+
+    expect(css).toMatch(
+      /\.live2d-avatar-surface\[data-presence-state="listening"\]\s+\.live2d-avatar-stage\s*{[^}]*animation-duration:\s*var\(--plato-motion-listening\);/s,
+    );
+    expect(css).toMatch(
+      /\.live2d-avatar-surface\s+\.live2d-avatar-stage\[data-avatar-command="greet\.wave"\]\s*{[^}]*animation:\s*avatar-greet-wave/s,
+    );
+    expect(css).not.toMatch(
+      /\.live2d-avatar-surface\[data-presence-state="listening"\]\s+\.live2d-avatar-stage\s*{[^}]*avatar-greet-wave/s,
+    );
+  });
+
   it("maps renderer-independent presence states to Live2D surface hooks", () => {
     expect(avatarPresenceStates).toEqual([
       "appearing",
@@ -544,11 +634,14 @@ describe("desktop app shell", () => {
     expect(markup).toContain('data-avatar-eye-tracking="fallback-svg-pupils"');
     expect(markup).not.toContain('data-avatar-eye-tracking="source-svg-pupils"');
     expect(markup).toContain('data-avatar-renderer="rive"');
+    expect(markup).toContain('data-avatar-companion-state="listening"');
+    expect(markup).toContain('data-avatar-command="voice.listen"');
     expect(markup).toContain('data-rive-artboard="Avatar 1"');
     expect(markup).toContain('data-rive-state-machine="avatar"');
-    expect(markup).toContain('data-rive-animation="happy"');
-    expect(markup).toContain('data-rive-input-is-happy="true"');
+    expect(markup).toContain('data-rive-animation="idle"');
+    expect(markup).toContain('data-rive-input-is-happy="false"');
     expect(markup).toContain('data-rive-input-is-sad="false"');
+    expect(markup).not.toContain('data-avatar-command="greet.wave"');
     expect(markup).toContain("live2d-presence-mark");
     expect(markup).toContain("live2d-presence-core");
     expect(markup).toContain("live2d-presence-meter");
@@ -790,6 +883,7 @@ describe("desktop app shell", () => {
 
     expect(markup).toContain("Listening");
     expect(markup).toContain('data-presence-state="listening"');
+    expect(markup).toContain('data-avatar-command="voice.listen"');
     expect(markup).toContain('data-live2d-motion-group="tap_body"');
     expect(markup).toContain('data-live2d-expression="attentive"');
   });
@@ -995,13 +1089,13 @@ describe("desktop app shell", () => {
     expect(markup).toContain("Audio unavailable");
   });
 
-  it("reports unavailable startup audio without throwing when Web Audio is missing", async () => {
+  it("reports unavailable startup audio without throwing when bundled playback is missing", async () => {
     await expect(
-      playComingOnlineSound({ AudioContextConstructor: undefined }),
+      playComingOnlineSound({ AudioElementConstructor: undefined }),
     ).resolves.toEqual({
       ok: false,
       state: "unavailable",
-      message: "This runtime does not expose Web Audio.",
+      message: "This runtime does not expose bundled audio playback.",
     });
   });
 

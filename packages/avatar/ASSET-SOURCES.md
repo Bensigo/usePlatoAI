@@ -22,7 +22,10 @@ Openclipart's FAQ states that its clipart is released under Creative Commons Zer
 - Attribution: Keep the MIT copyright and permission notice with the vendored `.riv` asset.
 - Usage note: This is the first Rive runtime asset that establishes the Rive-backed avatar path. It is not the final bespoke Plato character export.
 
-## Startup Sound Hook
+## Startup Sound
 
-- Local file: `packages/avatar/assets/audio/plato-startup-chime.json`
-- Usage note: The avatar package owns the startup sound API contract; desktop owns app-launch and explicit activation playback.
+- Local file: `packages/avatar/assets/audio/plato-startup-chime.wav`
+- Public runtime copy: `apps/desktop/public/avatar/plato/audio/plato-startup-chime.wav`
+- Source: Generated in-repo for usePlatoAI.
+- Format: 44.1 kHz mono WAV, 960 ms.
+- Usage note: The avatar package owns the startup sound asset and API contract; desktop owns app-launch and explicit activation playback.

@@ -762,6 +762,11 @@ button {
   animation-duration: var(--plato-motion-listening);
 }
 
+.live2d-avatar-surface
+  .live2d-avatar-stage[data-avatar-command="greet.wave"] {
+  animation: avatar-greet-wave 960ms ease-in-out;
+}
+
 .live2d-avatar-surface[data-presence-state="thinking"] .live2d-avatar-stage {
   animation: avatar-thinking-focus 1.24s ease-in-out infinite;
 }
@@ -2276,6 +2281,25 @@ h1 {
 
   62% {
     transform: translateY(-1px) rotate(-1deg);
+  }
+}
+
+@keyframes avatar-greet-wave {
+  0%,
+  100% {
+    transform: translateY(0) rotate(0deg);
+  }
+
+  22% {
+    transform: translateY(-5px) rotate(-4deg);
+  }
+
+  48% {
+    transform: translateY(-2px) rotate(5deg);
+  }
+
+  72% {
+    transform: translateY(-4px) rotate(-3deg);
   }
 }
 
