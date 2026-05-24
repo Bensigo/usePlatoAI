@@ -5,6 +5,7 @@ export const avatarCompanionStates = [
   "startup",
   "greet",
   "idle",
+  "listening",
   "happy",
   "sad",
   "talking",
@@ -17,6 +18,7 @@ export const avatarAnimationCommands = [
   "startup.appear",
   "greet.wave",
   "idle.breathe",
+  "voice.listen",
   "mood.smile",
   "mood.sad",
   "voice.talk",
@@ -171,6 +173,15 @@ const animationByState = {
       isHappy: false,
       isSad: false,
       mouth: 0,
+    },
+  },
+  listening: {
+    command: "voice.listen",
+    animation: vendoredRiveAssetContract.animations.idle,
+    inputs: {
+      isHappy: false,
+      isSad: false,
+      mouth: 0.08,
     },
   },
   happy: {
@@ -352,7 +363,7 @@ export function fallbackRendererFor(reason: AvatarFallbackReason) {
 const presenceToCompanionState = {
   appearing: "startup",
   idle: "idle",
-  listening: "greet",
+  listening: "listening",
   thinking: "idle",
   speaking: "talking",
   waitingApproval: "sad",
