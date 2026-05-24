@@ -709,10 +709,11 @@ button {
 }
 
 .live2d-avatar-surface[data-presence-state="listening"] .live2d-avatar-stage {
-  animation: avatar-greet-wave var(--plato-motion-listening) ease-in-out infinite;
+  animation-duration: var(--plato-motion-listening);
 }
 
-.live2d-avatar-stage[data-avatar-command="greet.wave"] {
+.live2d-avatar-surface
+  .live2d-avatar-stage[data-avatar-command="greet.wave"] {
   animation: avatar-greet-wave 960ms ease-in-out;
 }
 

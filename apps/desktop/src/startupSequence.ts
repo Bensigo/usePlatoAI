@@ -3,6 +3,7 @@ import {
   avatarLaunchSequence,
   avatarStartupSound,
   millisecondsUntilNextAvatarIdleWave,
+  type AvatarCompanionState,
 } from "./avatarSurface";
 import {
   markAudioActivationResult,
@@ -31,6 +32,19 @@ export const startupPresenceTimeline = [
 ] as const satisfies readonly StartupSequenceStep[];
 
 export const startupPresenceReleaseDelayMs = 1680;
+
+export function startupCompanionStateForPresenceState(
+  state: StartupPresenceState,
+): AvatarCompanionState | null {
+  if (state === null) {
+    return null;
+  }
+
+  return (
+    avatarLaunchSequence.find((step) => step.presenceState === state)
+      ?.companionState ?? null
+  );
+}
 
 export function millisecondsUntilNextStartupIdleWave({
   renderedPresenceState,

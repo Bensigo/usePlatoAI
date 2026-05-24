@@ -110,6 +110,7 @@ import {
 import {
   millisecondsUntilNextStartupIdleWave,
   runStartupCompanionSequence,
+  startupCompanionStateForPresenceState,
   startupIdleWaveDurationMs,
   type StartupPresenceState,
 } from "./startupSequence";
@@ -2449,9 +2450,12 @@ export function App({
   });
   const avatarPresenceState = avatarPresenceStateFor(renderedPresenceState);
   const avatarSurfaceHook = getLive2DAvatarSurfaceHook(avatarPresenceState);
+  const startupAvatarCompanionState =
+    startupCompanionStateForPresenceState(startupPresenceState);
   const activeAvatarCompanionState =
     avatarTestCompanionState ??
     avatarReactionCompanionState ??
+    startupAvatarCompanionState ??
     idleWaveCompanionState ??
     undefined;
   const showCenteredChatPanelOpener = shouldShowCenteredChatPanelOpener({

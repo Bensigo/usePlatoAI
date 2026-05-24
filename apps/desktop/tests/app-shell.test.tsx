@@ -118,6 +118,7 @@ import {
   millisecondsUntilNextStartupIdleWave,
   resetStartupSoundReplayGuardForTests,
   runStartupCompanionSequence,
+  startupCompanionStateForPresenceState,
   startupPresenceReleaseDelayMs,
   startupPresenceTimeline,
   startupSoundReplayStorageKey,
@@ -250,6 +251,7 @@ describe("desktop app shell", () => {
         "listening",
         "idle",
       ]);
+      expect(startupCompanionStateForPresenceState("listening")).toBe("greet");
       expect(states).toEqual(["appearing"]);
       expect(playSound).toHaveBeenCalledTimes(1);
       expect(storage.getItem(startupSoundReplayStorageKey)).toBe("true");
@@ -497,6 +499,20 @@ describe("desktop app shell", () => {
     expect(css).toContain("var(--plato-elevation-avatar)");
   });
 
+  it("scopes greet wave animation away from normal listening presence", () => {
+    const css = readFileSync(resolve(__dirname, "../src/styles.css"), "utf8");
+
+    expect(css).toMatch(
+      /\.live2d-avatar-surface\[data-presence-state="listening"\]\s+\.live2d-avatar-stage\s*{[^}]*animation-duration:\s*var\(--plato-motion-listening\);/s,
+    );
+    expect(css).toMatch(
+      /\.live2d-avatar-surface\s+\.live2d-avatar-stage\[data-avatar-command="greet\.wave"\]\s*{[^}]*animation:\s*avatar-greet-wave/s,
+    );
+    expect(css).not.toMatch(
+      /\.live2d-avatar-surface\[data-presence-state="listening"\]\s+\.live2d-avatar-stage\s*{[^}]*avatar-greet-wave/s,
+    );
+  });
+
   it("maps renderer-independent presence states to Live2D surface hooks", () => {
     expect(avatarPresenceStates).toEqual([
       "appearing",
@@ -610,11 +626,14 @@ describe("desktop app shell", () => {
     expect(markup).toContain("plato-avatar-asset");
     expect(markup).toContain('src="/avatar/plato/source/wise-owl-colour.svg"');
     expect(markup).toContain('data-avatar-renderer="rive"');
+    expect(markup).toContain('data-avatar-companion-state="listening"');
+    expect(markup).toContain('data-avatar-command="voice.listen"');
     expect(markup).toContain('data-rive-artboard="Avatar 1"');
     expect(markup).toContain('data-rive-state-machine="avatar"');
-    expect(markup).toContain('data-rive-animation="happy"');
-    expect(markup).toContain('data-rive-input-is-happy="true"');
+    expect(markup).toContain('data-rive-animation="idle"');
+    expect(markup).toContain('data-rive-input-is-happy="false"');
     expect(markup).toContain('data-rive-input-is-sad="false"');
+    expect(markup).not.toContain('data-avatar-command="greet.wave"');
     expect(markup).toContain("live2d-presence-mark");
     expect(markup).toContain("live2d-presence-core");
     expect(markup).toContain("live2d-presence-meter");
@@ -808,6 +827,7 @@ describe("desktop app shell", () => {
 
     expect(markup).toContain("Listening");
     expect(markup).toContain('data-presence-state="listening"');
+    expect(markup).toContain('data-avatar-command="voice.listen"');
     expect(markup).toContain('data-live2d-motion-group="tap_body"');
     expect(markup).toContain('data-live2d-expression="attentive"');
   });
