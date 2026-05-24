@@ -20,9 +20,7 @@ type PresenceAvatarSilhouette = {
 const avatarVisibleSilhouette: PresenceAvatarSilhouette[] = [
   { centerX: 0.5, centerY: 0.16, radiusX: 0.18, radiusY: 0.14 },
   { centerX: 0.2, centerY: 0.14, radiusX: 0.08, radiusY: 0.1 },
-  { centerX: 0.8, centerY: 0.14, radiusX: 0.08, radiusY: 0.1 },
   { centerX: 0.24, centerY: 0.28, radiusX: 0.08, radiusY: 0.2 },
-  { centerX: 0.76, centerY: 0.28, radiusX: 0.08, radiusY: 0.2 },
   { centerX: 0.5, centerY: 0.38, radiusX: 0.21, radiusY: 0.24 },
   { centerX: 0.34, centerY: 0.44, radiusX: 0.1, radiusY: 0.24 },
   { centerX: 0.66, centerY: 0.44, radiusX: 0.1, radiusY: 0.24 },

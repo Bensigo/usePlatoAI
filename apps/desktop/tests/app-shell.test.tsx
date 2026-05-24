@@ -448,8 +448,10 @@ describe("desktop app shell", () => {
     const avatarRect = { left: 0, top: 0, width: 500, height: 690 };
     const transparentCorner = { x: 26, y: 34 };
     const visibleHead = { x: 250, y: 110 };
-    const raisedWaveForearm = { x: 390, y: 195 };
-    const raisedWaveHand = { x: 410, y: 95 };
+    const raisedWaveForearm = { x: 110, y: 195 };
+    const raisedWaveHand = { x: 90, y: 95 };
+    const oppositeTransparentForearm = { x: 390, y: 195 };
+    const oppositeTransparentHand = { x: 410, y: 95 };
 
     expect(
       isPointInsideAvatarVisibleHitArea(visibleHead, avatarRect),
@@ -461,7 +463,20 @@ describe("desktop app shell", () => {
       isPointInsideAvatarVisibleHitArea(raisedWaveHand, avatarRect),
     ).toBe(true);
     expect(
+      isPointInsideAvatarVisibleHitArea(oppositeTransparentForearm, avatarRect),
+    ).toBe(false);
+    expect(
+      isPointInsideAvatarVisibleHitArea(oppositeTransparentHand, avatarRect),
+    ).toBe(false);
+    expect(
       isPointInsideAvatarVisibleHitArea(transparentCorner, avatarRect),
+    ).toBe(false);
+    expect(
+      shouldCapturePresenceCursor({
+        point: oppositeTransparentHand,
+        avatarRect,
+        isPresenceDraggable: false,
+      }),
     ).toBe(false);
     expect(
       shouldCapturePresenceCursor({
