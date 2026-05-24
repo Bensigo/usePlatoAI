@@ -120,6 +120,7 @@ import {
 import {
   hasStartupSoundAttempted,
   millisecondsUntilNextStartupIdleWave,
+  nextStartupIdleWaveIntervalMs,
   resetStartupSoundReplayGuardForTests,
   runStartupCompanionSequence,
   startupCompanionStateForPresenceState,
@@ -333,8 +334,11 @@ describe("desktop app shell", () => {
         renderedPresenceState: "idle",
         nowMs: 10_000,
         lastWaveAtMs: 1_000,
+        scheduledIntervalMs: 78_000,
       }),
-    ).toBe(51_000);
+    ).toBe(69_000);
+    expect(nextStartupIdleWaveIntervalMs({ random: () => 0 })).toBe(60_000);
+    expect(nextStartupIdleWaveIntervalMs({ random: () => 1 })).toBe(120_000);
     expect(
       millisecondsUntilNextStartupIdleWave({
         renderedPresenceState: "focused",

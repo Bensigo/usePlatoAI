@@ -21,6 +21,7 @@ export {
   Live2DAvatarSurface,
   live2dAvatarSurfaceHooks,
   millisecondsUntilNextAvatarIdleWave,
+  nextAvatarIdleWaveIntervalMs,
   vendoredVrmAssetContract,
   vrmCapabilityInventory,
   vroidAvatarSource,

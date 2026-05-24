@@ -445,8 +445,9 @@ export const avatarLaunchSequence = [
 export const avatarIdleWavePolicy = {
   companionState: "greet",
   command: "greet.wave",
-  initialDelayMs: 60_000,
+  initialDelayMs: 90_000,
   minimumIntervalMs: 60_000,
+  maximumIntervalMs: 120_000,
   activeStateBackoffMs: 6_000,
   waveDurationMs: 960,
   pausedPresenceStates: [
@@ -465,14 +466,39 @@ export const avatarIdleWavePolicy = {
   ],
 } as const;
 
+function clampAvatarIdleWaveRandom(value: number) {
+  if (!Number.isFinite(value)) {
+    return 0;
+  }
+
+  return Math.max(0, Math.min(1, value));
+}
+
+export function nextAvatarIdleWaveIntervalMs({
+  random = Math.random,
+}: {
+  random?: () => number;
+} = {}) {
+  const intervalRangeMs =
+    avatarIdleWavePolicy.maximumIntervalMs -
+    avatarIdleWavePolicy.minimumIntervalMs;
+
+  return (
+    avatarIdleWavePolicy.minimumIntervalMs +
+    Math.round(intervalRangeMs * clampAvatarIdleWaveRandom(random()))
+  );
+}
+
 export function millisecondsUntilNextAvatarIdleWave({
   presenceState,
   nowMs,
   lastWaveAtMs,
+  scheduledIntervalMs = avatarIdleWavePolicy.minimumIntervalMs,
 }: {
   presenceState: string;
   nowMs: number;
   lastWaveAtMs: number | null;
+  scheduledIntervalMs?: number;
 }) {
   if (
     avatarIdleWavePolicy.pausedPresenceStates.some(
@@ -488,7 +514,7 @@ export function millisecondsUntilNextAvatarIdleWave({
 
   return Math.max(
     0,
-    avatarIdleWavePolicy.minimumIntervalMs - (nowMs - lastWaveAtMs),
+    scheduledIntervalMs - (nowMs - lastWaveAtMs),
   );
 }
 
