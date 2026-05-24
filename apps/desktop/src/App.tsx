@@ -12,7 +12,10 @@ import {
   type MouseEvent,
   type SetStateAction,
 } from "react";
-import { getCurrentWindow } from "@tauri-apps/api/window";
+import {
+  cursorPosition as getDesktopCursorPosition,
+  getCurrentWindow,
+} from "@tauri-apps/api/window";
 
 import {
   controlSurfaceEntries,
@@ -135,6 +138,29 @@ import {
 
 function isTauriRuntime() {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+}
+
+type AvatarEyeTrackingDesktopPoint = {
+  x: number;
+  y: number;
+};
+
+export function avatarEyeTrackingClientPointFromDesktopCursor({
+  cursorPosition,
+  windowPosition,
+  scaleFactor,
+}: {
+  cursorPosition: AvatarEyeTrackingDesktopPoint;
+  windowPosition: AvatarEyeTrackingDesktopPoint;
+  scaleFactor: number;
+}) {
+  const normalizedScaleFactor =
+    Number.isFinite(scaleFactor) && scaleFactor > 0 ? scaleFactor : 1;
+
+  return {
+    x: (cursorPosition.x - windowPosition.x) / normalizedScaleFactor,
+    y: (cursorPosition.y - windowPosition.y) / normalizedScaleFactor,
+  };
 }
 
 function startPresenceDrag(
@@ -2774,6 +2800,55 @@ export function App({
   useEffect(() => {
     if (typeof window === "undefined") {
       return;
+    }
+
+    if (isTauriRuntime()) {
+      const appWindow = getCurrentWindow();
+      let animationFrame: number | null = null;
+      let isDisposed = false;
+
+      async function pollDesktopCursor() {
+        try {
+          const [cursorPosition, windowPosition, scaleFactor] =
+            await Promise.all([
+              getDesktopCursorPosition(),
+              appWindow.innerPosition(),
+              appWindow.scaleFactor(),
+            ]);
+
+          if (!isDisposed) {
+            const clientPoint = avatarEyeTrackingClientPointFromDesktopCursor({
+              cursorPosition,
+              windowPosition,
+              scaleFactor,
+            });
+
+            trackAvatarEyes(clientPoint.x, clientPoint.y);
+          }
+        } catch {
+          if (!isDisposed) {
+            setAvatarEyeDirection(avatarEyeDirectionNeutral);
+          }
+        }
+
+        if (!isDisposed) {
+          animationFrame = window.requestAnimationFrame(() => {
+            void pollDesktopCursor();
+          });
+        }
+      }
+
+      animationFrame = window.requestAnimationFrame(() => {
+        void pollDesktopCursor();
+      });
+
+      return () => {
+        isDisposed = true;
+
+        if (animationFrame !== null) {
+          window.cancelAnimationFrame(animationFrame);
+        }
+      };
     }
 
     let animationFrame: number | null = null;
