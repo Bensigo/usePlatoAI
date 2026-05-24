@@ -1,5 +1,5 @@
 import { useRive } from "@rive-app/react-canvas";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useState, type CSSProperties } from "react";
 
 export const avatarCompanionStates = [
   "startup",
@@ -54,6 +54,75 @@ export type AvatarPresenceState = (typeof avatarPresenceStates)[number];
 export type AvatarRendererKind = "rive" | "svg";
 export type AvatarFallbackReason = "missing-rive-asset" | "unsupported-runtime";
 export type RiveRuntimeState = "loading" | "ready" | "failed";
+
+export type AvatarEyeDirection = {
+  x: number;
+  y: number;
+};
+
+export type AvatarEyeTrackingBounds = {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+};
+
+export type AvatarEyeTrackingCursor = {
+  cursorX: number;
+  cursorY: number;
+  avatarBounds: AvatarEyeTrackingBounds;
+};
+
+export const avatarEyeDirectionNeutral = {
+  x: 0,
+  y: 0,
+} as const satisfies AvatarEyeDirection;
+
+const avatarEyeDirectionPrecision = 1_000;
+
+function clampAvatarEyeAxis(value: number) {
+  if (!Number.isFinite(value)) {
+    return 0;
+  }
+
+  return Math.max(-1, Math.min(1, value));
+}
+
+function roundAvatarEyeAxis(value: number) {
+  return (
+    Math.round(clampAvatarEyeAxis(value) * avatarEyeDirectionPrecision) /
+    avatarEyeDirectionPrecision
+  );
+}
+
+export function avatarEyeDirectionFromCursor({
+  cursorX,
+  cursorY,
+  avatarBounds,
+}: AvatarEyeTrackingCursor): AvatarEyeDirection {
+  if (avatarBounds.width <= 0 || avatarBounds.height <= 0) {
+    return avatarEyeDirectionNeutral;
+  }
+
+  const eyeCenterX = avatarBounds.left + avatarBounds.width / 2;
+  const eyeCenterY = avatarBounds.top + avatarBounds.height * 0.42;
+  const horizontalReach = Math.max(avatarBounds.width * 0.74, 1);
+  const verticalReach = Math.max(avatarBounds.height * 0.58, 1);
+
+  return {
+    x: roundAvatarEyeAxis((cursorX - eyeCenterX) / horizontalReach),
+    y: roundAvatarEyeAxis((cursorY - eyeCenterY) / verticalReach),
+  };
+}
+
+export function avatarEyeDirectionStyle(
+  direction: AvatarEyeDirection = avatarEyeDirectionNeutral,
+): CSSProperties {
+  return {
+    "--plato-avatar-eye-x": direction.x,
+    "--plato-avatar-eye-y": direction.y,
+  } as CSSProperties;
+}
 
 export type AvatarPackageAsset = {
   packagePath: string;
@@ -499,8 +568,10 @@ function BrowserRiveCanvas({
 
 export function AvatarRenderer({
   companionState,
+  eyeDirection = avatarEyeDirectionNeutral,
 }: {
   companionState: AvatarCompanionState;
+  eyeDirection?: AvatarEyeDirection;
 }) {
   const config = getAvatarRendererConfig(companionState);
   const [runtimeState, setRuntimeState] =
@@ -551,6 +622,21 @@ export function AvatarRenderer({
         hidden={fallbackState === "hidden"}
         data-avatar-fallback-surface="commercial-safe-mascot"
       />
+      <div
+        className="plato-avatar-eye-tracking"
+        data-avatar-eye-tracking="fallback-overlay"
+        data-avatar-eye-x={String(eyeDirection.x)}
+        data-avatar-eye-y={String(eyeDirection.y)}
+        style={avatarEyeDirectionStyle(eyeDirection)}
+        aria-hidden="true"
+      >
+        <span className="plato-avatar-eye plato-avatar-eye-left">
+          <span className="plato-avatar-pupil" />
+        </span>
+        <span className="plato-avatar-eye plato-avatar-eye-right">
+          <span className="plato-avatar-pupil" />
+        </span>
+      </div>
     </div>
   );
 }
@@ -558,9 +644,11 @@ export function AvatarRenderer({
 export function Live2DAvatarSurface({
   presenceState,
   companionStateOverride,
+  eyeDirection = avatarEyeDirectionNeutral,
 }: {
   presenceState: AvatarPresenceState;
   companionStateOverride?: AvatarCompanionState;
+  eyeDirection?: AvatarEyeDirection;
 }) {
   const hook = getLive2DAvatarSurfaceHook(presenceState);
   const rendererConfig = companionStateOverride
@@ -584,7 +672,10 @@ export function Live2DAvatarSurface({
         data-avatar-command={rendererConfig.command}
         aria-hidden="true"
       >
-        <AvatarRenderer companionState={rendererConfig.companionState} />
+        <AvatarRenderer
+          companionState={rendererConfig.companionState}
+          eyeDirection={eyeDirection}
+        />
         <div
           className="live2d-presence-mark"
           data-avatar-fallback-surface="presence-mark"

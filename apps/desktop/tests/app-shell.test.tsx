@@ -42,6 +42,8 @@ import {
   Live2DAvatarSurface,
   avatarCompanionStateFromTestCommand,
   avatarCompanionStateForClickReaction,
+  avatarEyeDirectionFromCursor,
+  avatarEyeDirectionNeutral,
   avatarPresenceStateFrom,
   avatarPresenceStates,
   fallbackRendererFor,
@@ -549,6 +551,35 @@ describe("desktop app shell", () => {
     expect(markup).not.toContain("live2d-avatar-eye");
     expect(markup).not.toContain("live2d-avatar-mouth");
     expect(markup).not.toContain("live2d-avatar-body");
+  });
+
+  it("renders avatar-package eye tracking through a subtle visible fallback overlay", () => {
+    const markup = renderToStaticMarkup(
+      <Live2DAvatarSurface
+        presenceState="idle"
+        eyeDirection={{ x: 0.25, y: -0.5 }}
+      />,
+    );
+    const styles = readFileSync(resolve(__dirname, "../src/styles.css"), "utf8");
+
+    expect(
+      avatarEyeDirectionFromCursor({
+        cursorX: 200,
+        cursorY: 200,
+        avatarBounds: {
+          left: 126,
+          top: 99.2,
+          width: 148,
+          height: 240,
+        },
+      }),
+    ).toEqual(avatarEyeDirectionNeutral);
+    expect(markup).toContain('data-avatar-eye-tracking="fallback-overlay"');
+    expect(markup).toContain('data-avatar-eye-x="0.25"');
+    expect(markup).toContain('data-avatar-eye-y="-0.5"');
+    expect(styles).toContain(".plato-avatar-eye-tracking");
+    expect(styles).toContain("var(--plato-avatar-eye-x, 0) * 4px");
+    expect(styles).toContain("transition: transform 92ms ease-out");
   });
 
   it("keeps avatar renderer fallback behavior explicit and secondary to Rive", () => {

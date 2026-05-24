@@ -1,5 +1,8 @@
 export {
   AvatarRenderer,
+  avatarEyeDirectionFromCursor,
+  avatarEyeDirectionNeutral,
+  avatarEyeDirectionStyle,
   avatarAnimationCommands,
   avatarCompanionStateForClickReaction,
   avatarCompanionStateFromTestCommand,
@@ -17,6 +20,9 @@ export {
   live2dAvatarSurfaceHooks,
   mascotSource,
   type AvatarTestAnimationCommand,
+  type AvatarEyeDirection,
+  type AvatarEyeTrackingBounds,
+  type AvatarEyeTrackingCursor,
   type AvatarCompanionState,
   type AvatarPresenceState,
   type Live2DAvatarSurfaceHook,

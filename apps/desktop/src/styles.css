@@ -552,6 +552,51 @@ button {
   opacity: 0;
 }
 
+.plato-avatar-eye-tracking {
+  position: absolute;
+  left: 25%;
+  top: 23%;
+  z-index: 3;
+  width: 50%;
+  height: 26%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 7%;
+  pointer-events: none;
+  opacity: 0.92;
+}
+
+.plato-avatar-eye {
+  position: relative;
+  width: 31%;
+  aspect-ratio: 1;
+  overflow: hidden;
+  border: 1px solid rgb(15 23 42 / 22%);
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 36% 32%, rgb(255 255 255 / 98%) 0 18%, transparent 19%),
+    rgb(255 255 255 / 94%);
+  box-shadow:
+    inset 0 -1px 3px rgb(15 23 42 / 16%),
+    0 1px 3px rgb(15 23 42 / 12%);
+}
+
+.plato-avatar-pupil {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 45%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: #0f172a;
+  transform: translate(
+    calc(-50% + (var(--plato-avatar-eye-x, 0) * 4px)),
+    calc(-50% + (var(--plato-avatar-eye-y, 0) * 3px))
+  );
+  transition: transform 92ms ease-out;
+}
+
 .plato-rive-avatar[data-rive-runtime-state="failed"] .plato-rive-canvas {
   opacity: 0;
 }
