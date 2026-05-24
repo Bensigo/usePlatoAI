@@ -1,4 +1,9 @@
-import { avatarStartupSound } from "./avatarSurface";
+import {
+  avatarIdleWavePolicy,
+  avatarLaunchSequence,
+  avatarStartupSound,
+  millisecondsUntilNextAvatarIdleWave,
+} from "./avatarSurface";
 import {
   markAudioActivationResult,
   playComingOnlineSound,
@@ -19,12 +24,31 @@ export type StartupSequenceStep = {
 export const startupSoundReplayStorageKey = `useplatoai:${avatarStartupSound.id}:startup-sound-attempted`;
 
 export const startupPresenceTimeline = [
-  { delayMs: 0, state: "appearing" },
-  { delayMs: 560, state: "listening" },
-  { delayMs: 1520, state: "idle" },
+  ...avatarLaunchSequence.map((step) => ({
+    delayMs: step.delayMs,
+    state: step.presenceState as CompanionPresenceState,
+  })),
 ] as const satisfies readonly StartupSequenceStep[];
 
 export const startupPresenceReleaseDelayMs = 1680;
+
+export function millisecondsUntilNextStartupIdleWave({
+  renderedPresenceState,
+  nowMs,
+  lastWaveAtMs,
+}: {
+  renderedPresenceState: string;
+  nowMs: number;
+  lastWaveAtMs: number | null;
+}) {
+  return millisecondsUntilNextAvatarIdleWave({
+    presenceState: renderedPresenceState,
+    nowMs,
+    lastWaveAtMs,
+  });
+}
+
+export const startupIdleWaveDurationMs = avatarIdleWavePolicy.waveDurationMs;
 
 let startupSoundAttemptedInRuntime = false;
 

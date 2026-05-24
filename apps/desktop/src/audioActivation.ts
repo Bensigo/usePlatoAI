@@ -1,3 +1,5 @@
+import { avatarStartupSound } from "./avatarSurface";
+
 export type AudioActivationState =
   | "inactive"
   | "muted"
@@ -27,6 +29,16 @@ export type AudioContextLike = {
 };
 
 export type AudioContextConstructorLike = new () => AudioContextLike;
+
+export type AudioElementLike = {
+  preload: string;
+  volume: number;
+  currentTime: number;
+  play: () => Promise<void>;
+  pause: () => void;
+};
+
+export type AudioElementConstructorLike = new (src?: string) => AudioElementLike;
 
 export const audioActivationStates = [
   "muted",
@@ -174,54 +186,50 @@ export function browserAudioContextConstructor():
   );
 }
 
+export function browserAudioElementConstructor():
+  | AudioElementConstructorLike
+  | undefined {
+  if (typeof window === "undefined") {
+    return undefined;
+  }
+
+  return window.Audio;
+}
+
 export async function playComingOnlineSound({
-  AudioContextConstructor = browserAudioContextConstructor(),
-  durationMs = 220,
+  AudioElementConstructor = browserAudioElementConstructor(),
+  sound = avatarStartupSound,
+  setTimeoutFn = globalThis.setTimeout,
 }: {
-  AudioContextConstructor?: AudioContextConstructorLike;
-  durationMs?: number;
+  AudioElementConstructor?: AudioElementConstructorLike;
+  sound?: typeof avatarStartupSound;
+  setTimeoutFn?: (callback: () => void, delayMs: number) => unknown;
 } = {}): Promise<ComingOnlineSoundResult> {
-  if (!AudioContextConstructor) {
+  if (!AudioElementConstructor) {
     return {
       ok: false,
       state: "unavailable",
-      message: "This runtime does not expose Web Audio.",
+      message: "This runtime does not expose bundled audio playback.",
     };
   }
 
-  let context: AudioContextLike | undefined;
+  let audio: AudioElementLike | undefined;
 
   try {
-    context = new AudioContextConstructor();
-    await context.resume?.();
+    audio = new AudioElementConstructor(sound.publicPath);
+    audio.preload = "auto";
+    audio.volume = 0.42;
 
-    const oscillator = context.createOscillator();
-    const gain = context.createGain();
-    const start = context.currentTime;
-    const durationSeconds = durationMs / 1000;
+    await audio.play();
 
-    oscillator.type = "sine";
-    oscillator.frequency.setValueAtTime(392, start);
-    oscillator.frequency.exponentialRampToValueAtTime(
-      523.25,
-      start + durationSeconds,
-    );
-    gain.gain.setValueAtTime(0.0001, start);
-    gain.gain.exponentialRampToValueAtTime(0.075, start + 0.035);
-    gain.gain.exponentialRampToValueAtTime(0.0001, start + durationSeconds);
-
-    oscillator.connect(gain);
-    gain.connect(context.destination);
-    oscillator.start(start);
-    oscillator.stop(start + durationSeconds);
-
-    globalThis.setTimeout(() => {
-      void context?.close?.();
-    }, durationMs + 80);
+    setTimeoutFn(() => {
+      audio?.pause();
+      audio = undefined;
+    }, sound.durationMs + 80);
 
     return { ok: true };
   } catch (error) {
-    await context?.close?.().catch(() => undefined);
+    audio?.pause();
 
     return {
       ok: false,

@@ -8,10 +8,13 @@ import {
   AvatarRenderer,
   avatarAnimationCommands,
   avatarCompanionStates,
+  avatarIdleWavePolicy,
+  avatarLaunchSequence,
   avatarPackageAssets,
   avatarStartupSound,
   fallbackRendererFor,
   getAvatarRendererConfig,
+  millisecondsUntilNextAvatarIdleWave,
   mascotSource,
   vendoredRiveAssetContract,
 } from "../src";
@@ -133,10 +136,72 @@ describe("avatar package contract", () => {
   it("represents startup sound ownership in the avatar package API", () => {
     expect(avatarStartupSound).toEqual({
       id: "plato-startup-chime",
-      packagePath: "packages/avatar/assets/audio/plato-startup-chime.json",
-      publicPath: "/avatar/plato/audio/plato-startup-chime.json",
+      packagePath: "packages/avatar/assets/audio/plato-startup-chime.wav",
+      publicPath: "/avatar/plato/audio/plato-startup-chime.wav",
       playback: "app-launch-or-activation",
+      durationMs: 960,
+      format: "audio/wav",
+      source: "generated-useplatoai",
     });
+  });
+
+  it("owns the launch wave sequence through avatar product commands", () => {
+    expect(avatarLaunchSequence).toEqual([
+      {
+        delayMs: 0,
+        presenceState: "appearing",
+        companionState: "startup",
+        command: "startup.appear",
+      },
+      {
+        delayMs: 560,
+        presenceState: "listening",
+        companionState: "greet",
+        command: "greet.wave",
+      },
+      {
+        delayMs: 1520,
+        presenceState: "idle",
+        companionState: "idle",
+        command: "idle.breathe",
+      },
+    ]);
+  });
+
+  it("defines a rate-limited idle wave policy that backs off outside idle", () => {
+    expect(avatarIdleWavePolicy).toMatchObject({
+      companionState: "greet",
+      command: "greet.wave",
+      initialDelayMs: 8_500,
+      minimumIntervalMs: 18_000,
+      activeStateBackoffMs: 6_000,
+      waveDurationMs: 960,
+    });
+    expect(avatarIdleWavePolicy.pausedPresenceStates).toContain("focused");
+    expect(avatarIdleWavePolicy.pausedPresenceStates).toContain("sleeping");
+    expect(avatarIdleWavePolicy.pausedPresenceStates).toContain("task_running");
+
+    expect(
+      millisecondsUntilNextAvatarIdleWave({
+        presenceState: "idle",
+        nowMs: 1_000,
+        lastWaveAtMs: null,
+      }),
+    ).toBe(avatarIdleWavePolicy.initialDelayMs);
+    expect(
+      millisecondsUntilNextAvatarIdleWave({
+        presenceState: "idle",
+        nowMs: 10_000,
+        lastWaveAtMs: 1_000,
+      }),
+    ).toBe(9_000);
+    expect(
+      millisecondsUntilNextAvatarIdleWave({
+        presenceState: "focused",
+        nowMs: 10_000,
+        lastWaveAtMs: 1_000,
+      }),
+    ).toBe(avatarIdleWavePolicy.activeStateBackoffMs);
   });
 
   it("renders a Rive-backed React entrypoint with the sourced mascot fallback", () => {

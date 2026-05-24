@@ -709,7 +709,11 @@ button {
 }
 
 .live2d-avatar-surface[data-presence-state="listening"] .live2d-avatar-stage {
-  animation-duration: var(--plato-motion-listening);
+  animation: avatar-greet-wave var(--plato-motion-listening) ease-in-out infinite;
+}
+
+.live2d-avatar-stage[data-avatar-command="greet.wave"] {
+  animation: avatar-greet-wave 960ms ease-in-out;
 }
 
 .live2d-avatar-surface[data-presence-state="thinking"] .live2d-avatar-stage {
@@ -2226,6 +2230,25 @@ h1 {
 
   62% {
     transform: translateY(-1px) rotate(-1deg);
+  }
+}
+
+@keyframes avatar-greet-wave {
+  0%,
+  100% {
+    transform: translateY(0) rotate(0deg);
+  }
+
+  22% {
+    transform: translateY(-5px) rotate(-4deg);
+  }
+
+  48% {
+    transform: translateY(-2px) rotate(5deg);
+  }
+
+  72% {
+    transform: translateY(-4px) rotate(-3deg);
   }
 }
 

@@ -23,6 +23,7 @@ import {
   Live2DAvatarSurface,
   avatarCompanionStateForClickReaction,
   avatarCompanionStateFromTestCommand,
+  avatarIdleWavePolicy,
   getLive2DAvatarSurfaceHook,
   isAvatarPresenceState,
   type AvatarCompanionState,
@@ -107,7 +108,9 @@ import {
   type VoiceSessionState,
 } from "./voiceInteraction";
 import {
+  millisecondsUntilNextStartupIdleWave,
   runStartupCompanionSequence,
+  startupIdleWaveDurationMs,
   type StartupPresenceState,
 } from "./startupSequence";
 import { experienceTokenCss } from "./experienceTokens";
@@ -1859,6 +1862,9 @@ export function App({
     useState<AvatarCompanionState | null>(() =>
       avatarCompanionStateFromTestCommand(initialAvatarTestCommand),
     );
+  const [idleWaveCompanionState, setIdleWaveCompanionState] =
+    useState<AvatarCompanionState | null>(null);
+  const [idleWaveCycle, setIdleWaveCycle] = useState(0);
   const [settings, setSettings] = useState<CompanionSettings>(
     () => initialSettings ?? defaultCompanionSettings,
   );
@@ -1899,6 +1905,8 @@ export function App({
   const avatarReactionTimer = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
+  const idleWaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastIdleWaveAtMs = useRef<number | null>(null);
   const presenceDragIdleTimer = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
@@ -1925,6 +1933,13 @@ export function App({
     if (presenceDragIdleTimer.current) {
       clearTimeout(presenceDragIdleTimer.current);
       presenceDragIdleTimer.current = null;
+    }
+  }, []);
+
+  const clearIdleWaveTimer = useCallback(() => {
+    if (idleWaveTimer.current) {
+      clearTimeout(idleWaveTimer.current);
+      idleWaveTimer.current = null;
     }
   }, []);
 
@@ -2435,7 +2450,10 @@ export function App({
   const avatarPresenceState = avatarPresenceStateFor(renderedPresenceState);
   const avatarSurfaceHook = getLive2DAvatarSurfaceHook(avatarPresenceState);
   const activeAvatarCompanionState =
-    avatarTestCompanionState ?? avatarReactionCompanionState ?? undefined;
+    avatarTestCompanionState ??
+    avatarReactionCompanionState ??
+    idleWaveCompanionState ??
+    undefined;
   const showCenteredChatPanelOpener = shouldShowCenteredChatPanelOpener({
     voiceInteractionSessionState: voiceInteraction.sessionState,
     currentTaskState: taskAwarePresence,
@@ -2616,6 +2634,59 @@ export function App({
   }, [isSettingsLoaded, settings.onboardingComplete]);
 
   useEffect(() => {
+    clearIdleWaveTimer();
+
+    if (
+      !isSettingsLoaded ||
+      !settings.onboardingComplete ||
+      startupPresenceState !== null ||
+      avatarTestCompanionState !== null ||
+      avatarReactionCompanionState !== null
+    ) {
+      setIdleWaveCompanionState(null);
+      return;
+    }
+
+    const delayMs = millisecondsUntilNextStartupIdleWave({
+      renderedPresenceState,
+      nowMs: Date.now(),
+      lastWaveAtMs: lastIdleWaveAtMs.current,
+    });
+    const isIdleWavePaused =
+      avatarIdleWavePolicy.pausedPresenceStates.some(
+        (pausedPresenceState) => pausedPresenceState === renderedPresenceState,
+      );
+
+    idleWaveTimer.current = setTimeout(() => {
+      if (isIdleWavePaused) {
+        setIdleWaveCycle((cycle) => cycle + 1);
+        idleWaveTimer.current = null;
+        return;
+      }
+
+      lastIdleWaveAtMs.current = Date.now();
+      setIdleWaveCompanionState(avatarIdleWavePolicy.companionState);
+
+      idleWaveTimer.current = setTimeout(() => {
+        setIdleWaveCompanionState(null);
+        setIdleWaveCycle((cycle) => cycle + 1);
+        idleWaveTimer.current = null;
+      }, startupIdleWaveDurationMs);
+    }, delayMs);
+
+    return clearIdleWaveTimer;
+  }, [
+    avatarReactionCompanionState,
+    avatarTestCompanionState,
+    clearIdleWaveTimer,
+    idleWaveCycle,
+    isSettingsLoaded,
+    renderedPresenceState,
+    settings.onboardingComplete,
+    startupPresenceState,
+  ]);
+
+  useEffect(() => {
     if (typeof window === "undefined" || !("__TAURI_INTERNALS__" in window)) {
       return;
     }
@@ -2682,10 +2753,11 @@ export function App({
         clearTimeout(avatarReactionTimer.current);
       }
 
+      clearIdleWaveTimer();
       clearPresenceDragIdleTimer();
       clearTaskTimers();
     },
-    [clearPresenceDragIdleTimer],
+    [clearIdleWaveTimer, clearPresenceDragIdleTimer],
   );
 
   async function completeOnboarding(updatedSettings: CompanionSettings) {

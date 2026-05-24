@@ -40,6 +40,8 @@ import {
 } from "../src/audioActivation";
 import {
   Live2DAvatarSurface,
+  avatarIdleWavePolicy,
+  avatarStartupSound,
   avatarCompanionStateFromTestCommand,
   avatarCompanionStateForClickReaction,
   avatarPresenceStateFrom,
@@ -113,6 +115,7 @@ import {
 } from "../src/experienceTokens";
 import {
   hasStartupSoundAttempted,
+  millisecondsUntilNextStartupIdleWave,
   resetStartupSoundReplayGuardForTests,
   runStartupCompanionSequence,
   startupPresenceReleaseDelayMs,
@@ -269,6 +272,77 @@ describe("desktop app shell", () => {
       resetStartupSoundReplayGuardForTests();
       vi.useRealTimers();
     }
+  });
+
+  it("plays the avatar-owned bundled startup sound asset", async () => {
+    const audioInstances: Array<{
+      src: string;
+      preload: string;
+      volume: number;
+      play: ReturnType<typeof vi.fn>;
+      pause: ReturnType<typeof vi.fn>;
+    }> = [];
+
+    class MockAudioElement {
+      src: string;
+      preload = "";
+      volume = 1;
+      currentTime = 0;
+      play = vi.fn().mockResolvedValue(undefined);
+      pause = vi.fn();
+
+      constructor(src?: string) {
+        this.src = src ?? "";
+        audioInstances.push(this);
+      }
+    }
+
+    const result = await playComingOnlineSound({
+      AudioElementConstructor: MockAudioElement,
+      setTimeoutFn: (callback: () => void) => {
+        callback();
+        return 0;
+      },
+    });
+
+    expect(result).toEqual({ ok: true });
+    expect(audioInstances).toHaveLength(1);
+    expect(audioInstances[0].src).toBe(avatarStartupSound.publicPath);
+    expect(audioInstances[0].preload).toBe("auto");
+    expect(audioInstances[0].volume).toBeLessThan(0.5);
+    expect(audioInstances[0].play).toHaveBeenCalledTimes(1);
+    expect(audioInstances[0].pause).toHaveBeenCalledTimes(1);
+  });
+
+  it("rate-limits occasional idle waves and backs off during active states", () => {
+    expect(
+      millisecondsUntilNextStartupIdleWave({
+        renderedPresenceState: "idle",
+        nowMs: 1_000,
+        lastWaveAtMs: null,
+      }),
+    ).toBe(avatarIdleWavePolicy.initialDelayMs);
+    expect(
+      millisecondsUntilNextStartupIdleWave({
+        renderedPresenceState: "idle",
+        nowMs: 10_000,
+        lastWaveAtMs: 1_000,
+      }),
+    ).toBe(9_000);
+    expect(
+      millisecondsUntilNextStartupIdleWave({
+        renderedPresenceState: "focused",
+        nowMs: 10_000,
+        lastWaveAtMs: 1_000,
+      }),
+    ).toBe(avatarIdleWavePolicy.activeStateBackoffMs);
+    expect(
+      millisecondsUntilNextStartupIdleWave({
+        renderedPresenceState: "task_running",
+        nowMs: 25_000,
+        lastWaveAtMs: 1_000,
+      }),
+    ).toBe(avatarIdleWavePolicy.activeStateBackoffMs);
   });
 
   it("prevents startup sound replay across renderer remounts", async () => {
@@ -939,13 +1013,13 @@ describe("desktop app shell", () => {
     expect(markup).toContain("Audio unavailable");
   });
 
-  it("reports unavailable startup audio without throwing when Web Audio is missing", async () => {
+  it("reports unavailable startup audio without throwing when bundled playback is missing", async () => {
     await expect(
-      playComingOnlineSound({ AudioContextConstructor: undefined }),
+      playComingOnlineSound({ AudioElementConstructor: undefined }),
     ).resolves.toEqual({
       ok: false,
       state: "unavailable",
-      message: "This runtime does not expose Web Audio.",
+      message: "This runtime does not expose bundled audio playback.",
     });
   });
 
