@@ -537,7 +537,12 @@ describe("desktop app shell", () => {
     expect(markup).toContain("<svg");
     expect(markup).toContain("plato-wise-owl");
     expect(markup).toContain("plato-avatar-asset");
-    expect(markup).toContain('data-avatar-eye-tracking="source-svg-pupils"');
+    expect(markup).toContain('data-avatar-eye-tracking="rive-matched-pupils"');
+    expect(markup).toContain("plato-rive-eye-tracking-overlay");
+    expect(markup).toContain("plato-rive-eye-pupil-left");
+    expect(markup).toContain("plato-rive-eye-pupil-right");
+    expect(markup).toContain('data-avatar-eye-tracking="fallback-svg-pupils"');
+    expect(markup).not.toContain('data-avatar-eye-tracking="source-svg-pupils"');
     expect(markup).toContain('data-avatar-renderer="rive"');
     expect(markup).toContain('data-rive-artboard="Avatar 1"');
     expect(markup).toContain('data-rive-state-machine="avatar"');
@@ -554,7 +559,7 @@ describe("desktop app shell", () => {
     expect(markup).not.toContain("live2d-avatar-body");
   });
 
-  it("renders avatar-package eye tracking through the source avatar pupils without overlay eyes", () => {
+  it("renders avatar-package eye tracking through Rive-matched pupils without source overlay eyes", () => {
     const markup = renderToStaticMarkup(
       <Live2DAvatarSurface
         presenceState="idle"
@@ -575,15 +580,18 @@ describe("desktop app shell", () => {
         },
       }),
     ).toEqual(avatarEyeDirectionNeutral);
-    expect(markup).toContain('data-avatar-eye-tracking="source-svg-pupils"');
+    expect(markup).toContain('data-avatar-eye-tracking="rive-matched-pupils"');
+    expect(markup).toContain('data-rive-eye-surface="Avatar 1"');
     expect(markup).toContain('data-avatar-eye-x="0.25"');
     expect(markup).toContain('data-avatar-eye-y="-0.5"');
+    expect(markup).not.toContain('data-avatar-eye-tracking="source-svg-pupils"');
     expect(markup).not.toContain('data-avatar-eye-tracking="fallback-overlay"');
     expect(markup).not.toContain("plato-avatar-eye-left");
     expect(markup).not.toContain("plato-avatar-eye-right");
     expect(styles).not.toContain(".plato-avatar-eye-tracking");
-    expect(styles).toContain(".plato-wise-owl-pupil");
-    expect(styles).toContain("var(--plato-avatar-eye-x, 0) * 6px");
+    expect(styles).toContain(".plato-rive-eye-tracking-overlay");
+    expect(styles).toContain(".plato-rive-eye-pupil");
+    expect(styles).toContain("var(--plato-avatar-eye-x, 0) * 5px");
     expect(styles).toContain("transition: transform 92ms ease-out");
   });
 
@@ -602,14 +610,23 @@ describe("desktop app shell", () => {
     });
   });
 
-  it("uses the source SVG pupil surface instead of showing a separate eye overlay", () => {
+  it("hides the source SVG once Rive is ready and shows only Rive-matched tracking pupils", () => {
     const styles = readFileSync(resolve(__dirname, "../src/styles.css"), "utf8");
 
     expect(styles).not.toContain("opacity: 0.001");
     expect(styles).toContain(".plato-rive-canvas");
     expect(styles).toContain(".plato-avatar-source-svg-asset");
-    expect(styles).toContain(
-      '.plato-rive-avatar[data-avatar-eye-tracking="source-svg-pupils"]',
+    expect(styles).not.toMatch(
+      /data-avatar-eye-tracking="source-svg-pupils"[\s\S]{0,120}\.plato-rive-canvas[\s\S]{0,80}opacity:\s*0/,
+    );
+    expect(styles).toMatch(
+      /\.plato-rive-avatar\[data-rive-runtime-state="ready"\]\s+\.plato-avatar-source-svg-asset\s*{[^}]*opacity:\s*0;/s,
+    );
+    expect(styles).toMatch(
+      /\.plato-rive-avatar\[data-rive-runtime-state="ready"\]\s+\.plato-rive-eye-tracking-overlay\s*{[^}]*opacity:\s*1;/s,
+    );
+    expect(styles).not.toContain(
+      '.plato-rive-avatar[data-rive-runtime-state="ready"] .plato-avatar-source-svg-asset path',
     );
     expect(styles).toContain(
       '.plato-rive-avatar[data-rive-runtime-state="failed"] .plato-rive-canvas',
