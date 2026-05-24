@@ -24,6 +24,7 @@ enum PresencePlacementSource {
     Default,
     Saved,
     Clamped,
+    Followed,
 }
 
 #[derive(Debug, Clone)]
@@ -82,6 +83,36 @@ pub fn configure_floating_presence_window(
     Ok(())
 }
 
+pub fn follow_presence_window_to_active_display(
+    window: &WebviewWindow,
+    saved_position: Option<PresenceWindowPosition>,
+) -> tauri::Result<Option<PresenceWindowPosition>> {
+    reinforce_presence_window_layer(window)?;
+
+    let Some(placement) = placement_for_window(window, saved_position)? else {
+        return Ok(None);
+    };
+
+    let current_position = window.outer_position().ok();
+    let should_move = current_position
+        .as_ref()
+        .map(|position| position.x != placement.x || position.y != placement.y)
+        .unwrap_or(true);
+
+    if should_move {
+        window.set_position(Position::Physical(PhysicalPosition {
+            x: placement.x,
+            y: placement.y,
+        }))?;
+    }
+
+    Ok(Some(PresenceWindowPosition {
+        x: placement.x,
+        y: placement.y,
+        display_id: placement.display_id,
+    }))
+}
+
 pub fn reinforce_presence_window_layer(window: &WebviewWindow) -> tauri::Result<()> {
     window.set_always_on_top(true)?;
     Ok(())
@@ -105,9 +136,7 @@ fn placement_for_window(
     saved_position: Option<PresenceWindowPosition>,
 ) -> tauri::Result<Option<PresencePlacement>> {
     let displays = presence_displays(window)?;
-    let current_display = window
-        .current_monitor()?
-        .map(|monitor| presence_display_for_monitor(&monitor));
+    let active_display = active_presence_display(window)?;
     let primary_display = window
         .primary_monitor()?
         .map(|monitor| presence_display_for_monitor(&monitor));
@@ -115,10 +144,27 @@ fn placement_for_window(
     Ok(resolve_presence_placement(
         saved_position,
         &displays,
-        current_display.as_ref(),
+        active_display.as_ref(),
         primary_display.as_ref(),
         window.outer_size()?,
     ))
+}
+
+fn active_presence_display(window: &WebviewWindow) -> tauri::Result<Option<PresenceDisplay>> {
+    let cursor_display = window
+        .cursor_position()
+        .ok()
+        .and_then(|position| window.monitor_from_point(position.x, position.y).ok())
+        .flatten()
+        .map(|monitor| presence_display_for_monitor(&monitor));
+
+    if cursor_display.is_some() {
+        return Ok(cursor_display);
+    }
+
+    window
+        .current_monitor()
+        .map(|monitor| monitor.map(|monitor| presence_display_for_monitor(&monitor)))
 }
 
 fn presence_displays(window: &WebviewWindow) -> tauri::Result<Vec<PresenceDisplay>> {
@@ -169,8 +215,31 @@ fn resolve_presence_placement(
                 .display_id
                 .as_deref()
                 .and_then(|display_id| display_by_unique_id(displays, Some(display_id)))
-        })
-        .unwrap_or(default_display);
+        });
+
+    let Some(saved_display) = saved_display else {
+        let mut placement = default_presence_placement(default_display.work_area, window_size);
+        placement.display_id = default_display.id.clone();
+        placement.source = PresencePlacementSource::Clamped;
+        return Some(placement);
+    };
+
+    if active_display.is_some_and(|display| !same_display(display, saved_display)) {
+        let (x, y) = project_position_between_displays(
+            &saved_position,
+            saved_display,
+            default_display,
+            window_size,
+        );
+
+        return Some(PresencePlacement {
+            x,
+            y,
+            anchor: PresenceAnchor::BottomRight,
+            display_id: default_display.id.clone(),
+            source: PresencePlacementSource::Followed,
+        });
+    }
 
     let (x, y) = clamp_position_to_display(
         PhysicalPosition {
@@ -193,6 +262,77 @@ fn resolve_presence_placement(
         display_id: saved_display.id.clone(),
         source,
     })
+}
+
+fn same_display(left: &PresenceDisplay, right: &PresenceDisplay) -> bool {
+    left.id == right.id
+        && left.work_area.position.x == right.work_area.position.x
+        && left.work_area.position.y == right.work_area.position.y
+        && left.work_area.size.width == right.work_area.size.width
+        && left.work_area.size.height == right.work_area.size.height
+}
+
+fn project_position_between_displays(
+    position: &PresenceWindowPosition,
+    source_display: &PresenceDisplay,
+    target_display: &PresenceDisplay,
+    window_size: PhysicalSize<u32>,
+) -> (i32, i32) {
+    let (source_x, source_y) = clamp_position_to_display(
+        PhysicalPosition {
+            x: position.x,
+            y: position.y,
+        },
+        source_display.work_area,
+        window_size,
+    );
+
+    (
+        project_axis_position(
+            source_x,
+            source_display.work_area.position.x + PRESENCE_MARGIN,
+            source_display.work_area.position.x + source_display.work_area.size.width as i32
+                - window_size.width as i32
+                - PRESENCE_MARGIN,
+            target_display.work_area.position.x + PRESENCE_MARGIN,
+            target_display.work_area.position.x + target_display.work_area.size.width as i32
+                - window_size.width as i32
+                - PRESENCE_MARGIN,
+        ),
+        project_axis_position(
+            source_y,
+            source_display.work_area.position.y + PRESENCE_MARGIN,
+            source_display.work_area.position.y + source_display.work_area.size.height as i32
+                - window_size.height as i32
+                - PRESENCE_MARGIN,
+            target_display.work_area.position.y + PRESENCE_MARGIN,
+            target_display.work_area.position.y + target_display.work_area.size.height as i32
+                - window_size.height as i32
+                - PRESENCE_MARGIN,
+        ),
+    )
+}
+
+fn project_axis_position(
+    value: i32,
+    source_min: i32,
+    source_max: i32,
+    target_min: i32,
+    target_max: i32,
+) -> i32 {
+    let source_max = source_max.max(source_min);
+    let target_max = target_max.max(target_min);
+
+    if source_max == source_min {
+        return target_min;
+    }
+
+    let ratio = (value - source_min) as f64 / (source_max - source_min) as f64;
+    let projected = target_min as f64 + ratio * (target_max - target_min) as f64;
+
+    projected
+        .round()
+        .clamp(target_min as f64, target_max as f64) as i32
 }
 
 fn display_by_unique_id<'a>(
@@ -401,9 +541,9 @@ mod tests {
     }
 
     #[test]
-    fn keeps_saved_position_on_matching_display_when_visible() {
+    fn keeps_saved_position_on_active_display_when_visible() {
         let placement = resolve_presence_placement(
-            Some(saved_position(1620, 520, Some("sidecar"))),
+            Some(saved_position(420, 520, Some("built-in"))),
             &[
                 display("built-in", 0, 25, 1440, 875),
                 display("sidecar", 1440, 0, 1280, 900),
@@ -414,14 +554,54 @@ mod tests {
         )
         .expect("saved placement");
 
-        assert_eq!(placement.x, 1620);
+        assert_eq!(placement.x, 420);
         assert_eq!(placement.y, 520);
-        assert_eq!(placement.display_id.as_deref(), Some("sidecar"));
+        assert_eq!(placement.display_id.as_deref(), Some("built-in"));
         assert_eq!(placement.source, PresencePlacementSource::Saved);
     }
 
     #[test]
-    fn clamps_saved_position_to_matching_display_when_offscreen() {
+    fn follows_active_display_by_projecting_user_placement() {
+        let placement = resolve_presence_placement(
+            Some(saved_position(1620, 520, Some("sidecar"))),
+            &[
+                display("built-in", 0, 25, 1440, 875),
+                display("sidecar", 1440, 0, 1280, 900),
+            ],
+            Some(&display("built-in", 0, 25, 1440, 875)),
+            Some(&display("built-in", 0, 25, 1440, 875)),
+            window_size(260, 280),
+        )
+        .expect("followed placement");
+
+        assert_eq!(placement.x, 206);
+        assert_eq!(placement.y, 524);
+        assert_eq!(placement.display_id.as_deref(), Some("built-in"));
+        assert_eq!(placement.source, PresencePlacementSource::Followed);
+    }
+
+    #[test]
+    fn follows_active_display_from_bottom_right_saved_position_without_losing_anchor() {
+        let placement = resolve_presence_placement(
+            Some(saved_position(1162, 602, Some("built-in"))),
+            &[
+                display("built-in", 0, 25, 1440, 875),
+                display("sidecar", 1440, 0, 1280, 900),
+            ],
+            Some(&display("sidecar", 1440, 0, 1280, 900)),
+            Some(&display("built-in", 0, 25, 1440, 875)),
+            window_size(260, 280),
+        )
+        .expect("followed bottom-right placement");
+
+        assert_eq!(placement.x, 2442);
+        assert_eq!(placement.y, 602);
+        assert_eq!(placement.display_id.as_deref(), Some("sidecar"));
+        assert_eq!(placement.source, PresencePlacementSource::Followed);
+    }
+
+    #[test]
+    fn clamps_saved_position_before_following_active_display() {
         let placement = resolve_presence_placement(
             Some(saved_position(4000, -200, Some("sidecar"))),
             &[
@@ -434,10 +614,10 @@ mod tests {
         )
         .expect("clamped placement");
 
-        assert_eq!(placement.x, 2442);
-        assert_eq!(placement.y, 18);
-        assert_eq!(placement.display_id.as_deref(), Some("sidecar"));
-        assert_eq!(placement.source, PresencePlacementSource::Clamped);
+        assert_eq!(placement.x, 1162);
+        assert_eq!(placement.y, 43);
+        assert_eq!(placement.display_id.as_deref(), Some("built-in"));
+        assert_eq!(placement.source, PresencePlacementSource::Followed);
     }
 
     #[test]
@@ -452,7 +632,7 @@ mod tests {
         .expect("fallback placement");
 
         assert_eq!(placement.x, 1162);
-        assert_eq!(placement.y, 520);
+        assert_eq!(placement.y, 602);
         assert_eq!(placement.display_id.as_deref(), Some("built-in"));
         assert_eq!(placement.source, PresencePlacementSource::Clamped);
     }
@@ -465,7 +645,7 @@ mod tests {
                 display("built-in", 0, 25, 1440, 875),
                 display("sidecar", 1440, 0, 1280, 900),
             ],
-            Some(&display("built-in", 0, 25, 1440, 875)),
+            Some(&display("sidecar", 1440, 0, 1280, 900)),
             Some(&display("built-in", 0, 25, 1440, 875)),
             window_size(260, 280),
         )
@@ -513,7 +693,7 @@ mod tests {
         .expect("fallback placement");
 
         assert_eq!(placement.x, 1162);
-        assert_eq!(placement.y, 520);
+        assert_eq!(placement.y, 602);
         assert_eq!(placement.display_id.as_deref(), Some("built-in"));
         assert_eq!(placement.source, PresencePlacementSource::Clamped);
     }

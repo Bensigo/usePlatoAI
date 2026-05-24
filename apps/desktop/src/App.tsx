@@ -37,6 +37,7 @@ import {
 } from "./presenceState";
 import {
   createTauriPresencePositionStore,
+  followPresenceWindowToActiveDisplay,
   normalizePresenceWindowPosition,
   presenceDragIdleTimeoutMs,
   presenceDragModeAfterDoubleClick,
@@ -149,6 +150,14 @@ async function reinforcePresenceWindowLayer() {
 
   const { invoke } = await import("@tauri-apps/api/core");
   await invoke("reinforce_presence_window_layer");
+}
+
+async function syncPresenceWindowWithActiveDisplay() {
+  if (!isTauriRuntime()) {
+    return;
+  }
+
+  await followPresenceWindowToActiveDisplay();
 }
 
 function usePresenceState(source: PresenceStateSource) {
@@ -2586,7 +2595,7 @@ export function App({
 
     getCurrentWindow()
       .onFocusChanged(() => {
-        void reinforcePresenceWindowLayer();
+        void syncPresenceWindowWithActiveDisplay();
       })
       .then((unlisten) => {
         if (isCurrent) {
@@ -2603,6 +2612,21 @@ export function App({
       dispose?.();
     };
   }, []);
+
+  useEffect(() => {
+    if (!isTauriRuntime() || isPresenceDraggable) {
+      return;
+    }
+
+    void syncPresenceWindowWithActiveDisplay();
+    const activeDisplayFollowTimer = window.setInterval(() => {
+      void syncPresenceWindowWithActiveDisplay();
+    }, 1_200);
+
+    return () => {
+      window.clearInterval(activeDisplayFollowTimer);
+    };
+  }, [isPresenceDraggable]);
 
   useEffect(() => {
     if (!isSettingsLoaded || !settings.onboardingComplete) {
