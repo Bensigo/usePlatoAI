@@ -546,63 +546,68 @@ button {
   opacity: 1;
 }
 
-.plato-avatar-fallback-asset {
+.plato-avatar-source-svg-asset {
+  position: absolute;
+  inset: 0;
   max-width: 100%;
   max-height: 100%;
+  opacity: 1;
+  z-index: 2;
+}
+
+.plato-rive-avatar[data-rive-runtime-state="ready"] .plato-avatar-source-svg-asset {
   opacity: 0;
 }
 
-.plato-avatar-eye-tracking {
+.plato-rive-eye-tracking-overlay {
   position: absolute;
-  left: 25%;
-  top: 23%;
+  inset: 0;
   z-index: 3;
-  width: 50%;
-  height: 26%;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 7%;
+  opacity: 0;
   pointer-events: none;
-  opacity: 0.92;
+  transition: opacity 120ms ease;
 }
 
-.plato-avatar-eye {
-  position: relative;
-  width: 31%;
-  aspect-ratio: 1;
-  overflow: hidden;
-  border: 1px solid rgb(15 23 42 / 22%);
-  border-radius: 50%;
-  background:
-    radial-gradient(circle at 36% 32%, rgb(255 255 255 / 98%) 0 18%, transparent 19%),
-    rgb(255 255 255 / 94%);
-  box-shadow:
-    inset 0 -1px 3px rgb(15 23 42 / 16%),
-    0 1px 3px rgb(15 23 42 / 12%);
+.plato-rive-avatar[data-rive-runtime-state="ready"] .plato-rive-eye-tracking-overlay {
+  opacity: 1;
 }
 
-.plato-avatar-pupil {
+.plato-rive-eye-pupil {
   position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 45%;
-  aspect-ratio: 1;
-  border-radius: 50%;
-  background: #0f172a;
+  width: 7px;
+  height: 7px;
+  border-radius: var(--plato-radius-pill);
+  background: #17130f;
+  box-shadow: 0 0 0 1px rgb(23 19 15 / 32%);
   transform: translate(
-    calc(-50% + (var(--plato-avatar-eye-x, 0) * 4px)),
-    calc(-50% + (var(--plato-avatar-eye-y, 0) * 3px))
+    calc(-50% + var(--plato-avatar-eye-x, 0) * 5px),
+    calc(-50% + var(--plato-avatar-eye-y, 0) * 3px)
+  );
+  transition: transform 92ms ease-out;
+}
+
+.plato-rive-eye-pupil-left {
+  left: var(--plato-rive-eye-left-x);
+  top: var(--plato-rive-eye-left-y);
+}
+
+.plato-rive-eye-pupil-right {
+  left: var(--plato-rive-eye-right-x);
+  top: var(--plato-rive-eye-right-y);
+}
+
+.plato-wise-owl-pupil {
+  transform-box: fill-box;
+  transform-origin: center;
+  transform: translate(
+    calc(var(--plato-avatar-eye-x, 0) * 6px),
+    calc(var(--plato-avatar-eye-y, 0) * 4px)
   );
   transition: transform 92ms ease-out;
 }
 
 .plato-rive-avatar[data-rive-runtime-state="failed"] .plato-rive-canvas {
   opacity: 0;
-}
-
-.plato-rive-avatar[data-rive-runtime-state="failed"] .plato-avatar-fallback-asset {
-  opacity: 1;
 }
 
 .live2d-presence-mark {
