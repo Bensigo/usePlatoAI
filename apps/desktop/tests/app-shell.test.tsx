@@ -211,8 +211,8 @@ describe("desktop app shell", () => {
     expect(markup).toContain("Plato");
     expect(markup).toContain("Wake name: Plato");
     expect(markup).toContain("Idle presence");
-    expect(markup).toContain("data-live2d-motion-group=\"idle\"");
-    expect(markup).toContain("data-live2d-expression=\"neutral\"");
+    expect(markup).toContain("data-avatar-motion-group=\"idle\"");
+    expect(markup).toContain("data-avatar-expression=\"neutral\"");
     expect(markup).toContain("React with Plato");
     expect(markup).toContain("Open Plato controls");
     expect(markup).toContain("Drag Plato presence");
@@ -595,23 +595,16 @@ describe("desktop app shell", () => {
       );
 
       expect(hook.statusText).toBe(mapping.statusText);
-      expect(hook.avatarAssetPath).toBe(
-        "/avatar/plato/source/wise-owl-colour.svg",
-      );
+      expect(hook.avatarAssetPath).toBe("/avatar/plato/vrm/plato.vrm");
       expect(existsSync(assetFile)).toBe(true);
       expect(hook.motionGroup).toBe(mapping.motionGroup);
       expect(hook.expression).toBe(mapping.expression);
       expect(markup).toContain(`data-presence-state="${mapping.state}"`);
-      expect(markup).toContain(`data-avatar-renderer="rive"`);
-      expect(markup).toContain("/avatar/plato/rive/plato-companion.riv");
-      expect(markup).toContain(`src="${hook.avatarAssetPath}"`);
-      expect(markup).toContain('data-fallback-renderer="svg"');
-      expect(markup).toContain(
-        `data-live2d-motion-group="${mapping.motionGroup}"`,
-      );
-      expect(markup).toContain(
-        `data-live2d-expression="${mapping.expression}"`,
-      );
+      expect(markup).toContain(`data-avatar-renderer="three-vrm"`);
+      expect(markup).toContain("/avatar/plato/vrm/plato.vrm");
+      expect(markup).toContain(`data-vrm-src="${hook.avatarAssetPath}"`);
+      expect(markup).toContain(`data-avatar-motion-group="${mapping.motionGroup}"`);
+      expect(markup).toContain(`data-avatar-expression="${mapping.expression}"`);
       expect(markup).toContain("data-avatar-fallback-surface");
       expect(markup).toContain(mapping.statusText);
       expect(markup).not.toContain("live2d-avatar-head");
@@ -619,33 +612,29 @@ describe("desktop app shell", () => {
     }
   });
 
-  it("renders the visible avatar with the Plato mascot asset as the primary surface", () => {
+  it("renders the visible avatar with the Plato VRM asset as the primary surface", () => {
     const markup = renderToStaticMarkup(
       <Live2DAvatarSurface presenceState="listening" />,
     );
 
     expect(markup).toContain("<canvas");
-    expect(markup).toContain("<svg");
-    expect(markup).toContain("plato-wise-owl");
-    expect(markup).toContain("plato-avatar-asset");
-    expect(markup).toContain('data-avatar-eye-tracking="rive-matched-pupils"');
-    expect(markup).toContain("plato-rive-eye-tracking-overlay");
-    expect(markup).toContain("plato-rive-eye-pupil-left");
-    expect(markup).toContain("plato-rive-eye-pupil-right");
-    expect(markup).toContain('data-avatar-eye-tracking="fallback-svg-pupils"');
-    expect(markup).not.toContain('data-avatar-eye-tracking="source-svg-pupils"');
-    expect(markup).toContain('data-avatar-renderer="rive"');
+    expect(markup).not.toContain("<svg");
+    expect(markup).toContain("plato-vrm-avatar");
+    expect(markup).toContain("plato-three-vrm-canvas");
+    expect(markup).toContain('data-avatar-renderer="three-vrm"');
     expect(markup).toContain('data-avatar-companion-state="listening"');
     expect(markup).toContain('data-avatar-command="voice.listen"');
-    expect(markup).toContain('data-rive-artboard="Avatar 1"');
-    expect(markup).toContain('data-rive-state-machine="avatar"');
-    expect(markup).toContain('data-rive-animation="idle"');
-    expect(markup).toContain('data-rive-input-is-happy="false"');
-    expect(markup).toContain('data-rive-input-is-sad="false"');
+    expect(markup).toContain('data-vrm-loader="@pixiv/three-vrm"');
+    expect(markup).toContain('data-three-alpha="true"');
+    expect(markup).toContain('data-avatar-control-mouth-open="0.05"');
+    expect(markup).toContain('data-avatar-control-smile="0"');
     expect(markup).not.toContain('data-avatar-command="greet.wave"');
     expect(markup).toContain("live2d-presence-mark");
     expect(markup).toContain("live2d-presence-core");
     expect(markup).toContain("live2d-presence-meter");
+    expect(markup).not.toContain("plato-wise-owl");
+    expect(markup).not.toContain("plato-rive");
+    expect(markup).not.toContain('data-fallback-renderer="svg"');
     expect(markup).not.toContain("live2d-avatar-hair");
     expect(markup).not.toContain("live2d-avatar-head");
     expect(markup).not.toContain("live2d-avatar-eye");
@@ -653,7 +642,7 @@ describe("desktop app shell", () => {
     expect(markup).not.toContain("live2d-avatar-body");
   });
 
-  it("renders avatar-package eye tracking through Rive-matched pupils without source overlay eyes", () => {
+  it("passes avatar-package eye tracking into the normalized VRM controls", () => {
     const markup = renderToStaticMarkup(
       <Live2DAvatarSurface
         presenceState="idle"
@@ -674,19 +663,17 @@ describe("desktop app shell", () => {
         },
       }),
     ).toEqual(avatarEyeDirectionNeutral);
-    expect(markup).toContain('data-avatar-eye-tracking="rive-matched-pupils"');
-    expect(markup).toContain('data-rive-eye-surface="Avatar 1"');
-    expect(markup).toContain('data-avatar-eye-x="0.25"');
-    expect(markup).toContain('data-avatar-eye-y="-0.5"');
+    expect(markup).toContain('data-avatar-control-eye-x="0.25"');
+    expect(markup).toContain('data-avatar-control-eye-y="-0.5"');
+    expect(markup).toContain('data-vrm-loader="@pixiv/three-vrm"');
     expect(markup).not.toContain('data-avatar-eye-tracking="source-svg-pupils"');
     expect(markup).not.toContain('data-avatar-eye-tracking="fallback-overlay"');
     expect(markup).not.toContain("plato-avatar-eye-left");
     expect(markup).not.toContain("plato-avatar-eye-right");
     expect(styles).not.toContain(".plato-avatar-eye-tracking");
-    expect(styles).toContain(".plato-rive-eye-tracking-overlay");
-    expect(styles).toContain(".plato-rive-eye-pupil");
-    expect(styles).toContain("var(--plato-avatar-eye-x, 0) * 5px");
-    expect(styles).toContain("transition: transform 92ms ease-out");
+    expect(styles).toContain(".plato-three-vrm-canvas");
+    expect(styles).not.toContain(".plato-rive-eye-tracking-overlay");
+    expect(styles).not.toContain(".plato-rive-eye-pupil");
   });
 
   it("maps native desktop cursor coordinates into avatar client coordinates", () => {
@@ -699,42 +686,29 @@ describe("desktop app shell", () => {
     ).toEqual({ x: 100, y: 120 });
   });
 
-  it("keeps avatar renderer fallback behavior explicit and secondary to Rive", () => {
+  it("keeps avatar renderer fallback behavior explicit without an owl or Rive fallback", () => {
     const idleSurface = Live2DAvatarSurface({ presenceState: "idle" });
     const speakingSurface = Live2DAvatarSurface({ presenceState: "speaking" });
     const idleStage = idleSurface.props.children[0];
     const speakingStage = speakingSurface.props.children[0];
 
-    expect(idleStage.key).toBe("/avatar/plato/rive/plato-companion.riv");
-    expect(speakingStage.key).toBe("/avatar/plato/rive/plato-companion.riv");
-    expect(fallbackRendererFor("missing-rive-asset")).toEqual({
-      renderer: "svg",
-      reason: "missing-rive-asset",
-      src: "/avatar/plato/source/wise-owl-colour.svg",
+    expect(idleStage.key).toBe("/avatar/plato/vrm/plato.vrm");
+    expect(speakingStage.key).toBe("/avatar/plato/vrm/plato.vrm");
+    expect(fallbackRendererFor("missing-vrm-asset")).toEqual({
+      renderer: "none",
+      reason: "missing-vrm-asset",
+      src: null,
     });
   });
 
-  it("hides the source SVG once Rive is ready and shows only Rive-matched tracking pupils", () => {
+  it("uses a transparent Three.js canvas without the removed SVG/Rive fallback CSS", () => {
     const styles = readFileSync(resolve(__dirname, "../src/styles.css"), "utf8");
 
     expect(styles).not.toContain("opacity: 0.001");
-    expect(styles).toContain(".plato-rive-canvas");
-    expect(styles).toContain(".plato-avatar-source-svg-asset");
-    expect(styles).not.toMatch(
-      /data-avatar-eye-tracking="source-svg-pupils"[\s\S]{0,120}\.plato-rive-canvas[\s\S]{0,80}opacity:\s*0/,
-    );
-    expect(styles).toMatch(
-      /\.plato-rive-avatar\[data-rive-runtime-state="ready"\]\s+\.plato-avatar-source-svg-asset\s*{[^}]*opacity:\s*0;/s,
-    );
-    expect(styles).toMatch(
-      /\.plato-rive-avatar\[data-rive-runtime-state="ready"\]\s+\.plato-rive-eye-tracking-overlay\s*{[^}]*opacity:\s*1;/s,
-    );
-    expect(styles).not.toContain(
-      '.plato-rive-avatar[data-rive-runtime-state="ready"] .plato-avatar-source-svg-asset path',
-    );
-    expect(styles).toContain(
-      '.plato-rive-avatar[data-rive-runtime-state="failed"] .plato-rive-canvas',
-    );
+    expect(styles).toContain(".plato-three-vrm-canvas");
+    expect(styles).toContain("background: transparent");
+    expect(styles).not.toContain(".plato-rive-canvas");
+    expect(styles).not.toContain(".plato-avatar-source-svg-asset");
     expect(styles).not.toContain(".plato-avatar-fallback-asset");
     expect(styles).not.toContain(".plato-avatar-eye-tracking");
   });
@@ -749,8 +723,8 @@ describe("desktop app shell", () => {
 
     expect(markup).toContain("Waiting for approval");
     expect(markup).toContain('data-presence-state="waitingApproval"');
-    expect(markup).toContain('data-live2d-motion-group="approval"');
-    expect(markup).toContain('data-live2d-expression="concerned"');
+    expect(markup).toContain('data-avatar-motion-group="approval"');
+    expect(markup).toContain('data-avatar-expression="concerned"');
   });
 
   it("recognizes valid URL presence states for visual smoke checks", () => {
@@ -877,7 +851,8 @@ describe("desktop app shell", () => {
 
     expect(markup).toContain('data-avatar-companion-state="celebrating"');
     expect(markup).toContain('data-avatar-command="celebration.dance"');
-    expect(markup).toContain('data-rive-input-is-happy="true"');
+    expect(markup).toContain('data-avatar-control-laugh="0.75"');
+    expect(markup).toContain('data-avatar-control-wave="0.7"');
     expect(markup).not.toContain("avatarTestCommand");
     expect(markup).not.toContain("Hidden avatar test");
     expect(markup).not.toContain('aria-label="Top Plato control surface"');
@@ -895,8 +870,8 @@ describe("desktop app shell", () => {
     expect(markup).toContain("Listening");
     expect(markup).toContain('data-presence-state="listening"');
     expect(markup).toContain('data-avatar-command="voice.listen"');
-    expect(markup).toContain('data-live2d-motion-group="tap_body"');
-    expect(markup).toContain('data-live2d-expression="attentive"');
+    expect(markup).toContain('data-avatar-motion-group="tap_body"');
+    expect(markup).toContain('data-avatar-expression="attentive"');
   });
 
   it("does not let passive mute hide active product presence states", () => {

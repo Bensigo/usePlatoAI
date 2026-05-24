@@ -449,7 +449,7 @@ button {
 }
 
 .live2d-avatar-surface {
-  width: 172px;
+  width: 206px;
   display: grid;
   justify-items: center;
   margin: 0;
@@ -499,8 +499,8 @@ button {
 
 .live2d-avatar-stage {
   position: relative;
-  width: 172px;
-  height: 186px;
+  width: 206px;
+  height: 238px;
   display: grid;
   place-items: center;
   overflow: visible;
@@ -528,7 +528,7 @@ button {
   cursor: grabbing;
 }
 
-.plato-rive-avatar {
+.plato-vrm-avatar {
   position: relative;
   z-index: 2;
   width: 100%;
@@ -537,77 +537,15 @@ button {
   place-items: center;
 }
 
-.plato-rive-canvas {
+.plato-three-vrm-canvas {
   position: absolute;
   inset: 0;
   z-index: 1;
   width: 100%;
   height: 100%;
   opacity: 1;
-}
-
-.plato-avatar-source-svg-asset {
-  position: absolute;
-  inset: 0;
-  max-width: 100%;
-  max-height: 100%;
-  opacity: 1;
-  z-index: 2;
-}
-
-.plato-rive-avatar[data-rive-runtime-state="ready"] .plato-avatar-source-svg-asset {
-  opacity: 0;
-}
-
-.plato-rive-eye-tracking-overlay {
-  position: absolute;
-  inset: 0;
-  z-index: 3;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 120ms ease;
-}
-
-.plato-rive-avatar[data-rive-runtime-state="ready"] .plato-rive-eye-tracking-overlay {
-  opacity: 1;
-}
-
-.plato-rive-eye-pupil {
-  position: absolute;
-  width: 7px;
-  height: 7px;
-  border-radius: var(--plato-radius-pill);
-  background: #17130f;
-  box-shadow: 0 0 0 1px rgb(23 19 15 / 32%);
-  transform: translate(
-    calc(-50% + var(--plato-avatar-eye-x, 0) * 5px),
-    calc(-50% + var(--plato-avatar-eye-y, 0) * 3px)
-  );
-  transition: transform 92ms ease-out;
-}
-
-.plato-rive-eye-pupil-left {
-  left: var(--plato-rive-eye-left-x);
-  top: var(--plato-rive-eye-left-y);
-}
-
-.plato-rive-eye-pupil-right {
-  left: var(--plato-rive-eye-right-x);
-  top: var(--plato-rive-eye-right-y);
-}
-
-.plato-wise-owl-pupil {
-  transform-box: fill-box;
-  transform-origin: center;
-  transform: translate(
-    calc(var(--plato-avatar-eye-x, 0) * 6px),
-    calc(var(--plato-avatar-eye-y, 0) * 4px)
-  );
-  transition: transform 92ms ease-out;
-}
-
-.plato-rive-avatar[data-rive-runtime-state="failed"] .plato-rive-canvas {
-  opacity: 0;
+  display: block;
+  background: transparent;
 }
 
 .live2d-presence-mark {
@@ -2074,12 +2012,12 @@ h1 {
   }
 
   .live2d-avatar-surface {
-    width: 144px;
+    width: 166px;
   }
 
   .live2d-avatar-stage {
-    width: 144px;
-    height: 156px;
+    width: 166px;
+    height: 202px;
     transform-origin: 50% 100%;
   }
 
@@ -2160,13 +2098,13 @@ h1 {
   }
 
   .live2d-avatar-surface {
-    width: 118px;
+    width: 138px;
   }
 
   .live2d-avatar-stage {
-    width: 118px;
-    height: 160px;
-    transform: scale(0.76);
+    width: 138px;
+    height: 184px;
+    transform: scale(0.78);
   }
 
   .live2d-avatar-caption small,

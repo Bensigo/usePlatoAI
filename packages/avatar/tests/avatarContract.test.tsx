@@ -18,34 +18,79 @@ import {
   fallbackRendererFor,
   getAvatarRendererConfig,
   millisecondsUntilNextAvatarIdleWave,
-  mascotSource,
-  vendoredRiveAssetContract,
+  vendoredVrmAssetContract,
+  vrmCapabilityInventory,
+  vroidAvatarSource,
 } from "../src";
 
-function vendoredRiveContractNames() {
-  const riveAsset = readFileSync(
-    resolve(__dirname, "../assets/rive/plato-companion.riv"),
-    "latin1",
-  );
-  const rawNames = riveAsset.match(/[A-Za-z][A-Za-z0-9 _-]{1,40}/g) ?? [];
-  const names = new Set(rawNames);
+type GltfJson = {
+  asset?: { generator?: string; version?: string };
+  extensionsUsed?: string[];
+  extensions?: {
+    VRMC_vrm?: {
+      meta?: {
+        name?: string;
+        authors?: string[];
+        licenseUrl?: string;
+        avatarPermission?: string;
+        commercialUsage?: string;
+        allowRedistribution?: boolean;
+        modification?: string;
+        creditNotation?: string;
+      };
+      humanoid?: { humanBones?: Record<string, unknown> };
+      expressions?: {
+        preset?: Record<string, unknown>;
+        custom?: Record<string, unknown>;
+      };
+    };
+  };
+  meshes?: Array<{
+    extras?: { targetNames?: string[] };
+    primitives?: Array<{ targets?: unknown[] }>;
+  }>;
+  animations?: Array<{ name?: string }>;
+};
 
-  for (const name of rawNames) {
-    names.add(name.replace(/\d+$/, ""));
+function readVendoredVrmJson() {
+  const vrmAsset = readFileSync(
+    resolve(__dirname, "../assets/vrm/plato.vrm"),
+  );
+
+  expect(vrmAsset.toString("utf8", 0, 4)).toBe("glTF");
+
+  let offset = 12;
+  while (offset < vrmAsset.length) {
+    const chunkLength = vrmAsset.readUInt32LE(offset);
+    const chunkType = vrmAsset.readUInt32LE(offset + 4);
+    offset += 8;
+
+    if (chunkType === 0x4e4f534a) {
+      return JSON.parse(
+        vrmAsset.toString("utf8", offset, offset + chunkLength),
+      ) as GltfJson;
+    }
+
+    offset += chunkLength;
   }
 
-  return names;
+  throw new Error("VRM JSON chunk not found");
 }
 
 describe("avatar package contract", () => {
-  it("documents the commercial-safe mascot source and local shippable assets", () => {
-    expect(mascotSource.title).toBe("Wise Owl - Colour");
-    expect(mascotSource.license.spdxId).toBe("CC0-1.0");
-    expect(mascotSource.license.allowsCommercialUse).toBe(true);
-    expect(mascotSource.attribution.required).toBe(false);
-    expect(mascotSource.sourceUrl).toBe(
-      "https://openclipart.org/detail/303927/wise-owl-colour",
-    );
+  it("documents the selected VRoid source and local shippable assets", () => {
+    expect(vroidAvatarSource.title).toBe("plato");
+    expect(vroidAvatarSource.sourceTool).toBe("VRoid Studio 2.12.0");
+    expect(vroidAvatarSource.format).toBe("VRM 1.0 / glTF binary");
+    expect(vroidAvatarSource.author).toBe("Bensigo");
+    expect(vroidAvatarSource.exportedForIssue).toBe(317);
+    expect(vroidAvatarSource.license).toMatchObject({
+      url: "https://vrm.dev/licenses/1.0/",
+      commercialUsage: "personalProfit",
+      allowRedistribution: true,
+      modification: "allowModification",
+      creditNotation: "unnecessary",
+    });
 
     for (const asset of Object.values(avatarPackageAssets)) {
       expect(asset.packagePath.startsWith("packages/avatar/")).toBe(true);
@@ -53,6 +98,47 @@ describe("avatar package contract", () => {
         true,
       );
     }
+  });
+
+  it("keeps the vendored VRM asset aligned with the inspected source metadata", () => {
+    const gltf = readVendoredVrmJson();
+    const vrm = gltf.extensions?.VRMC_vrm;
+    const expressions = Object.keys(vrm?.expressions?.preset ?? {});
+    const humanoidBones = Object.keys(vrm?.humanoid?.humanBones ?? {});
+    const morphTargetNames = new Set(
+      (gltf.meshes ?? []).flatMap((mesh) => mesh.extras?.targetNames ?? []),
+    );
+
+    expect(gltf.asset?.generator).toBe(vrmCapabilityInventory.generator);
+    expect(gltf.extensionsUsed).toEqual(vrmCapabilityInventory.extensionsUsed);
+    expect(vrm?.meta).toMatchObject({
+      name: "plato",
+      authors: ["Bensigo"],
+      licenseUrl: "https://vrm.dev/licenses/1.0/",
+      avatarPermission: "onlyAuthor",
+      commercialUsage: "personalProfit",
+      allowRedistribution: true,
+      modification: "allowModification",
+      creditNotation: "unnecessary",
+    });
+    expect(expressions).toEqual(vrmCapabilityInventory.expressions);
+    expect(humanoidBones).toHaveLength(vrmCapabilityInventory.humanoidBoneCount);
+    expect(humanoidBones).toEqual(
+      expect.arrayContaining([
+        "neck",
+        "head",
+        "leftEye",
+        "rightEye",
+        "rightShoulder",
+        "rightUpperArm",
+        "rightLowerArm",
+        "rightHand",
+      ]),
+    );
+    for (const mouthTarget of vrmCapabilityInventory.mouthMorphTargets) {
+      expect(morphTargetNames).toContain(mouthTarget);
+    }
+    expect(gltf.animations ?? []).toHaveLength(0);
   });
 
   it("exports companion states and animation commands required by the milestone slice", () => {
@@ -78,64 +164,69 @@ describe("avatar package contract", () => {
     ]);
   });
 
-  it("maps every companion state to a Rive-first renderer config and secondary fallback", () => {
+  it("maps every companion state to a Three.js VRM renderer config", () => {
     for (const state of avatarCompanionStates) {
       const config = getAvatarRendererConfig(state);
 
-      expect(config.primaryRenderer).toBe("rive");
-      expect(config.rive.src).toBe("/avatar/plato/rive/plato-companion.riv");
-      expect(config.rive.artboard).toBe("Avatar 1");
-      expect(config.rive.stateMachine).toBe("avatar");
-      expect(config.rive.animation).toMatch(/^[a-z]+/);
-      expect(config.fallback.renderer).toBe("svg");
-      expect(config.fallback.src).toBe("/avatar/plato/source/wise-owl-colour.svg");
+      expect(config.primaryRenderer).toBe("three-vrm");
+      expect(config.three.src).toBe("/avatar/plato/vrm/plato.vrm");
+      expect(config.three.loader).toBe("@pixiv/three-vrm");
+      expect(config.three.renderer).toBe("three");
+      expect(config.three.transparentCanvas).toBe(true);
+      expect(Object.keys(config.controls)).toEqual([
+        "eyeX",
+        "eyeY",
+        "blink",
+        "mouthOpen",
+        "smile",
+        "laugh",
+        "wave",
+      ]);
+      expect(config.capabilityInventory).toBe(vrmCapabilityInventory);
     }
   });
 
-  it("keeps the renderer config aligned with the vendored Rive asset contract", () => {
-    const riveContractNames = vendoredRiveContractNames();
+  it("documents the normalized runtime contract with real VRM backing", () => {
+    expect(vendoredVrmAssetContract).toMatchObject({
+      loader: "@pixiv/three-vrm",
+      renderer: "three",
+      asset: avatarPackageAssets.vrm,
+      transparentCanvas: true,
+      framing: {
+        subject: "head-upper-body",
+        viewportFill: "most-of-height",
+      },
+    });
 
-    for (const state of avatarCompanionStates) {
-      const config = getAvatarRendererConfig(state);
-
-      expect(riveContractNames).toContain(config.rive.artboard);
-      expect(riveContractNames).toContain(config.rive.stateMachine);
-      expect(riveContractNames).toContain(config.rive.animation);
-
-      for (const inputName of Object.keys(config.rive.inputs)) {
-        expect(riveContractNames).toContain(inputName);
-      }
+    for (const [controlName, control] of Object.entries(
+      vendoredVrmAssetContract.runtimeControls,
+    )) {
+      expect(control.missing, controlName).toBe(false);
+      expect(control.backedBy.length, controlName).toBeGreaterThan(0);
     }
+
+    expect(vendoredVrmAssetContract.runtimeControls.laugh.backedBy).toContain(
+      "VRM expression: relaxed",
+    );
+    expect(vendoredVrmAssetContract.runtimeControls.wave.backedBy).toContain(
+      "humanoid bone: rightUpperArm",
+    );
+    expect(vrmCapabilityInventory.bundledAnimations).toEqual([]);
   });
 
-  it("documents the vendored Rive asset contract used by renderer config", () => {
-    expect(vendoredRiveAssetContract).toEqual({
-      artboard: "Avatar 1",
-      stateMachine: "avatar",
-      animations: {
-        idle: "idle",
-        happy: "happy",
-        sad: "sad",
-      },
-      inputs: {
-        isHappy: "isHappy",
-        isSad: "isSad",
-        mouth: "mouth",
-      },
+  it("does not expose the old owl or Rive fallback renderer path", () => {
+    expect(fallbackRendererFor("missing-vrm-asset")).toEqual({
+      renderer: "none",
+      reason: "missing-vrm-asset",
+      src: null,
     });
-  });
-
-  it("keeps renderer fallback behavior explicit instead of replacing Rive", () => {
-    expect(fallbackRendererFor("missing-rive-asset")).toEqual({
-      renderer: "svg",
-      reason: "missing-rive-asset",
-      src: "/avatar/plato/source/wise-owl-colour.svg",
+    expect(fallbackRendererFor("unsupported-webgl")).toEqual({
+      renderer: "none",
+      reason: "unsupported-webgl",
+      src: null,
     });
-    expect(fallbackRendererFor("unsupported-runtime")).toEqual({
-      renderer: "svg",
-      reason: "unsupported-runtime",
-      src: "/avatar/plato/source/wise-owl-colour.svg",
-    });
+    expect(avatarPackageAssets).not.toHaveProperty("rive");
+    expect(avatarPackageAssets).not.toHaveProperty("sourceSvg");
   });
 
   it("maps cursor position into a clamped avatar eye direction", () => {
@@ -270,44 +361,33 @@ describe("avatar package contract", () => {
     ).toBe(avatarIdleWavePolicy.activeStateBackoffMs);
   });
 
-  it("renders a Rive-backed React entrypoint with the sourced mascot fallback", () => {
+  it("renders a transparent Three.js VRM React entrypoint", () => {
     const markup = renderToStaticMarkup(
-      <AvatarRenderer companionState="greet" />,
+      <AvatarRenderer
+        companionState="greet"
+        eyeDirection={{
+          x: 0.25,
+          y: -0.5,
+        }}
+      />,
     );
 
     expect(markup).toContain('data-avatar-package="@useplatoai/avatar"');
-    expect(markup).toContain('data-avatar-renderer="rive"');
-    expect(markup).toContain('data-rive-runtime-state="loading"');
-    expect(markup).toContain('data-rive-artboard="Avatar 1"');
-    expect(markup).toContain('data-rive-state-machine="avatar"');
-    expect(markup).toContain('data-rive-animation="happy"');
-    expect(markup).toContain('data-rive-input-is-happy="true"');
-    expect(markup).toContain('data-rive-input-is-sad="false"');
-    expect(markup).toContain('data-avatar-eye-tracking="rive-matched-pupils"');
-    expect(markup).toContain('data-rive-eye-surface="Avatar 1"');
-    expect(markup).toContain("plato-rive-eye-tracking-overlay");
-    expect(markup).toContain("plato-rive-eye-pupil-left");
-    expect(markup).toContain("plato-rive-eye-pupil-right");
-    expect(markup).toContain('data-avatar-eye-tracking="fallback-svg-pupils"');
-    expect(markup).toContain('data-avatar-eye-x="0"');
-    expect(markup).toContain('data-avatar-eye-y="0"');
-    expect(markup).not.toContain('data-avatar-eye-tracking="source-svg-pupils"');
-    expect(markup).not.toContain('data-avatar-eye-tracking="fallback-overlay"');
-    expect(markup).not.toContain("plato-avatar-eye-left");
-    expect(markup).not.toContain("plato-avatar-eye-right");
-    expect(markup).toContain('data-fallback-renderer="svg"');
-    expect(markup).toContain('data-avatar-fallback-state="visible"');
-    expect(markup).toContain("/avatar/plato/rive/plato-companion.riv");
-    expect(markup).toContain("/avatar/plato/source/wise-owl-colour.svg");
-  });
-
-  it("ships a source SVG, not only a desktop-local PNG", () => {
-    const sourceSvg = readFileSync(
-      resolve(__dirname, "../assets/source/wise-owl-colour.svg"),
-      "utf8",
-    );
-
-    expect(sourceSvg).toContain("<svg");
-    expect(sourceSvg).toContain("plato-wise-owl");
+    expect(markup).toContain('data-avatar-renderer="three-vrm"');
+    expect(markup).toContain('data-vrm-runtime-state="loading"');
+    expect(markup).toContain('data-three-renderer="three"');
+    expect(markup).toContain('data-three-alpha="true"');
+    expect(markup).toContain('data-vrm-loader="@pixiv/three-vrm"');
+    expect(markup).toContain('data-avatar-control-eye-x="0.25"');
+    expect(markup).toContain('data-avatar-control-eye-y="-0.5"');
+    expect(markup).toContain('data-avatar-control-smile="0.55"');
+    expect(markup).toContain('data-avatar-control-wave="1"');
+    expect(markup).toContain('data-avatar-fallback-state="none"');
+    expect(markup).toContain("plato-three-vrm-canvas");
+    expect(markup).toContain("/avatar/plato/vrm/plato.vrm");
+    expect(markup).not.toContain("wise-owl");
+    expect(markup).not.toContain("rive");
+    expect(markup).not.toContain("source-svg");
+    expect(markup).not.toContain('data-fallback-renderer="svg"');
   });
 });

@@ -12,14 +12,16 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@rive-app/react-canvas": "^4.28.6",
+    "@pixiv/three-vrm": "^3.5.3",
     "react": "^19.2.6",
-    "react-dom": "^19.2.6"
+    "react-dom": "^19.2.6",
+    "three": "^0.184.0"
   },
   "devDependencies": {
     "@types/node": "^25.8.0",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
+    "@types/three": "^0.184.1",
     "vitest": "^4.1.6"
   }
 }
