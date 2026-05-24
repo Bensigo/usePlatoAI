@@ -608,8 +608,14 @@ describe("desktop app shell", () => {
     expect(styles).not.toContain("opacity: 0.001");
     expect(styles).toContain(".plato-rive-canvas");
     expect(styles).toContain(".plato-avatar-source-svg-asset");
+    expect(styles).not.toMatch(
+      /data-avatar-eye-tracking="source-svg-pupils"[\s\S]{0,120}\.plato-rive-canvas[\s\S]{0,80}opacity:\s*0/,
+    );
     expect(styles).toContain(
-      '.plato-rive-avatar[data-avatar-eye-tracking="source-svg-pupils"]',
+      '.plato-rive-avatar[data-rive-runtime-state="ready"] .plato-avatar-source-svg-asset path',
+    );
+    expect(styles).toContain(
+      ".plato-rive-avatar[data-rive-runtime-state=\"ready\"] .plato-avatar-source-svg-asset .plato-wise-owl-eye-white",
     );
     expect(styles).toContain(
       '.plato-rive-avatar[data-rive-runtime-state="failed"] .plato-rive-canvas',

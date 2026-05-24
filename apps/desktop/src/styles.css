@@ -547,14 +547,16 @@ button {
 }
 
 .plato-avatar-source-svg-asset {
+  position: absolute;
+  inset: 0;
   max-width: 100%;
   max-height: 100%;
   opacity: 1;
   z-index: 2;
 }
 
-.plato-rive-avatar[data-avatar-eye-tracking="source-svg-pupils"]
-  .plato-rive-canvas {
+.plato-rive-avatar[data-rive-runtime-state="ready"] .plato-avatar-source-svg-asset path,
+.plato-rive-avatar[data-rive-runtime-state="ready"] .plato-avatar-source-svg-asset .plato-wise-owl-eye-white {
   opacity: 0;
 }
 
