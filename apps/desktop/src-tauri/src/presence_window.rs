@@ -33,6 +33,14 @@ struct PresenceDisplay {
     work_area: PhysicalRect<i32, u32>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct FocusedWindowRect {
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+}
+
 fn default_presence_placement(
     work_area: PhysicalRect<i32, u32>,
     window_size: PhysicalSize<u32>,
@@ -136,7 +144,7 @@ fn placement_for_window(
     saved_position: Option<PresenceWindowPosition>,
 ) -> tauri::Result<Option<PresencePlacement>> {
     let displays = presence_displays(window)?;
-    let active_display = active_presence_display(window)?;
+    let active_display = active_presence_display(window, &displays)?;
     let primary_display = window
         .primary_monitor()?
         .map(|monitor| presence_display_for_monitor(&monitor));
@@ -150,16 +158,12 @@ fn placement_for_window(
     ))
 }
 
-fn active_presence_display(window: &WebviewWindow) -> tauri::Result<Option<PresenceDisplay>> {
-    let cursor_display = window
-        .cursor_position()
-        .ok()
-        .and_then(|position| window.monitor_from_point(position.x, position.y).ok())
-        .flatten()
-        .map(|monitor| presence_display_for_monitor(&monitor));
-
-    if cursor_display.is_some() {
-        return Ok(cursor_display);
+fn active_presence_display(
+    window: &WebviewWindow,
+    displays: &[PresenceDisplay],
+) -> tauri::Result<Option<PresenceDisplay>> {
+    if let Some(focused_display) = focused_window_presence_display(displays) {
+        return Ok(Some(focused_display));
     }
 
     window
@@ -369,6 +373,42 @@ fn display_containing_position(
     })
 }
 
+fn display_for_focused_window_rect<'a>(
+    displays: &'a [PresenceDisplay],
+    window_rect: &FocusedWindowRect,
+) -> Option<&'a PresenceDisplay> {
+    displays
+        .iter()
+        .filter_map(|display| {
+            let overlap_area = rect_display_overlap_area(window_rect, display);
+
+            if overlap_area > 0.0 {
+                Some((display, overlap_area))
+            } else {
+                None
+            }
+        })
+        .max_by(|(_, left_area), (_, right_area)| left_area.total_cmp(right_area))
+        .map(|(display, _)| display)
+}
+
+fn rect_display_overlap_area(rect: &FocusedWindowRect, display: &PresenceDisplay) -> f64 {
+    let display_left = display.work_area.position.x as f64;
+    let display_top = display.work_area.position.y as f64;
+    let display_right = display_left + display.work_area.size.width as f64;
+    let display_bottom = display_top + display.work_area.size.height as f64;
+
+    let rect_left = rect.x;
+    let rect_top = rect.y;
+    let rect_right = rect.x + rect.width;
+    let rect_bottom = rect.y + rect.height;
+
+    let overlap_width = rect_right.min(display_right) - rect_left.max(display_left);
+    let overlap_height = rect_bottom.min(display_bottom) - rect_top.max(display_top);
+
+    overlap_width.max(0.0) * overlap_height.max(0.0)
+}
+
 fn clamp_position_to_display(
     position: PhysicalPosition<i32>,
     work_area: PhysicalRect<i32, u32>,
@@ -404,6 +444,122 @@ fn configure_active_space_following(window: &WebviewWindow) -> tauri::Result<()>
     }
 
     Ok(())
+}
+
+#[cfg(target_os = "macos")]
+fn focused_window_presence_display(displays: &[PresenceDisplay]) -> Option<PresenceDisplay> {
+    frontmost_window_rect()
+        .and_then(|rect| display_for_focused_window_rect(displays, &rect).cloned())
+}
+
+#[cfg(not(target_os = "macos"))]
+fn focused_window_presence_display(_displays: &[PresenceDisplay]) -> Option<PresenceDisplay> {
+    None
+}
+
+#[cfg(target_os = "macos")]
+fn frontmost_window_rect() -> Option<FocusedWindowRect> {
+    use core_foundation::base::{CFType, TCFType};
+    use core_foundation::dictionary::CFDictionary;
+    use core_foundation::string::CFString;
+    use core_graphics::window::{
+        copy_window_info, kCGNullWindowID, kCGWindowBounds, kCGWindowLayer,
+        kCGWindowListExcludeDesktopElements, kCGWindowListOptionOnScreenOnly, kCGWindowOwnerPID,
+    };
+    use objc2_app_kit::NSWorkspace;
+
+    let frontmost_pid = NSWorkspace::sharedWorkspace()
+        .frontmostApplication()
+        .map(|application| application.processIdentifier())?;
+
+    if frontmost_pid < 0 {
+        return None;
+    }
+
+    let windows = copy_window_info(
+        kCGWindowListOptionOnScreenOnly | kCGWindowListExcludeDesktopElements,
+        kCGNullWindowID,
+    )?;
+    let owner_pid_key = unsafe { CFString::wrap_under_get_rule(kCGWindowOwnerPID) };
+    let layer_key = unsafe { CFString::wrap_under_get_rule(kCGWindowLayer) };
+    let bounds_key = unsafe { CFString::wrap_under_get_rule(kCGWindowBounds) };
+
+    windows
+        .get_all_values()
+        .into_iter()
+        .find_map(|window_info| {
+            let window_info = unsafe {
+                CFDictionary::<CFString, CFType>::wrap_under_get_rule(
+                    window_info as core_foundation::dictionary::CFDictionaryRef,
+                )
+            };
+            let owner_pid = dictionary_i32(&window_info, &owner_pid_key)?;
+            let layer = dictionary_i32(&window_info, &layer_key)?;
+
+            if owner_pid != frontmost_pid || layer != 0 {
+                return None;
+            }
+
+            dictionary_window_rect(&window_info, &bounds_key)
+        })
+}
+
+#[cfg(target_os = "macos")]
+fn dictionary_i32(
+    dictionary: &core_foundation::dictionary::CFDictionary<
+        core_foundation::string::CFString,
+        core_foundation::base::CFType,
+    >,
+    key: &core_foundation::string::CFString,
+) -> Option<i32> {
+    dictionary
+        .find(key)
+        .and_then(|value| value.downcast::<core_foundation::number::CFNumber>())?
+        .to_i32()
+}
+
+#[cfg(target_os = "macos")]
+fn dictionary_window_rect(
+    dictionary: &core_foundation::dictionary::CFDictionary<
+        core_foundation::string::CFString,
+        core_foundation::base::CFType,
+    >,
+    key: &core_foundation::string::CFString,
+) -> Option<FocusedWindowRect> {
+    use core_foundation::base::TCFType;
+
+    let bounds = dictionary
+        .find(key)?
+        .downcast::<core_foundation::dictionary::CFDictionary>()?;
+    let bounds = unsafe {
+        core_foundation::dictionary::CFDictionary::<
+            core_foundation::string::CFString,
+            core_foundation::base::CFType,
+        >::wrap_under_get_rule(bounds.as_concrete_TypeRef())
+    };
+
+    Some(FocusedWindowRect {
+        x: dictionary_f64(&bounds, "X")?,
+        y: dictionary_f64(&bounds, "Y")?,
+        width: dictionary_f64(&bounds, "Width")?,
+        height: dictionary_f64(&bounds, "Height")?,
+    })
+}
+
+#[cfg(target_os = "macos")]
+fn dictionary_f64(
+    dictionary: &core_foundation::dictionary::CFDictionary<
+        core_foundation::string::CFString,
+        core_foundation::base::CFType,
+    >,
+    key: &'static str,
+) -> Option<f64> {
+    let key = core_foundation::string::CFString::from_static_string(key);
+
+    dictionary
+        .find(&key)
+        .and_then(|value| value.downcast::<core_foundation::number::CFNumber>())?
+        .to_f64()
 }
 
 #[cfg(target_os = "macos")]
@@ -675,6 +831,37 @@ mod tests {
         assert_eq!(placement.y, 520);
         assert_eq!(placement.display_id.as_deref(), Some("Studio Display"));
         assert_eq!(placement.source, PresencePlacementSource::Saved);
+    }
+
+    #[test]
+    fn selects_focused_window_display_by_largest_window_overlap() {
+        let built_in = display("built-in", 0, 25, 1440, 875);
+        let sidecar = display("sidecar", 1440, 0, 1280, 900);
+        let focused_window = FocusedWindowRect {
+            x: 1200.0,
+            y: 100.0,
+            width: 700.0,
+            height: 500.0,
+        };
+        let displays = [built_in, sidecar];
+
+        let active_display =
+            display_for_focused_window_rect(&displays, &focused_window).expect("focused display");
+
+        assert_eq!(active_display.id.as_deref(), Some("sidecar"));
+    }
+
+    #[test]
+    fn ignores_focused_window_rect_when_it_does_not_overlap_displays() {
+        let focused_window = FocusedWindowRect {
+            x: 4000.0,
+            y: 100.0,
+            width: 700.0,
+            height: 500.0,
+        };
+        let displays = [display("built-in", 0, 25, 1440, 875)];
+
+        assert!(display_for_focused_window_rect(&displays, &focused_window).is_none());
     }
 
     #[test]
