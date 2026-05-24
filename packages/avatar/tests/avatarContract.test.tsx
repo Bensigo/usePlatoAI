@@ -8,6 +8,9 @@ import {
   AvatarRenderer,
   avatarAnimationCommands,
   avatarCompanionStates,
+  avatarEyeDirectionFromCursor,
+  avatarEyeDirectionNeutral,
+  avatarEyeDirectionStyle,
   avatarPackageAssets,
   avatarStartupSound,
   fallbackRendererFor,
@@ -130,6 +133,67 @@ describe("avatar package contract", () => {
     });
   });
 
+  it("maps cursor position into a clamped avatar eye direction", () => {
+    const avatarBounds = {
+      left: 100,
+      top: 200,
+      width: 200,
+      height: 240,
+    };
+
+    expect(
+      avatarEyeDirectionFromCursor({
+        cursorX: 200,
+        cursorY: 200 + 240 * 0.42,
+        avatarBounds,
+      }),
+    ).toEqual(avatarEyeDirectionNeutral);
+    expect(
+      avatarEyeDirectionFromCursor({
+        cursorX: 274,
+        cursorY: 200 + 240 * 0.42 + 69.6,
+        avatarBounds,
+      }),
+    ).toEqual({
+      x: 0.5,
+      y: 0.5,
+    });
+  });
+
+  it("clamps eye direction at the avatar package boundary", () => {
+    expect(
+      avatarEyeDirectionFromCursor({
+        cursorX: 10_000,
+        cursorY: -10_000,
+        avatarBounds: {
+          left: 100,
+          top: 200,
+          width: 200,
+          height: 240,
+        },
+      }),
+    ).toEqual({
+      x: 1,
+      y: -1,
+    });
+    expect(
+      avatarEyeDirectionFromCursor({
+        cursorX: 100,
+        cursorY: 100,
+        avatarBounds: {
+          left: 0,
+          top: 0,
+          width: 0,
+          height: 0,
+        },
+      }),
+    ).toEqual(avatarEyeDirectionNeutral);
+    expect(avatarEyeDirectionStyle({ x: 0.25, y: -0.5 })).toEqual({
+      "--plato-avatar-eye-x": 0.25,
+      "--plato-avatar-eye-y": -0.5,
+    });
+  });
+
   it("represents startup sound ownership in the avatar package API", () => {
     expect(avatarStartupSound).toEqual({
       id: "plato-startup-chime",
@@ -152,8 +216,20 @@ describe("avatar package contract", () => {
     expect(markup).toContain('data-rive-animation="happy"');
     expect(markup).toContain('data-rive-input-is-happy="true"');
     expect(markup).toContain('data-rive-input-is-sad="false"');
+    expect(markup).toContain('data-avatar-eye-tracking="rive-matched-pupils"');
+    expect(markup).toContain('data-rive-eye-surface="Avatar 1"');
+    expect(markup).toContain("plato-rive-eye-tracking-overlay");
+    expect(markup).toContain("plato-rive-eye-pupil-left");
+    expect(markup).toContain("plato-rive-eye-pupil-right");
+    expect(markup).toContain('data-avatar-eye-tracking="fallback-svg-pupils"');
+    expect(markup).toContain('data-avatar-eye-x="0"');
+    expect(markup).toContain('data-avatar-eye-y="0"');
+    expect(markup).not.toContain('data-avatar-eye-tracking="source-svg-pupils"');
+    expect(markup).not.toContain('data-avatar-eye-tracking="fallback-overlay"');
+    expect(markup).not.toContain("plato-avatar-eye-left");
+    expect(markup).not.toContain("plato-avatar-eye-right");
     expect(markup).toContain('data-fallback-renderer="svg"');
-    expect(markup).toContain('data-avatar-fallback-state="hidden"');
+    expect(markup).toContain('data-avatar-fallback-state="visible"');
     expect(markup).toContain("/avatar/plato/rive/plato-companion.riv");
     expect(markup).toContain("/avatar/plato/source/wise-owl-colour.svg");
   });
