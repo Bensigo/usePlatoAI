@@ -19,6 +19,7 @@ import {
   VoiceInteractionPanel,
   currentTaskPresenceStateForAction,
   currentTaskPresenceStateForLocalTasks,
+  avatarEyeTrackingClientPointFromDesktopCursor,
   isActiveCorrectionPromptTransition,
   isActionableCurrentTaskState,
   loadPersistedLocalTasks,
@@ -686,6 +687,16 @@ describe("desktop app shell", () => {
     expect(styles).toContain(".plato-rive-eye-pupil");
     expect(styles).toContain("var(--plato-avatar-eye-x, 0) * 5px");
     expect(styles).toContain("transition: transform 92ms ease-out");
+  });
+
+  it("maps native desktop cursor coordinates into avatar client coordinates", () => {
+    expect(
+      avatarEyeTrackingClientPointFromDesktopCursor({
+        cursorPosition: { x: 920, y: 560 },
+        windowPosition: { x: 720, y: 320 },
+        scaleFactor: 2,
+      }),
+    ).toEqual({ x: 100, y: 120 });
   });
 
   it("keeps avatar renderer fallback behavior explicit and secondary to Rive", () => {
@@ -2048,6 +2059,18 @@ describe("desktop app shell", () => {
 
     expect(capability).toContain("core:window:allow-start-dragging");
     expect(capability).toContain("core:window:allow-set-position");
+  });
+
+  it("allows native desktop cursor position polling for avatar eye tracking", () => {
+    const capability = readFileSync(
+      resolve(process.cwd(), "src-tauri/capabilities/default.json"),
+      "utf8",
+    );
+    const source = readFileSync(resolve(process.cwd(), "src/App.tsx"), "utf8");
+
+    expect(capability).toContain("core:window:allow-cursor-position");
+    expect(source).toContain("getDesktopCursorPosition()");
+    expect(source).toContain("avatarEyeTrackingClientPointFromDesktopCursor");
   });
 
   it("keeps the fixed Tauri window size from clipping the shell zones", () => {
