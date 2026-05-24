@@ -35,7 +35,9 @@ const initialAudioActivationState = audioActivationStateFrom(
 const initialVoiceSessionState = voiceSessionStateFrom(
   searchParams.get("voiceState"),
 );
-const avatarTestCommand = searchParams.get("avatarTestCommand");
+const avatarTestCommand =
+  searchParams.get("avatarTestCommand") ??
+  import.meta.env.VITE_PLATO_AVATAR_TEST_COMMAND;
 const initialAvatarTestCommand =
   avatarCompanionStateFromTestCommand(avatarTestCommand) === null
     ? undefined

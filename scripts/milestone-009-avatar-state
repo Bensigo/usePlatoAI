@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  cat <<'USAGE'
+Usage: scripts/milestone-009-avatar-state <command>
+
+Launches the native Tauri desktop app with a hidden Milestone 009 avatar test
+command. This is for visual evidence against the real desktop companion window,
+not the Vite browser page.
+
+Commands:
+  greeting
+  happy
+  smile
+  sad
+  talking
+  dance
+  celebration
+USAGE
+}
+
+if [[ $# -ne 1 ]]; then
+  usage >&2
+  exit 64
+fi
+
+command="$1"
+
+case "$command" in
+  greeting|happy|smile|sad|talking|dance|celebration)
+    ;;
+  *)
+    usage >&2
+    echo "Unsupported Milestone 009 avatar command: $command" >&2
+    exit 64
+    ;;
+esac
+
+export VITE_PLATO_AVATAR_TEST_COMMAND="$command"
+exec pnpm desktop:dev
