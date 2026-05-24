@@ -77,6 +77,10 @@ import {
   shouldStartPresenceWindowDrag,
 } from "../src/presencePosition";
 import {
+  isPointInsideAvatarVisibleHitArea,
+  shouldCapturePresenceCursor,
+} from "../src/presenceHitTest";
+import {
   type CompanionSettings,
   createMemorySettingsStore,
   defaultCompanionSettings,
@@ -418,6 +422,60 @@ describe("desktop app shell", () => {
 
     expect(styles).toMatch(/:root\s*{[^}]*background:\s*transparent;/s);
     expect(styles).toMatch(/body\s*{[^}]*background:\s*transparent;/s);
+  });
+
+  it("allows the native presence window to ignore transparent cursor regions", () => {
+    const tauriCapabilities = JSON.parse(
+      readFileSync(
+        resolve(__dirname, "../src-tauri/capabilities/default.json"),
+        "utf8",
+      ),
+    ) as { permissions: string[] };
+    const appSource = readFileSync(resolve(process.cwd(), "src/App.tsx"), "utf8");
+    const markup = renderToStaticMarkup(
+      <App initialSettings={completedSettings} initialControlsExpanded />,
+    );
+
+    expect(tauriCapabilities.permissions).toContain(
+      "core:window:allow-set-ignore-cursor-events",
+    );
+    expect(appSource).toContain("setIgnoreCursorEvents");
+    expect(markup).toContain('data-native-hit-region="avatar"');
+    expect(markup).toContain('data-native-hit-region="capture"');
+  });
+
+  it("hit-tests the visible avatar separately from transparent canvas pixels", () => {
+    const avatarRect = { left: 0, top: 0, width: 500, height: 690 };
+    const transparentCorner = { x: 26, y: 34 };
+    const visibleHead = { x: 250, y: 110 };
+
+    expect(
+      isPointInsideAvatarVisibleHitArea(visibleHead, avatarRect),
+    ).toBe(true);
+    expect(
+      isPointInsideAvatarVisibleHitArea(transparentCorner, avatarRect),
+    ).toBe(false);
+    expect(
+      shouldCapturePresenceCursor({
+        point: transparentCorner,
+        avatarRect,
+        isPresenceDraggable: false,
+      }),
+    ).toBe(false);
+    expect(
+      shouldCapturePresenceCursor({
+        point: transparentCorner,
+        avatarRect,
+        isPresenceDraggable: true,
+      }),
+    ).toBe(true);
+    expect(
+      shouldCapturePresenceCursor({
+        point: transparentCorner,
+        avatarRect,
+        capturedElementRect: { left: 0, top: 0, width: 44, height: 44 },
+      }),
+    ).toBe(true);
   });
 
   it("configures the default Tauri window as a companion-sized floating presence", () => {
