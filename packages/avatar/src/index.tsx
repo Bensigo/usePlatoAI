@@ -138,7 +138,7 @@ function PlatoWiseOwlSourceSvg({
       role="img"
       aria-labelledby="plato-wise-owl-title plato-wise-owl-desc"
       data-avatar-fallback-surface="commercial-safe-mascot"
-      data-avatar-eye-tracking="source-svg-pupils"
+      data-avatar-eye-tracking="fallback-svg-pupils"
       data-avatar-eye-x={String(eyeDirection.x)}
       data-avatar-eye-y={String(eyeDirection.y)}
       style={avatarEyeDirectionStyle(eyeDirection)}
@@ -188,6 +188,35 @@ function PlatoWiseOwlSourceSvg({
         <path d="M226 82l24-16M242 85l24-4M230 96l22 10" />
       </g>
     </svg>
+  );
+}
+
+function RiveMatchedEyeTrackingOverlay({
+  eyeDirection,
+}: {
+  eyeDirection: AvatarEyeDirection;
+}) {
+  const style = {
+    ...avatarEyeDirectionStyle(eyeDirection),
+    "--plato-rive-eye-left-x": `${riveMatchedEyeTrackingOverlay.left.xPercent}%`,
+    "--plato-rive-eye-left-y": `${riveMatchedEyeTrackingOverlay.left.yPercent}%`,
+    "--plato-rive-eye-right-x": `${riveMatchedEyeTrackingOverlay.right.xPercent}%`,
+    "--plato-rive-eye-right-y": `${riveMatchedEyeTrackingOverlay.right.yPercent}%`,
+  } as CSSProperties;
+
+  return (
+    <div
+      className="plato-rive-eye-tracking-overlay"
+      aria-hidden="true"
+      data-avatar-eye-tracking="rive-matched-pupils"
+      data-rive-eye-surface={riveMatchedEyeTrackingOverlay.surface}
+      data-avatar-eye-x={String(eyeDirection.x)}
+      data-avatar-eye-y={String(eyeDirection.y)}
+      style={style}
+    >
+      <span className="plato-rive-eye-pupil plato-rive-eye-pupil-left" />
+      <span className="plato-rive-eye-pupil plato-rive-eye-pupil-right" />
+    </div>
   );
 }
 
@@ -253,6 +282,18 @@ export const vendoredRiveAssetContract = {
     isHappy: "isHappy",
     isSad: "isSad",
     mouth: "mouth",
+  },
+} as const;
+
+const riveMatchedEyeTrackingOverlay = {
+  surface: vendoredRiveAssetContract.artboard,
+  left: {
+    xPercent: 36.6,
+    yPercent: 49.7,
+  },
+  right: {
+    xPercent: 63.5,
+    yPercent: 49.7,
   },
 } as const;
 
@@ -666,7 +707,7 @@ export function AvatarRenderer({
       data-rive-input-mouth={String(config.rive.inputs.mouth ?? 0)}
       data-fallback-renderer={config.fallback.renderer}
       data-avatar-fallback-state="visible"
-      data-avatar-eye-tracking="source-svg-pupils"
+      data-avatar-eye-tracking="rive-matched-pupils"
       data-fallback-src={config.fallback.src}
     >
       <BrowserRiveCanvas
@@ -680,6 +721,7 @@ export function AvatarRenderer({
         onLoad={markRiveReady}
         onLoadError={markRiveFailed}
       />
+      <RiveMatchedEyeTrackingOverlay eyeDirection={eyeDirection} />
       <PlatoWiseOwlSourceSvg eyeDirection={eyeDirection} />
     </div>
   );

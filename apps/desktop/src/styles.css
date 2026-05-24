@@ -555,9 +555,45 @@ button {
   z-index: 2;
 }
 
-.plato-rive-avatar[data-rive-runtime-state="ready"] .plato-avatar-source-svg-asset path,
-.plato-rive-avatar[data-rive-runtime-state="ready"] .plato-avatar-source-svg-asset .plato-wise-owl-eye-white {
+.plato-rive-avatar[data-rive-runtime-state="ready"] .plato-avatar-source-svg-asset {
   opacity: 0;
+}
+
+.plato-rive-eye-tracking-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease;
+}
+
+.plato-rive-avatar[data-rive-runtime-state="ready"] .plato-rive-eye-tracking-overlay {
+  opacity: 1;
+}
+
+.plato-rive-eye-pupil {
+  position: absolute;
+  width: 7px;
+  height: 7px;
+  border-radius: var(--plato-radius-pill);
+  background: #17130f;
+  box-shadow: 0 0 0 1px rgb(23 19 15 / 32%);
+  transform: translate(
+    calc(-50% + var(--plato-avatar-eye-x, 0) * 5px),
+    calc(-50% + var(--plato-avatar-eye-y, 0) * 3px)
+  );
+  transition: transform 92ms ease-out;
+}
+
+.plato-rive-eye-pupil-left {
+  left: var(--plato-rive-eye-left-x);
+  top: var(--plato-rive-eye-left-y);
+}
+
+.plato-rive-eye-pupil-right {
+  left: var(--plato-rive-eye-right-x);
+  top: var(--plato-rive-eye-right-y);
 }
 
 .plato-wise-owl-pupil {
