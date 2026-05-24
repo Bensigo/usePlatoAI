@@ -1,0 +1,79 @@
+{
+  "sourceIssue": 317,
+  "implementationIssue": 311,
+  "sourceFile": "/Users/macbook/Downloads/plato.vrm",
+  "visualReference": "/Users/macbook/Downloads/plato-vroid-front.png",
+  "fileName": "plato.vrm",
+  "fileSizeBytes": 17565172,
+  "generator": "VRoid Studio-2.12.0",
+  "format": "VRM 1.0 / glTF binary",
+  "license": {
+    "licenseUrl": "https://vrm.dev/licenses/1.0/",
+    "avatarPermission": "onlyAuthor",
+    "commercialUsage": "personalProfit",
+    "allowRedistribution": true,
+    "modification": "allowModification",
+    "creditNotation": "unnecessary"
+  },
+  "extensionsUsed": [
+    "KHR_texture_transform",
+    "KHR_materials_unlit",
+    "VRMC_vrm",
+    "VRMC_springBone",
+    "VRMC_materials_mtoon"
+  ],
+  "humanoid": {
+    "boneCount": 54,
+    "eyeAndHeadControls": ["neck", "head", "leftEye", "rightEye"],
+    "armGestureControls": [
+      "rightShoulder",
+      "rightUpperArm",
+      "rightLowerArm",
+      "rightHand"
+    ]
+  },
+  "expressions": [
+    "happy",
+    "angry",
+    "sad",
+    "relaxed",
+    "surprised",
+    "aa",
+    "ih",
+    "ou",
+    "ee",
+    "oh",
+    "blink",
+    "blinkLeft",
+    "blinkRight",
+    "neutral"
+  ],
+  "mouthMorphTargets": [
+    "Fcl_MTH_Close",
+    "Fcl_MTH_Up",
+    "Fcl_MTH_Down",
+    "Fcl_MTH_Angry",
+    "Fcl_MTH_Small",
+    "Fcl_MTH_Large",
+    "Fcl_MTH_Neutral",
+    "Fcl_MTH_Fun",
+    "Fcl_MTH_Joy",
+    "Fcl_MTH_Sorrow",
+    "Fcl_MTH_Surprised",
+    "Fcl_MTH_A",
+    "Fcl_MTH_I",
+    "Fcl_MTH_U",
+    "Fcl_MTH_E",
+    "Fcl_MTH_O"
+  ],
+  "bundledAnimations": [],
+  "runtimeControls": {
+    "eyeX": "VRM lookAt target backed by eye bones",
+    "eyeY": "VRM lookAt target backed by eye bones",
+    "blink": "VRM blink expression",
+    "mouthOpen": "VRM vowel expressions",
+    "smile": "VRM happy expression",
+    "laugh": "VRM relaxed, happy, and aa expressions; no dedicated bundled animation",
+    "wave": "Authored humanoid right-arm/hand bone transforms; no bundled animation"
+  }
+}

@@ -1,5 +1,17 @@
-import { useRive } from "@rive-app/react-canvas";
-import { useCallback, useMemo, useState, type CSSProperties } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+} from "react";
+import type { VRM } from "@pixiv/three-vrm";
+import type * as ThreeNamespace from "three";
+import type {
+  GLTF,
+  GLTFParser,
+} from "three/examples/jsm/loaders/GLTFLoader.js";
 
 export const avatarCompanionStates = [
   "startup",
@@ -53,9 +65,9 @@ export const avatarPresenceStates = [
 
 export type AvatarPresenceState = (typeof avatarPresenceStates)[number];
 
-export type AvatarRendererKind = "rive" | "svg";
-export type AvatarFallbackReason = "missing-rive-asset" | "unsupported-runtime";
-export type RiveRuntimeState = "loading" | "ready" | "failed";
+export type AvatarRendererKind = "three-vrm";
+export type AvatarFallbackReason = "missing-vrm-asset" | "unsupported-webgl";
+export type VrmRuntimeState = "loading" | "ready" | "failed";
 
 export type AvatarEyeDirection = {
   x: number;
@@ -126,115 +138,15 @@ export function avatarEyeDirectionStyle(
   } as CSSProperties;
 }
 
-function PlatoWiseOwlSourceSvg({
-  eyeDirection,
-}: {
-  eyeDirection: AvatarEyeDirection;
-}) {
-  return (
-    <svg
-      id="plato-wise-owl"
-      className="plato-avatar-asset plato-avatar-source-svg-asset"
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 320 360"
-      role="img"
-      aria-labelledby="plato-wise-owl-title plato-wise-owl-desc"
-      data-avatar-fallback-surface="commercial-safe-mascot"
-      data-avatar-eye-tracking="fallback-svg-pupils"
-      data-avatar-eye-x={String(eyeDirection.x)}
-      data-avatar-eye-y={String(eyeDirection.y)}
-      style={avatarEyeDirectionStyle(eyeDirection)}
-    >
-      <title id="plato-wise-owl-title">Plato wise owl companion mascot</title>
-      <desc id="plato-wise-owl-desc">
-        A simplified CC0-derived wise owl mascot with expressive eyes.
-      </desc>
-      <rect width="320" height="360" fill="none" />
-      <g
-        fill="none"
-        stroke="#17130f"
-        strokeWidth="7"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      >
-        <path
-          fill="#dbc2b2"
-          d="M106 111c19-34 79-34 102 0 20 30 26 85 14 143-7 34-28 60-66 60-40 0-62-25-70-60-13-58 0-113 20-143Z"
-        />
-        <path fill="#8aa46f" d="M118 76c35-24 70-24 99 1-30 17-63 20-99-1Z" />
-        <path fill="#6f8459" d="M158 40c28 7 44 22 50 45-27 0-49-12-50-45Z" />
-        <path fill="#f4f0c4" d="M204 34c11 10 18 21 21 35-15-5-26-15-21-35Z" />
-        <path fill="#f9f4e9" d="M96 306h148l36 28H48l48-28Z" />
-        <path fill="#9f6f67" d="M84 281h160l-21 30H62l22-30Z" />
-        <path fill="#70809d" d="M52 318h210l35 25H24l28-25Z" />
-        <path d="M138 136c-3 17-22 27-39 18M178 136c5 17 24 26 40 16" />
-        <circle className="plato-wise-owl-eye-white" cx="124" cy="153" r="18" fill="#f5f4ec" />
-        <circle className="plato-wise-owl-eye-white" cx="194" cy="153" r="18" fill="#f5f4ec" />
-        <circle
-          className="plato-wise-owl-pupil plato-wise-owl-pupil-left"
-          cx="127"
-          cy="155"
-          r="7"
-          fill="#17130f"
-        />
-        <circle
-          className="plato-wise-owl-pupil plato-wise-owl-pupil-right"
-          cx="191"
-          cy="155"
-          r="7"
-          fill="#17130f"
-        />
-        <path fill="#d59f6c" d="M154 171l18 2-10 15-8-17Z" />
-        <path d="M148 202c9 8 24 8 33-1M98 222c18 10 36 12 54 5M168 228c21 6 41 2 58-12M115 253c25 12 55 13 86 1" />
-        <path d="M126 114c23-10 48-10 72 0M120 92c25 14 56 17 92 3" />
-        <path d="M226 82l24-16M242 85l24-4M230 96l22 10" />
-      </g>
-    </svg>
-  );
-}
-
-function RiveMatchedEyeTrackingOverlay({
-  eyeDirection,
-}: {
-  eyeDirection: AvatarEyeDirection;
-}) {
-  const style = {
-    ...avatarEyeDirectionStyle(eyeDirection),
-    "--plato-rive-eye-left-x": `${riveMatchedEyeTrackingOverlay.left.xPercent}%`,
-    "--plato-rive-eye-left-y": `${riveMatchedEyeTrackingOverlay.left.yPercent}%`,
-    "--plato-rive-eye-right-x": `${riveMatchedEyeTrackingOverlay.right.xPercent}%`,
-    "--plato-rive-eye-right-y": `${riveMatchedEyeTrackingOverlay.right.yPercent}%`,
-  } as CSSProperties;
-
-  return (
-    <div
-      className="plato-rive-eye-tracking-overlay"
-      aria-hidden="true"
-      data-avatar-eye-tracking="rive-matched-pupils"
-      data-rive-eye-surface={riveMatchedEyeTrackingOverlay.surface}
-      data-avatar-eye-x={String(eyeDirection.x)}
-      data-avatar-eye-y={String(eyeDirection.y)}
-      style={style}
-    >
-      <span className="plato-rive-eye-pupil plato-rive-eye-pupil-left" />
-      <span className="plato-rive-eye-pupil plato-rive-eye-pupil-right" />
-    </div>
-  );
-}
-
 export type AvatarPackageAsset = {
   packagePath: string;
   publicPath: string;
 };
 
 export const avatarPackageAssets = {
-  rive: {
-    packagePath: "packages/avatar/assets/rive/plato-companion.riv",
-    publicPath: "/avatar/plato/rive/plato-companion.riv",
-  },
-  sourceSvg: {
-    packagePath: "packages/avatar/assets/source/wise-owl-colour.svg",
-    publicPath: "/avatar/plato/source/wise-owl-colour.svg",
+  vrm: {
+    packagePath: "packages/avatar/assets/vrm/plato.vrm",
+    publicPath: "/avatar/plato/vrm/plato.vrm",
   },
   startupSound: {
     packagePath: "packages/avatar/assets/audio/plato-startup-chime.wav",
@@ -242,27 +154,27 @@ export const avatarPackageAssets = {
   },
 } as const satisfies Record<string, AvatarPackageAsset>;
 
-export const mascotSource = {
-  title: "Wise Owl - Colour",
-  sourceUrl: "https://openclipart.org/detail/303927/wise-owl-colour",
-  artist: "j4p4n",
-  remixOf: {
-    title: "wise owl on books",
-    artist: "johnny_automatic",
-    sourceUrl: "https://openclipart.org/detail/9214/wise-owl-on-books",
-  },
+export const vroidAvatarSource = {
+  title: "plato",
+  sourceFile: "/Users/macbook/Downloads/plato.vrm",
+  visualReference: "/Users/macbook/Downloads/plato-vroid-front.png",
+  localAsset: avatarPackageAssets.vrm.packagePath,
+  publicRuntimeCopy: avatarPackageAssets.vrm.publicPath,
+  sourceTool: "VRoid Studio 2.12.0",
+  format: "VRM 1.0 / glTF binary",
+  author: "Bensigo",
+  exportedForIssue: 317,
   license: {
-    name: "Creative Commons Zero 1.0 Universal",
-    spdxId: "CC0-1.0",
-    url: "https://creativecommons.org/publicdomain/zero/1.0/",
-    allowsCommercialUse: true,
-  },
-  attribution: {
-    required: false,
-    note: "Not required by CC0; source retained for provenance.",
+    name: "VRM Public License 1.0 metadata",
+    url: "https://vrm.dev/licenses/1.0/",
+    avatarPermission: "onlyAuthor",
+    commercialUsage: "personalProfit",
+    allowRedistribution: true,
+    modification: "allowModification",
+    creditNotation: "unnecessary",
   },
   usageNotes:
-    "Use as the commercial-safe fallback mascot source for Plato's first Rive-backed avatar package.",
+    "Production-intent VRoid VRM selected by the operator for Plato's Three.js desktop companion avatar.",
 } as const;
 
 export const avatarStartupSound = {
@@ -275,132 +187,234 @@ export const avatarStartupSound = {
   source: "generated-useplatoai",
 } as const;
 
-export const vendoredRiveAssetContract = {
-  artboard: "Avatar 1",
-  stateMachine: "avatar",
-  animations: {
-    idle: "idle",
-    happy: "happy",
-    sad: "sad",
+export const vendoredVrmAssetContract = {
+  loader: "@pixiv/three-vrm",
+  renderer: "three",
+  asset: avatarPackageAssets.vrm,
+  transparentCanvas: true,
+  framing: {
+    subject: "full-body",
+    viewportFill: "most-of-height",
+    cameraPosition: [0, 0.82, 5.25],
+    cameraLookAt: [0, 0.7, 0],
+    modelPosition: [0, -0.72, 0],
+    modelScale: 1.02,
+    fieldOfViewDegrees: 32,
   },
-  inputs: {
-    isHappy: "isHappy",
-    isSad: "isSad",
-    mouth: "mouth",
+  runtimeControls: {
+    eyeX: {
+      backedBy: ["VRM lookAt target", "leftEye bone", "rightEye bone"],
+      missing: false,
+    },
+    eyeY: {
+      backedBy: ["VRM lookAt target", "leftEye bone", "rightEye bone"],
+      missing: false,
+    },
+    blink: {
+      backedBy: ["VRM expression: blink"],
+      missing: false,
+    },
+    mouthOpen: {
+      backedBy: ["VRM expressions: aa, ih, ou, ee, oh"],
+      missing: false,
+    },
+    smile: {
+      backedBy: ["VRM expression: happy", "morph target: Fcl_ALL_Joy"],
+      missing: false,
+    },
+    laugh: {
+      backedBy: [
+        "VRM expression: relaxed",
+        "VRM expression: happy",
+        "VRM expression: aa",
+      ],
+      missing: false,
+      note: "The VRM has no explicit laugh animation; laugh is mapped to real happy/relaxed/mouth expressions.",
+    },
+    wave: {
+      backedBy: [
+        "humanoid bone: rightShoulder",
+        "humanoid bone: rightUpperArm",
+        "humanoid bone: rightLowerArm",
+        "humanoid bone: rightHand",
+      ],
+      missing: false,
+      note: "The VRM has no bundled animations; wave is authored through real humanoid arm bone transforms.",
+    },
   },
 } as const;
 
-const riveMatchedEyeTrackingOverlay = {
-  surface: vendoredRiveAssetContract.artboard,
-  left: {
-    xPercent: 36.6,
-    yPercent: 49.7,
+export const avatarNeutralHumanoidBonePose = {
+  leftUpperArm: { x: 0, y: 0, z: -1.18 },
+  leftLowerArm: { x: 0, y: 0, z: -0.18 },
+  leftHand: { x: 0, y: 0, z: -0.06 },
+  rightUpperArm: { x: 0, y: 0, z: 1.18 },
+  rightLowerArm: { x: 0, y: 0, z: 0.18 },
+  rightHand: { x: 0, y: 0, z: 0.06 },
+} as const;
+
+export const avatarHelloWaveHumanoidBoneMotion = {
+  oscillationRadiansPerSecond: 8.8,
+  rightUpperArm: {
+    raiseZ: 1.82,
+    forwardX: 0.44,
+    swayX: 0.12,
   },
-  right: {
-    xPercent: 63.5,
-    yPercent: 49.7,
+  rightLowerArm: {
+    bendZ: 1.18,
+    bendX: 0.18,
+    palmTwistY: -1.15,
+    swayY: 0.54,
+  },
+  rightHand: {
+    swayY: 0.16,
+    swayZ: 0.18,
   },
 } as const;
 
-type RiveAssetInputs = typeof vendoredRiveAssetContract.inputs;
-type RiveInputName = RiveAssetInputs[keyof RiveAssetInputs];
+export const vrmCapabilityInventory = {
+  fileName: "plato.vrm",
+  fileSizeBytes: 17_565_172,
+  generator: "VRoid Studio-2.12.0",
+  format: "VRM 1.0 / glTF binary",
+  extensionsUsed: [
+    "KHR_texture_transform",
+    "KHR_materials_unlit",
+    "VRMC_vrm",
+    "VRMC_springBone",
+    "VRMC_materials_mtoon",
+  ],
+  expressions: [
+    "happy",
+    "angry",
+    "sad",
+    "relaxed",
+    "surprised",
+    "aa",
+    "ih",
+    "ou",
+    "ee",
+    "oh",
+    "blink",
+    "blinkLeft",
+    "blinkRight",
+    "neutral",
+  ],
+  mouthMorphTargets: [
+    "Fcl_MTH_Close",
+    "Fcl_MTH_Up",
+    "Fcl_MTH_Down",
+    "Fcl_MTH_Angry",
+    "Fcl_MTH_Small",
+    "Fcl_MTH_Large",
+    "Fcl_MTH_Neutral",
+    "Fcl_MTH_Fun",
+    "Fcl_MTH_Joy",
+    "Fcl_MTH_Sorrow",
+    "Fcl_MTH_Surprised",
+    "Fcl_MTH_A",
+    "Fcl_MTH_I",
+    "Fcl_MTH_U",
+    "Fcl_MTH_E",
+    "Fcl_MTH_O",
+  ],
+  humanoidBoneCount: 54,
+  eyeAndHeadControls: ["neck", "head", "leftEye", "rightEye"],
+  armGestureControls: [
+    "leftUpperArm",
+    "leftLowerArm",
+    "leftHand",
+    "rightShoulder",
+    "rightUpperArm",
+    "rightLowerArm",
+    "rightHand",
+  ],
+  bundledAnimations: [],
+} as const;
 
-type RiveInputValues = Partial<Record<RiveInputName, boolean | number>>;
-
-type RiveRendererConfig = {
-  primaryRenderer: "rive";
-  companionState: AvatarCompanionState;
-  command: AvatarAnimationCommand;
-  rive: {
-    src: string;
-    artboard: typeof vendoredRiveAssetContract.artboard;
-    stateMachine: typeof vendoredRiveAssetContract.stateMachine;
-    animation: string;
-    inputs: RiveInputValues;
-  };
-  fallback: {
-    renderer: "svg";
-    src: string;
-  };
+export type AvatarRuntimeControls = {
+  eyeX: number;
+  eyeY: number;
+  blink: number;
+  mouthOpen: number;
+  smile: number;
+  laugh: number;
+  wave: number;
 };
 
-const animationByState = {
+const avatarRuntimeControlsNeutral = {
+  eyeX: 0,
+  eyeY: 0,
+  blink: 0,
+  mouthOpen: 0,
+  smile: 0,
+  laugh: 0,
+  wave: 0,
+} as const satisfies AvatarRuntimeControls;
+
+const runtimeControlByState = {
   startup: {
-    command: "startup.appear",
-    animation: vendoredRiveAssetContract.animations.idle,
-    inputs: {
-      isHappy: false,
-      isSad: false,
-      mouth: 0,
-    },
+    ...avatarRuntimeControlsNeutral,
+    mouthOpen: 0.1,
+    smile: 0.25,
+    wave: 0.2,
   },
   greet: {
-    command: "greet.wave",
-    animation: vendoredRiveAssetContract.animations.happy,
-    inputs: {
-      isHappy: true,
-      isSad: false,
-      mouth: 0.1,
-    },
+    ...avatarRuntimeControlsNeutral,
+    smile: 0.55,
+    wave: 1,
   },
-  idle: {
-    command: "idle.breathe",
-    animation: vendoredRiveAssetContract.animations.idle,
-    inputs: {
-      isHappy: false,
-      isSad: false,
-      mouth: 0,
-    },
-  },
+  idle: avatarRuntimeControlsNeutral,
   listening: {
-    command: "voice.listen",
-    animation: vendoredRiveAssetContract.animations.idle,
-    inputs: {
-      isHappy: false,
-      isSad: false,
-      mouth: 0.08,
-    },
+    ...avatarRuntimeControlsNeutral,
+    eyeY: 0.12,
+    mouthOpen: 0.05,
   },
   happy: {
-    command: "mood.smile",
-    animation: vendoredRiveAssetContract.animations.happy,
-    inputs: {
-      isHappy: true,
-      isSad: false,
-      mouth: 0.2,
-    },
+    ...avatarRuntimeControlsNeutral,
+    smile: 1,
   },
   sad: {
-    command: "mood.sad",
-    animation: vendoredRiveAssetContract.animations.sad,
-    inputs: {
-      isHappy: false,
-      isSad: true,
-      mouth: 0,
-    },
+    ...avatarRuntimeControlsNeutral,
+    mouthOpen: 0.04,
   },
   talking: {
-    command: "voice.talk",
-    animation: vendoredRiveAssetContract.animations.idle,
-    inputs: {
-      isHappy: false,
-      isSad: false,
-      mouth: 0.75,
-    },
+    ...avatarRuntimeControlsNeutral,
+    mouthOpen: 0.75,
   },
   celebrating: {
-    command: "celebration.dance",
-    animation: vendoredRiveAssetContract.animations.happy,
-    inputs: {
-      isHappy: true,
-      isSad: false,
-      mouth: 0.45,
-    },
+    ...avatarRuntimeControlsNeutral,
+    mouthOpen: 0.42,
+    smile: 0.85,
+    laugh: 0.75,
+    wave: 0.7,
   },
-} as const satisfies Record<
-  AvatarCompanionState,
-  { command: AvatarAnimationCommand; animation: string; inputs: RiveInputValues }
->;
+} as const satisfies Record<AvatarCompanionState, AvatarRuntimeControls>;
+
+type ThreeVrmRendererConfig = {
+  primaryRenderer: "three-vrm";
+  companionState: AvatarCompanionState;
+  command: AvatarAnimationCommand;
+  three: {
+    src: string;
+    loader: typeof vendoredVrmAssetContract.loader;
+    renderer: typeof vendoredVrmAssetContract.renderer;
+    transparentCanvas: true;
+  };
+  controls: AvatarRuntimeControls;
+  capabilityInventory: typeof vrmCapabilityInventory;
+};
+
+const commandByState = {
+  startup: "startup.appear",
+  greet: "greet.wave",
+  idle: "idle.breathe",
+  listening: "voice.listen",
+  happy: "mood.smile",
+  sad: "mood.sad",
+  talking: "voice.talk",
+  celebrating: "celebration.dance",
+} as const satisfies Record<AvatarCompanionState, AvatarAnimationCommand>;
 
 export const avatarLaunchSequence = [
   {
@@ -431,8 +445,9 @@ export const avatarLaunchSequence = [
 export const avatarIdleWavePolicy = {
   companionState: "greet",
   command: "greet.wave",
-  initialDelayMs: 8_500,
-  minimumIntervalMs: 18_000,
+  initialDelayMs: 90_000,
+  minimumIntervalMs: 60_000,
+  maximumIntervalMs: 120_000,
   activeStateBackoffMs: 6_000,
   waveDurationMs: 960,
   pausedPresenceStates: [
@@ -451,14 +466,39 @@ export const avatarIdleWavePolicy = {
   ],
 } as const;
 
+function clampAvatarIdleWaveRandom(value: number) {
+  if (!Number.isFinite(value)) {
+    return 0;
+  }
+
+  return Math.max(0, Math.min(1, value));
+}
+
+export function nextAvatarIdleWaveIntervalMs({
+  random = Math.random,
+}: {
+  random?: () => number;
+} = {}) {
+  const intervalRangeMs =
+    avatarIdleWavePolicy.maximumIntervalMs -
+    avatarIdleWavePolicy.minimumIntervalMs;
+
+  return (
+    avatarIdleWavePolicy.minimumIntervalMs +
+    Math.round(intervalRangeMs * clampAvatarIdleWaveRandom(random()))
+  );
+}
+
 export function millisecondsUntilNextAvatarIdleWave({
   presenceState,
   nowMs,
   lastWaveAtMs,
+  scheduledIntervalMs = avatarIdleWavePolicy.minimumIntervalMs,
 }: {
   presenceState: string;
   nowMs: number;
   lastWaveAtMs: number | null;
+  scheduledIntervalMs?: number;
 }) {
   if (
     avatarIdleWavePolicy.pausedPresenceStates.some(
@@ -474,7 +514,7 @@ export function millisecondsUntilNextAvatarIdleWave({
 
   return Math.max(
     0,
-    avatarIdleWavePolicy.minimumIntervalMs - (nowMs - lastWaveAtMs),
+    scheduledIntervalMs - (nowMs - lastWaveAtMs),
   );
 }
 
@@ -489,7 +529,7 @@ const hiddenTestCommandStateByCommand = {
 } as const satisfies Record<AvatarTestAnimationCommand, AvatarCompanionState>;
 
 export function avatarCompanionStateForClickReaction(): AvatarCompanionState {
-  return "happy";
+  return "greet";
 }
 
 export function avatarCompanionStateFromTestCommand(
@@ -508,32 +548,27 @@ export function avatarCompanionStateFromTestCommand(
 
 export function getAvatarRendererConfig(
   companionState: AvatarCompanionState,
-): RiveRendererConfig {
-  const animation = animationByState[companionState];
-
+): ThreeVrmRendererConfig {
   return {
-    primaryRenderer: "rive",
+    primaryRenderer: "three-vrm",
     companionState,
-    command: animation.command,
-    rive: {
-      src: avatarPackageAssets.rive.publicPath,
-      artboard: vendoredRiveAssetContract.artboard,
-      stateMachine: vendoredRiveAssetContract.stateMachine,
-      animation: animation.animation,
-      inputs: animation.inputs,
+    command: commandByState[companionState],
+    three: {
+      src: avatarPackageAssets.vrm.publicPath,
+      loader: vendoredVrmAssetContract.loader,
+      renderer: vendoredVrmAssetContract.renderer,
+      transparentCanvas: true,
     },
-    fallback: {
-      renderer: "svg",
-      src: avatarPackageAssets.sourceSvg.publicPath,
-    },
+    controls: runtimeControlByState[companionState],
+    capabilityInventory: vrmCapabilityInventory,
   };
 }
 
 export function fallbackRendererFor(reason: AvatarFallbackReason) {
   return {
-    renderer: "svg" as const,
+    renderer: "none" as const,
     reason,
-    src: avatarPackageAssets.sourceSvg.publicPath,
+    src: null,
   };
 }
 
@@ -552,7 +587,7 @@ export type Live2DAvatarSurfaceHook = {
   state: AvatarPresenceState;
   label: string;
   statusText: string;
-  avatarAssetPath: `/avatar/plato/source/${string}.svg`;
+  avatarAssetPath: `/avatar/plato/vrm/${string}.vrm`;
   motionGroup:
     | "appear"
     | "idle"
@@ -572,7 +607,7 @@ export type Live2DAvatarSurfaceHook = {
     | "soft"
     | "strained";
   companionState: AvatarCompanionState;
-  rendererConfig: RiveRendererConfig;
+  rendererConfig: ThreeVrmRendererConfig;
   parameterHints: {
     eyeOpen: number;
     mouthOpen: number;
@@ -648,7 +683,7 @@ export const live2dAvatarSurfaceHooks = Object.fromEntries(
       {
         state,
         ...live2dAvatarSurfaceHookBase[state],
-        avatarAssetPath: avatarPackageAssets.sourceSvg.publicPath,
+        avatarAssetPath: avatarPackageAssets.vrm.publicPath,
         companionState,
         rendererConfig: getAvatarRendererConfig(companionState),
       },
@@ -681,85 +716,312 @@ export function getLive2DAvatarSurfaceHook(
   return live2dAvatarSurfaceHooks[presenceState];
 }
 
-type BrowserRiveCanvasProps = {
+function clampRuntimeControl(value: number) {
+  if (!Number.isFinite(value)) {
+    return 0;
+  }
+
+  return Math.max(0, Math.min(1, value));
+}
+
+function applyVrmExpressionControls(vrm: VRM, controls: AvatarRuntimeControls) {
+  const expressionManager = vrm.expressionManager;
+
+  if (!expressionManager) {
+    return;
+  }
+
+  expressionManager.setValue("blink", clampRuntimeControl(controls.blink));
+  expressionManager.setValue(
+    "aa",
+    Math.max(
+      clampRuntimeControl(controls.mouthOpen),
+      clampRuntimeControl(controls.laugh) * 0.36,
+    ),
+  );
+  expressionManager.setValue("happy", clampRuntimeControl(controls.smile));
+  expressionManager.setValue(
+    "relaxed",
+    clampRuntimeControl(controls.laugh) * 0.72,
+  );
+}
+
+function applyNeutralHumanoidBonePose(
+  vrm: VRM,
+  THREE: typeof import("three"),
+  boneRotations: Map<string, ThreeNamespace.Euler>,
+) {
+  for (const [boneName, rotation] of Object.entries(
+    avatarNeutralHumanoidBonePose,
+  )) {
+    const bone = vrm.humanoid.getNormalizedBoneNode(
+      boneName as Parameters<typeof vrm.humanoid.getNormalizedBoneNode>[0],
+    );
+
+    if (!bone) {
+      continue;
+    }
+
+    bone.rotation.set(rotation.x, rotation.y, rotation.z);
+    boneRotations.set(
+      boneName,
+      new THREE.Euler(rotation.x, rotation.y, rotation.z, bone.rotation.order),
+    );
+  }
+}
+
+type BrowserVrmCanvasProps = {
   className: string;
   src: string;
-  artboard: string;
-  stateMachines: string;
-  animations: string;
-  inputs: RiveInputValues;
+  controls: AvatarRuntimeControls;
   onLoad: () => void;
   onLoadError: () => void;
 };
 
-function applyRiveInputs(
-  rive: {
-    stateMachineInputs: (
-      name: string,
-    ) => Array<{ name: string; value: boolean | number }>;
-  },
-  stateMachine: string,
-  inputs: RiveInputValues,
-) {
-  for (const input of rive.stateMachineInputs(stateMachine)) {
-    const nextValue = inputs[input.name as RiveInputName];
-
-    if (nextValue !== undefined) {
-      input.value = nextValue;
-    }
-  }
-}
-
-function BrowserRiveCanvas({
+function BrowserVrmCanvas({
   className,
   src,
-  artboard,
-  stateMachines,
-  animations,
-  inputs,
+  controls,
   onLoad,
   onLoadError,
-}: BrowserRiveCanvasProps) {
-  const riveParameters = useMemo(
-    () => ({
-      src,
-      artboard,
-      stateMachines,
-      animations,
-      autoplay: true,
-      onLoad,
-      onLoadError,
-      onRiveReady: (rive: {
-        stateMachineInputs: (
-          name: string,
-        ) => Array<{ name: string; value: boolean | number }>;
-      }) => {
-        applyRiveInputs(rive, stateMachines, inputs);
-      },
-    }),
-    [animations, artboard, inputs, onLoad, onLoadError, src, stateMachines],
-  );
-  const { RiveComponent } = useRive(riveParameters);
+}: BrowserVrmCanvasProps) {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const controlsRef = useRef(controls);
 
-  if (typeof window === "undefined") {
-    return (
-      <canvas
-        className={className}
-        data-rive-src={src}
-        data-rive-artboard={artboard}
-        data-rive-state-machine={stateMachines}
-        data-rive-animation={animations}
-      />
-    );
-  }
+  useEffect(() => {
+    controlsRef.current = controls;
+  }, [controls]);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+
+    if (!canvas || typeof window === "undefined") {
+      return undefined;
+    }
+
+    const runtimeCanvas = canvas;
+    let disposed = false;
+    let frameId = 0;
+    let cleanup: (() => void) | undefined;
+
+    async function setupRenderer() {
+      const THREE = await import("three");
+      const { GLTFLoader } = await import(
+        "three/examples/jsm/loaders/GLTFLoader.js"
+      );
+      const { VRMLoaderPlugin, VRMUtils } = await import("@pixiv/three-vrm");
+
+      if (disposed) {
+        return;
+      }
+
+      const renderer = new THREE.WebGLRenderer({
+        canvas: runtimeCanvas,
+        alpha: true,
+        antialias: true,
+        premultipliedAlpha: false,
+      });
+      renderer.setClearColor(0x000000, 0);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+      renderer.outputColorSpace = THREE.SRGBColorSpace;
+
+      const scene = new THREE.Scene();
+      const camera = new THREE.PerspectiveCamera(
+        vendoredVrmAssetContract.framing.fieldOfViewDegrees,
+        1,
+        0.1,
+        20,
+      );
+      camera.position.fromArray(
+        vendoredVrmAssetContract.framing.cameraPosition,
+      );
+      camera.lookAt(
+        new THREE.Vector3().fromArray(
+          vendoredVrmAssetContract.framing.cameraLookAt,
+        ),
+      );
+
+      scene.add(new THREE.AmbientLight(0xffffff, 2.1));
+      const keyLight = new THREE.DirectionalLight(0xffffff, 2.2);
+      keyLight.position.set(1.5, 2.6, 2.4);
+      scene.add(keyLight);
+
+      const lookAtTarget = new THREE.Object3D();
+      scene.add(lookAtTarget);
+
+      const loader = new GLTFLoader();
+      loader.register((parser: GLTFParser) => new VRMLoaderPlugin(parser));
+
+      let loadedVrm: VRM | null = null;
+      const waveBones = new Map<string, ThreeNamespace.Object3D>();
+      const waveBoneRotations = new Map<string, ThreeNamespace.Euler>();
+      let lastFrameTime = performance.now();
+      let elapsedSeconds = 0;
+
+      const resize = () => {
+        const width = Math.max(1, runtimeCanvas.clientWidth);
+        const height = Math.max(1, runtimeCanvas.clientHeight);
+        renderer.setSize(width, height, false);
+        camera.aspect = width / height;
+        camera.updateProjectionMatrix();
+      };
+
+      const resizeObserver = new ResizeObserver(resize);
+      resizeObserver.observe(runtimeCanvas);
+      resize();
+
+      loader.load(
+        src,
+        (gltf: GLTF) => {
+          if (disposed) {
+            return;
+          }
+
+          const vrm = gltf.userData.vrm as VRM | undefined;
+
+          if (!vrm) {
+            onLoadError();
+            return;
+          }
+
+          VRMUtils.rotateVRM0(vrm);
+          loadedVrm = vrm;
+          vrm.scene.position.fromArray(
+            vendoredVrmAssetContract.framing.modelPosition,
+          );
+          vrm.scene.scale.setScalar(vendoredVrmAssetContract.framing.modelScale);
+          scene.add(vrm.scene);
+
+          applyNeutralHumanoidBonePose(vrm, THREE, waveBoneRotations);
+
+          for (const boneName of vendoredVrmAssetContract.runtimeControls.wave
+            .backedBy) {
+            const normalizedBoneName = boneName.replace("humanoid bone: ", "");
+            const bone = vrm.humanoid.getNormalizedBoneNode(
+              normalizedBoneName as Parameters<
+                typeof vrm.humanoid.getNormalizedBoneNode
+              >[0],
+            );
+
+            if (bone) {
+              waveBones.set(normalizedBoneName, bone);
+              if (!waveBoneRotations.has(normalizedBoneName)) {
+                waveBoneRotations.set(normalizedBoneName, bone.rotation.clone());
+              }
+            }
+          }
+
+          if (vrm.lookAt) {
+            vrm.lookAt.target = lookAtTarget;
+          }
+          applyVrmExpressionControls(vrm, controlsRef.current);
+          onLoad();
+        },
+        undefined,
+        () => {
+          if (!disposed) {
+            onLoadError();
+          }
+        },
+      );
+
+      const animate = () => {
+        frameId = window.requestAnimationFrame(animate);
+
+        const nextFrameTime = performance.now();
+        const delta = Math.min((nextFrameTime - lastFrameTime) / 1000, 0.1);
+        lastFrameTime = nextFrameTime;
+        elapsedSeconds += delta;
+        const currentControls = controlsRef.current;
+
+        lookAtTarget.position.set(
+          currentControls.eyeX * 0.34,
+          1.24 + currentControls.eyeY * 0.22,
+          camera.position.z - 0.28,
+        );
+
+        if (loadedVrm) {
+          applyVrmExpressionControls(loadedVrm, currentControls);
+
+          const wave = clampRuntimeControl(currentControls.wave);
+          for (const [boneName, bone] of waveBones) {
+            const baseRotation = waveBoneRotations.get(boneName);
+
+            if (!baseRotation) {
+              continue;
+            }
+
+            bone.rotation.copy(baseRotation);
+
+            if (wave > 0) {
+              const oscillation = Math.sin(
+                elapsedSeconds *
+                  avatarHelloWaveHumanoidBoneMotion.oscillationRadiansPerSecond,
+              );
+
+              if (boneName === "rightUpperArm") {
+                const motion =
+                  avatarHelloWaveHumanoidBoneMotion.rightUpperArm;
+                bone.rotation.z -= wave * motion.raiseZ;
+                bone.rotation.x +=
+                  wave * (motion.forwardX + oscillation * motion.swayX);
+              }
+
+              if (boneName === "rightLowerArm") {
+                const motion =
+                  avatarHelloWaveHumanoidBoneMotion.rightLowerArm;
+                bone.rotation.z -= wave * motion.bendZ;
+                bone.rotation.x += wave * motion.bendX;
+                bone.rotation.y +=
+                  wave * (motion.palmTwistY + oscillation * motion.swayY);
+              }
+
+              if (boneName === "rightHand") {
+                const motion = avatarHelloWaveHumanoidBoneMotion.rightHand;
+                bone.rotation.y += wave * oscillation * motion.swayY;
+                bone.rotation.z += wave * oscillation * motion.swayZ;
+              }
+            }
+          }
+
+          loadedVrm.update(delta);
+        }
+
+        renderer.render(scene, camera);
+      };
+
+      animate();
+
+      cleanup = () => {
+        window.cancelAnimationFrame(frameId);
+        resizeObserver.disconnect();
+        if (loadedVrm) {
+          VRMUtils.deepDispose(loadedVrm.scene);
+        }
+        renderer.dispose();
+      };
+    }
+
+    void setupRenderer().catch(() => {
+      if (!disposed) {
+        onLoadError();
+      }
+    });
+
+    return () => {
+      disposed = true;
+      cleanup?.();
+    };
+  }, [onLoad, onLoadError, src]);
 
   return (
-    <RiveComponent
+    <canvas
+      ref={canvasRef}
       className={className}
-      data-rive-src={src}
-      data-rive-artboard={artboard}
-      data-rive-state-machine={stateMachines}
-      data-rive-animation={animations}
+      data-vrm-src={src}
+      data-three-renderer="webgl"
+      data-three-alpha="true"
+      data-vrm-loader={vendoredVrmAssetContract.loader}
     />
   );
 }
@@ -772,47 +1034,53 @@ export function AvatarRenderer({
   eyeDirection?: AvatarEyeDirection;
 }) {
   const config = getAvatarRendererConfig(companionState);
+  const controls = useMemo(
+    () => ({
+      ...config.controls,
+      eyeX: eyeDirection.x,
+      eyeY: eyeDirection.y,
+    }),
+    [config.controls, eyeDirection.x, eyeDirection.y],
+  );
   const [runtimeState, setRuntimeState] =
-    useState<RiveRuntimeState>("loading");
-  const markRiveReady = useCallback(() => {
+    useState<VrmRuntimeState>("loading");
+  const markVrmReady = useCallback(() => {
     setRuntimeState("ready");
   }, []);
-  const markRiveFailed = useCallback(() => {
+  const markVrmFailed = useCallback(() => {
     setRuntimeState("failed");
   }, []);
 
   return (
     <div
-      className="plato-rive-avatar"
+      className="plato-vrm-avatar"
       data-avatar-package="@useplatoai/avatar"
       data-avatar-renderer={config.primaryRenderer}
       data-avatar-companion-state={config.companionState}
       data-avatar-command={config.command}
-      data-rive-artboard={config.rive.artboard}
-      data-rive-runtime-state={runtimeState}
-      data-rive-state-machine={config.rive.stateMachine}
-      data-rive-animation={config.rive.animation}
-      data-rive-input-is-happy={String(config.rive.inputs.isHappy ?? false)}
-      data-rive-input-is-sad={String(config.rive.inputs.isSad ?? false)}
-      data-rive-input-mouth={String(config.rive.inputs.mouth ?? 0)}
-      data-fallback-renderer={config.fallback.renderer}
-      data-avatar-fallback-state="visible"
-      data-avatar-eye-tracking="rive-matched-pupils"
-      data-fallback-src={config.fallback.src}
+      data-vrm-src={config.three.src}
+      data-vrm-runtime-state={runtimeState}
+      data-three-renderer={config.three.renderer}
+      data-three-alpha={String(config.three.transparentCanvas)}
+      data-vrm-loader={config.three.loader}
+      data-avatar-control-eye-x={String(controls.eyeX)}
+      data-avatar-control-eye-y={String(controls.eyeY)}
+      data-avatar-control-blink={String(controls.blink)}
+      data-avatar-control-mouth-open={String(controls.mouthOpen)}
+      data-avatar-control-smile={String(controls.smile)}
+      data-avatar-control-laugh={String(controls.laugh)}
+      data-avatar-control-wave={String(controls.wave)}
+      data-avatar-fallback-state="none"
+      style={avatarEyeDirectionStyle(eyeDirection)}
     >
-      <BrowserRiveCanvas
-        key={config.command}
-        className="plato-rive-canvas"
-        src={config.rive.src}
-        artboard={config.rive.artboard}
-        stateMachines={config.rive.stateMachine}
-        animations={config.rive.animation}
-        inputs={config.rive.inputs}
-        onLoad={markRiveReady}
-        onLoadError={markRiveFailed}
+      <BrowserVrmCanvas
+        key={config.three.src}
+        className="plato-three-vrm-canvas"
+        src={config.three.src}
+        controls={controls}
+        onLoad={markVrmReady}
+        onLoadError={markVrmFailed}
       />
-      <RiveMatchedEyeTrackingOverlay eyeDirection={eyeDirection} />
-      <PlatoWiseOwlSourceSvg eyeDirection={eyeDirection} />
     </div>
   );
 }
@@ -835,15 +1103,15 @@ export function Live2DAvatarSurface({
     <figure
       className="live2d-avatar-surface"
       data-presence-state={hook.state}
-      data-live2d-motion-group={hook.motionGroup}
-      data-live2d-expression={hook.expression}
+      data-avatar-motion-group={hook.motionGroup}
+      data-avatar-expression={hook.expression}
       aria-label={`Plato avatar surface: ${hook.statusText}`}
     >
       <div
-        key={hook.rendererConfig.rive.src}
+        key={hook.rendererConfig.three.src}
         className="live2d-avatar-stage"
-        data-avatar-renderer="rive"
-        data-rive-asset={rendererConfig.rive.src}
+        data-avatar-renderer="three-vrm"
+        data-vrm-asset={rendererConfig.three.src}
         data-avatar-companion-state={rendererConfig.companionState}
         data-avatar-command={rendererConfig.command}
         aria-hidden="true"
@@ -866,7 +1134,7 @@ export function Live2DAvatarSurface({
       <figcaption className="live2d-avatar-caption sr-only">
         <span>{hook.label}</span>
         <small>
-          Rive: {rendererConfig.command} / {hook.expression}
+          VRM: {rendererConfig.command} / {hook.expression}
         </small>
       </figcaption>
     </figure>

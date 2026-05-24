@@ -143,13 +143,12 @@ describe("Milestone 005 redesign smoke coverage", () => {
       );
 
       expect(markup).toContain(`data-presence-state="${state}"`);
-      expect(markup).toContain('data-avatar-renderer="rive"');
-      expect(markup).toContain("/avatar/plato/rive/plato-companion.riv");
-      expect(markup).toContain(`src="${hook.avatarAssetPath}"`);
-      expect(markup).toContain('data-fallback-renderer="svg"');
-      expect(markup).toContain(`data-live2d-motion-group="${hook.motionGroup}"`);
-      expect(markup).toContain(`data-live2d-expression="${hook.expression}"`);
-      expect(markup).toContain("plato-avatar-asset");
+      expect(markup).toContain('data-avatar-renderer="three-vrm"');
+      expect(markup).toContain("/avatar/plato/vrm/plato.vrm");
+      expect(markup).toContain(`data-vrm-src="${hook.avatarAssetPath}"`);
+      expect(markup).toContain(`data-avatar-motion-group="${hook.motionGroup}"`);
+      expect(markup).toContain(`data-avatar-expression="${hook.expression}"`);
+      expect(markup).toContain("plato-three-vrm-canvas");
       expect(markup).toContain("data-avatar-fallback-surface");
       expect(markup).toContain(hook.statusText);
     }
