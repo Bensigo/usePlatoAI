@@ -193,11 +193,13 @@ export const vendoredVrmAssetContract = {
   asset: avatarPackageAssets.vrm,
   transparentCanvas: true,
   framing: {
-    subject: "head-upper-body",
+    subject: "full-body",
     viewportFill: "most-of-height",
-    cameraPosition: [0, 1.32, 3.05],
-    cameraLookAt: [0, 1.18, 0],
-    fieldOfViewDegrees: 22,
+    cameraPosition: [0, 0.82, 5.25],
+    cameraLookAt: [0, 0.7, 0],
+    modelPosition: [0, -0.72, 0],
+    modelScale: 1.02,
+    fieldOfViewDegrees: 32,
   },
   runtimeControls: {
     eyeX: {
@@ -239,6 +241,34 @@ export const vendoredVrmAssetContract = {
       missing: false,
       note: "The VRM has no bundled animations; wave is authored through real humanoid arm bone transforms.",
     },
+  },
+} as const;
+
+export const avatarNeutralHumanoidBonePose = {
+  leftUpperArm: { x: 0, y: 0, z: -1.18 },
+  leftLowerArm: { x: 0, y: 0, z: -0.18 },
+  leftHand: { x: 0, y: 0, z: -0.06 },
+  rightUpperArm: { x: 0, y: 0, z: 1.18 },
+  rightLowerArm: { x: 0, y: 0, z: 0.18 },
+  rightHand: { x: 0, y: 0, z: 0.06 },
+} as const;
+
+export const avatarHelloWaveHumanoidBoneMotion = {
+  oscillationRadiansPerSecond: 8.8,
+  rightUpperArm: {
+    raiseZ: 1.82,
+    forwardX: 0.44,
+    swayX: 0.12,
+  },
+  rightLowerArm: {
+    bendZ: 1.18,
+    bendX: 0.18,
+    palmTwistY: -1.15,
+    swayY: 0.54,
+  },
+  rightHand: {
+    swayY: 0.16,
+    swayZ: 0.18,
   },
 } as const;
 
@@ -291,6 +321,9 @@ export const vrmCapabilityInventory = {
   humanoidBoneCount: 54,
   eyeAndHeadControls: ["neck", "head", "leftEye", "rightEye"],
   armGestureControls: [
+    "leftUpperArm",
+    "leftLowerArm",
+    "leftHand",
     "rightShoulder",
     "rightUpperArm",
     "rightLowerArm",
@@ -470,7 +503,7 @@ const hiddenTestCommandStateByCommand = {
 } as const satisfies Record<AvatarTestAnimationCommand, AvatarCompanionState>;
 
 export function avatarCompanionStateForClickReaction(): AvatarCompanionState {
-  return "happy";
+  return "greet";
 }
 
 export function avatarCompanionStateFromTestCommand(
@@ -687,6 +720,30 @@ function applyVrmExpressionControls(vrm: VRM, controls: AvatarRuntimeControls) {
   );
 }
 
+function applyNeutralHumanoidBonePose(
+  vrm: VRM,
+  THREE: typeof import("three"),
+  boneRotations: Map<string, ThreeNamespace.Euler>,
+) {
+  for (const [boneName, rotation] of Object.entries(
+    avatarNeutralHumanoidBonePose,
+  )) {
+    const bone = vrm.humanoid.getNormalizedBoneNode(
+      boneName as Parameters<typeof vrm.humanoid.getNormalizedBoneNode>[0],
+    );
+
+    if (!bone) {
+      continue;
+    }
+
+    bone.rotation.set(rotation.x, rotation.y, rotation.z);
+    boneRotations.set(
+      boneName,
+      new THREE.Euler(rotation.x, rotation.y, rotation.z, bone.rotation.order),
+    );
+  }
+}
+
 type BrowserVrmCanvasProps = {
   className: string;
   src: string;
@@ -803,9 +860,13 @@ function BrowserVrmCanvas({
 
           VRMUtils.rotateVRM0(vrm);
           loadedVrm = vrm;
-          vrm.scene.position.set(0, -0.44, 0);
-          vrm.scene.scale.setScalar(1.28);
+          vrm.scene.position.fromArray(
+            vendoredVrmAssetContract.framing.modelPosition,
+          );
+          vrm.scene.scale.setScalar(vendoredVrmAssetContract.framing.modelScale);
           scene.add(vrm.scene);
+
+          applyNeutralHumanoidBonePose(vrm, THREE, waveBoneRotations);
 
           for (const boneName of vendoredVrmAssetContract.runtimeControls.wave
             .backedBy) {
@@ -818,7 +879,9 @@ function BrowserVrmCanvas({
 
             if (bone) {
               waveBones.set(normalizedBoneName, bone);
-              waveBoneRotations.set(normalizedBoneName, bone.rotation.clone());
+              if (!waveBoneRotations.has(normalizedBoneName)) {
+                waveBoneRotations.set(normalizedBoneName, bone.rotation.clone());
+              }
             }
           }
 
@@ -865,19 +928,32 @@ function BrowserVrmCanvas({
             bone.rotation.copy(baseRotation);
 
             if (wave > 0) {
-              const oscillation = Math.sin(elapsedSeconds * 7.4) * 0.2;
+              const oscillation = Math.sin(
+                elapsedSeconds *
+                  avatarHelloWaveHumanoidBoneMotion.oscillationRadiansPerSecond,
+              );
 
               if (boneName === "rightUpperArm") {
-                bone.rotation.z -= wave * 1.04;
-                bone.rotation.x += wave * (0.3 + oscillation);
+                const motion =
+                  avatarHelloWaveHumanoidBoneMotion.rightUpperArm;
+                bone.rotation.z -= wave * motion.raiseZ;
+                bone.rotation.x +=
+                  wave * (motion.forwardX + oscillation * motion.swayX);
               }
 
               if (boneName === "rightLowerArm") {
-                bone.rotation.z -= wave * (0.72 + oscillation);
+                const motion =
+                  avatarHelloWaveHumanoidBoneMotion.rightLowerArm;
+                bone.rotation.z -= wave * motion.bendZ;
+                bone.rotation.x += wave * motion.bendX;
+                bone.rotation.y +=
+                  wave * (motion.palmTwistY + oscillation * motion.swayY);
               }
 
               if (boneName === "rightHand") {
-                bone.rotation.z += wave * oscillation * 1.8;
+                const motion = avatarHelloWaveHumanoidBoneMotion.rightHand;
+                bone.rotation.y += wave * oscillation * motion.swayY;
+                bone.rotation.z += wave * oscillation * motion.swayZ;
               }
             }
           }

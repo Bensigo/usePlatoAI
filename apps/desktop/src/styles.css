@@ -14,7 +14,7 @@
 
 body {
   margin: 0;
-  min-width: 260px;
+  min-width: 520px;
   min-height: 100vh;
   background: transparent;
   overflow: hidden;
@@ -59,7 +59,7 @@ button {
 .companion-presence-zone {
   position: fixed;
   inset: auto 0 0;
-  min-height: 276px;
+  min-height: 720px;
   pointer-events: none;
 }
 
@@ -493,14 +493,14 @@ button {
   position: relative;
   display: grid;
   justify-items: center;
-  padding-top: 44px;
+  padding-top: 12px;
   pointer-events: none;
 }
 
 .live2d-avatar-stage {
   position: relative;
-  width: 206px;
-  height: 238px;
+  width: 500px;
+  height: 690px;
   display: grid;
   place-items: center;
   overflow: visible;
@@ -1972,7 +1972,7 @@ h1 {
 
 @media (max-width: 560px) {
   body {
-    min-width: 260px;
+    min-width: 520px;
   }
 
   .presence-card,
@@ -2012,12 +2012,12 @@ h1 {
   }
 
   .live2d-avatar-surface {
-    width: 166px;
+    width: min(500px, calc(100vw - 24px));
   }
 
   .live2d-avatar-stage {
-    width: 166px;
-    height: 202px;
+    width: min(500px, calc(100vw - 24px));
+    height: min(690px, calc(100vh - 24px));
     transform-origin: 50% 100%;
   }
 

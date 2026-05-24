@@ -50,6 +50,7 @@ import {
   avatarPresenceStateFrom,
   avatarPresenceStates,
   fallbackRendererFor,
+  getAvatarRendererConfig,
   getLive2DAvatarSurfaceHook,
   isAvatarPresenceState,
   type AvatarPresenceState,
@@ -440,10 +441,10 @@ describe("desktop app shell", () => {
     const mainWindow = tauriConfig.app.windows[0];
 
     expect(mainWindow).toMatchObject({
-      width: 260,
-      height: 280,
-      minWidth: 260,
-      minHeight: 260,
+      width: 520,
+      height: 720,
+      minWidth: 520,
+      minHeight: 720,
       decorations: false,
       transparent: true,
       alwaysOnTop: true,
@@ -746,7 +747,12 @@ describe("desktop app shell", () => {
       <App initialSettings={completedSettings} />,
     );
 
-    expect(avatarCompanionStateForClickReaction()).toBe("happy");
+    const clickReactionConfig = getAvatarRendererConfig(
+      avatarCompanionStateForClickReaction(),
+    );
+
+    expect(clickReactionConfig.controls.smile).toBeGreaterThan(0);
+    expect(clickReactionConfig.controls.wave).toBeGreaterThan(0);
     expect(markup).toContain("React with Plato");
     expect(markup).toContain("avatar-action");
     expect(markup).not.toContain('aria-label="Top Plato control surface"');
@@ -2068,7 +2074,7 @@ describe("desktop app shell", () => {
       /\.voice-controls\s*{[^}]*grid-template-columns:\s*repeat\(3, minmax\(0, 1fr\)\);/s,
     );
     expect(styles).toMatch(/\.presence-avatar-stack\s*{[^}]*position:\s*relative;/s);
-    expect(styles).toMatch(/\.presence-avatar-stack\s*{[^}]*padding-top:\s*44px;/s);
+    expect(styles).toMatch(/\.presence-avatar-stack\s*{[^}]*padding-top:\s*12px;/s);
     expect(styles).toMatch(/\.presence-listening-bubble\s*{[^}]*position:\s*absolute;/s);
     expect(styles).toMatch(/\.presence-listening-bubble\s*{[^}]*top:\s*0;/s);
   });

@@ -8,11 +8,14 @@ import {
   AvatarRenderer,
   avatarAnimationCommands,
   avatarCompanionStates,
+  avatarCompanionStateForClickReaction,
   avatarEyeDirectionFromCursor,
   avatarEyeDirectionNeutral,
   avatarEyeDirectionStyle,
+  avatarHelloWaveHumanoidBoneMotion,
   avatarIdleWavePolicy,
   avatarLaunchSequence,
+  avatarNeutralHumanoidBonePose,
   avatarPackageAssets,
   avatarStartupSound,
   fallbackRendererFor,
@@ -193,7 +196,7 @@ describe("avatar package contract", () => {
       asset: avatarPackageAssets.vrm,
       transparentCanvas: true,
       framing: {
-        subject: "head-upper-body",
+        subject: "full-body",
         viewportFill: "most-of-height",
       },
     });
@@ -211,7 +214,61 @@ describe("avatar package contract", () => {
     expect(vendoredVrmAssetContract.runtimeControls.wave.backedBy).toContain(
       "humanoid bone: rightUpperArm",
     );
+    expect(vrmCapabilityInventory.armGestureControls).toEqual(
+      expect.arrayContaining([
+        "leftUpperArm",
+        "leftLowerArm",
+        "rightUpperArm",
+        "rightLowerArm",
+      ]),
+    );
     expect(vrmCapabilityInventory.bundledAnimations).toEqual([]);
+  });
+
+  it("defines a non-T-pose neutral arm stance before wave motion is applied", () => {
+    expect(avatarNeutralHumanoidBonePose.leftUpperArm.z).toBeLessThan(-0.9);
+    expect(avatarNeutralHumanoidBonePose.rightUpperArm.z).toBeGreaterThan(0.9);
+    expect(Math.abs(avatarNeutralHumanoidBonePose.leftLowerArm.z)).toBeLessThan(
+      0.35,
+    );
+    expect(Math.abs(avatarNeutralHumanoidBonePose.rightLowerArm.z)).toBeLessThan(
+      0.35,
+    );
+    expect(
+      vendoredVrmAssetContract.framing.fieldOfViewDegrees,
+    ).toBeGreaterThanOrEqual(32);
+    expect(vendoredVrmAssetContract.framing.modelPosition[0]).toBe(0);
+    expect(vendoredVrmAssetContract.framing.modelScale).toBeGreaterThanOrEqual(
+      1,
+    );
+    expect(vendoredVrmAssetContract.framing.cameraPosition[2]).toBeGreaterThan(
+      4.5,
+    );
+  });
+
+  it("authors a raised forearm and wrist hello-wave motion", () => {
+    expect(avatarHelloWaveHumanoidBoneMotion.rightUpperArm.raiseZ).toBeGreaterThan(
+      1.5,
+    );
+    expect(
+      avatarHelloWaveHumanoidBoneMotion.rightLowerArm.bendZ,
+    ).toBeGreaterThan(1);
+    expect(
+      avatarHelloWaveHumanoidBoneMotion.rightLowerArm.swayY,
+    ).toBeGreaterThan(0.45);
+    expect(
+      avatarHelloWaveHumanoidBoneMotion.rightLowerArm.palmTwistY,
+    ).toBeLessThan(
+      -0.9,
+    );
+    expect(
+      avatarHelloWaveHumanoidBoneMotion.rightLowerArm.swayY,
+    ).toBeGreaterThan(
+      0.5,
+    );
+    expect(
+      avatarHelloWaveHumanoidBoneMotion.oscillationRadiansPerSecond,
+    ).toBeGreaterThan(7);
   });
 
   it("does not expose the old owl or Rive fallback renderer path", () => {
@@ -323,6 +380,15 @@ describe("avatar package contract", () => {
         command: "idle.breathe",
       },
     ]);
+  });
+
+  it("maps click reaction to a visible smile plus wave", () => {
+    const clickReactionConfig = getAvatarRendererConfig(
+      avatarCompanionStateForClickReaction(),
+    );
+
+    expect(clickReactionConfig.controls.smile).toBeGreaterThan(0);
+    expect(clickReactionConfig.controls.wave).toBeGreaterThan(0);
   });
 
   it("defines a rate-limited idle wave policy that backs off outside idle", () => {
