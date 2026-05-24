@@ -445,8 +445,8 @@ export const avatarLaunchSequence = [
 export const avatarIdleWavePolicy = {
   companionState: "greet",
   command: "greet.wave",
-  initialDelayMs: 8_500,
-  minimumIntervalMs: 18_000,
+  initialDelayMs: 60_000,
+  minimumIntervalMs: 60_000,
   activeStateBackoffMs: 6_000,
   waveDurationMs: 960,
   pausedPresenceStates: [

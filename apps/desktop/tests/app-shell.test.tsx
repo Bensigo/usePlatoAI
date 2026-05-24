@@ -334,7 +334,7 @@ describe("desktop app shell", () => {
         nowMs: 10_000,
         lastWaveAtMs: 1_000,
       }),
-    ).toBe(9_000);
+    ).toBe(51_000);
     expect(
       millisecondsUntilNextStartupIdleWave({
         renderedPresenceState: "focused",

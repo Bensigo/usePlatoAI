@@ -395,8 +395,8 @@ describe("avatar package contract", () => {
     expect(avatarIdleWavePolicy).toMatchObject({
       companionState: "greet",
       command: "greet.wave",
-      initialDelayMs: 8_500,
-      minimumIntervalMs: 18_000,
+      initialDelayMs: 60_000,
+      minimumIntervalMs: 60_000,
       activeStateBackoffMs: 6_000,
       waveDurationMs: 960,
     });
@@ -417,7 +417,7 @@ describe("avatar package contract", () => {
         nowMs: 10_000,
         lastWaveAtMs: 1_000,
       }),
-    ).toBe(9_000);
+    ).toBe(51_000);
     expect(
       millisecondsUntilNextAvatarIdleWave({
         presenceState: "focused",
