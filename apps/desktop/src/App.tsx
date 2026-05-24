@@ -23,9 +23,12 @@ import {
   Live2DAvatarSurface,
   avatarCompanionStateForClickReaction,
   avatarCompanionStateFromTestCommand,
+  avatarEyeDirectionFromCursor,
+  avatarEyeDirectionNeutral,
   avatarIdleWavePolicy,
   getLive2DAvatarSurfaceHook,
   isAvatarPresenceState,
+  type AvatarEyeDirection,
   type AvatarCompanionState,
   type AvatarPresenceState,
   type AvatarTestAnimationCommand,
@@ -1900,7 +1903,10 @@ export function App({
     useState<PresenceDragMode>("locked");
   const [presencePosition, setPresencePosition] =
     useState<PresenceWindowPosition | null>(null);
+  const [avatarEyeDirection, setAvatarEyeDirection] =
+    useState<AvatarEyeDirection>(avatarEyeDirectionNeutral);
   const latestTasks = useRef<LocalTaskRecord[]>(initialTasks);
+  const avatarActionRef = useRef<HTMLButtonElement | null>(null);
   const voiceTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
   const taskTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
   const avatarReactionTimer = useRef<ReturnType<typeof setTimeout> | null>(
@@ -1913,6 +1919,28 @@ export function App({
   );
   const correctionPromptRequestId = useRef(0);
   const isPresenceDraggable = presenceDragMode === "draggable";
+
+  const trackAvatarEyes = useCallback((cursorX: number, cursorY: number) => {
+    const avatarElement = avatarActionRef.current;
+
+    if (!avatarElement) {
+      setAvatarEyeDirection(avatarEyeDirectionNeutral);
+      return;
+    }
+
+    const nextDirection = avatarEyeDirectionFromCursor({
+      cursorX,
+      cursorY,
+      avatarBounds: avatarElement.getBoundingClientRect(),
+    });
+
+    setAvatarEyeDirection((currentDirection) =>
+      Math.abs(currentDirection.x - nextDirection.x) < 0.015 &&
+      Math.abs(currentDirection.y - nextDirection.y) < 0.015
+        ? currentDirection
+        : nextDirection,
+    );
+  }, []);
 
   function clearVoiceTimers() {
     for (const timer of voiceTimers.current) {
@@ -2724,6 +2752,55 @@ export function App({
       return;
     }
 
+    let animationFrame: number | null = null;
+    let nextCursor: { x: number; y: number } | null = null;
+
+    function flushCursorTracking() {
+      animationFrame = null;
+
+      if (!nextCursor) {
+        return;
+      }
+
+      trackAvatarEyes(nextCursor.x, nextCursor.y);
+    }
+
+    function handlePointerMove(event: PointerEvent) {
+      nextCursor = {
+        x: event.clientX,
+        y: event.clientY,
+      };
+
+      if (animationFrame === null) {
+        animationFrame = window.requestAnimationFrame(flushCursorTracking);
+      }
+    }
+
+    function resetEyeTracking() {
+      nextCursor = null;
+      setAvatarEyeDirection(avatarEyeDirectionNeutral);
+    }
+
+    window.addEventListener("pointermove", handlePointerMove, {
+      passive: true,
+    });
+    document.addEventListener("mouseleave", resetEyeTracking);
+
+    return () => {
+      if (animationFrame !== null) {
+        window.cancelAnimationFrame(animationFrame);
+      }
+
+      window.removeEventListener("pointermove", handlePointerMove);
+      document.removeEventListener("mouseleave", resetEyeTracking);
+    };
+  }, [trackAvatarEyes]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
     function handleAvatarTestCommand(event: Event) {
       const command =
         event instanceof CustomEvent && typeof event.detail === "string"
@@ -2995,6 +3072,7 @@ export function App({
               ) : null}
 
               <button
+                ref={avatarActionRef}
                 className="avatar-action"
                 type="button"
                 onClick={reactToAvatarClick}
@@ -3008,6 +3086,7 @@ export function App({
                 <Live2DAvatarSurface
                   presenceState={avatarPresenceState}
                   companionStateOverride={activeAvatarCompanionState}
+                  eyeDirection={avatarEyeDirection}
                 />
               </button>
             </div>

@@ -1,5 +1,8 @@
 export {
   AvatarRenderer,
+  avatarEyeDirectionFromCursor,
+  avatarEyeDirectionNeutral,
+  avatarEyeDirectionStyle,
   avatarAnimationCommands,
   avatarCompanionStateForClickReaction,
   avatarCompanionStateFromTestCommand,
@@ -20,6 +23,9 @@ export {
   millisecondsUntilNextAvatarIdleWave,
   mascotSource,
   type AvatarTestAnimationCommand,
+  type AvatarEyeDirection,
+  type AvatarEyeTrackingBounds,
+  type AvatarEyeTrackingCursor,
   type AvatarCompanionState,
   type AvatarPresenceState,
   type Live2DAvatarSurfaceHook,
