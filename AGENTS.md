@@ -64,6 +64,7 @@ Then:
 - If an acceptance criterion cannot be met, stop and report the blocker instead of silently shipping a partial implementation.
 - Verification must prove the full vertical behavior described by the acceptance criteria, not just isolated code paths.
 - Every implementation PR must include an `Acceptance Criteria Coverage` table that maps each acceptance criterion to implementation evidence and verification evidence.
+- Every code session must end with a project-memory retrospective. If the session produced a reusable lesson, failure pattern, decision, or project preference, add a source-linked entry under `docs/memory/` in the same PR or a small follow-up PR. If nothing durable was learned, say that explicitly in the final note or PR body.
 
 ## Project Memory
 
@@ -76,6 +77,8 @@ scripts/memory recall "<task, issue, PR, feature, or keyword>"
 Before non-trivial planning, implementation, or review, recall relevant memory. Treat memory as advisory only; verify it against the current code, `CONTEXT.md`, architecture docs, issues, PRDs, and PRs before relying on it.
 
 When you learn something reusable for future agents, propose a source-linked memory entry under `docs/memory/` as a normal diff. Do not store secrets, credentials, customer data, private personal data, or unsourced guesses.
+
+At the end of every code session, do a brief memory check before reporting done: what did this session teach that would prevent repeated mistakes or speed up future work? Add it when it is durable and source-linked; otherwise record that no reusable memory was added.
 
 ## Agent skills
 
