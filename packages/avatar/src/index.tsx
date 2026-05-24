@@ -124,6 +124,73 @@ export function avatarEyeDirectionStyle(
   } as CSSProperties;
 }
 
+function PlatoWiseOwlSourceSvg({
+  eyeDirection,
+}: {
+  eyeDirection: AvatarEyeDirection;
+}) {
+  return (
+    <svg
+      id="plato-wise-owl"
+      className="plato-avatar-asset plato-avatar-source-svg-asset"
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 320 360"
+      role="img"
+      aria-labelledby="plato-wise-owl-title plato-wise-owl-desc"
+      data-avatar-fallback-surface="commercial-safe-mascot"
+      data-avatar-eye-tracking="source-svg-pupils"
+      data-avatar-eye-x={String(eyeDirection.x)}
+      data-avatar-eye-y={String(eyeDirection.y)}
+      style={avatarEyeDirectionStyle(eyeDirection)}
+    >
+      <title id="plato-wise-owl-title">Plato wise owl companion mascot</title>
+      <desc id="plato-wise-owl-desc">
+        A simplified CC0-derived wise owl mascot with expressive eyes.
+      </desc>
+      <rect width="320" height="360" fill="none" />
+      <g
+        fill="none"
+        stroke="#17130f"
+        strokeWidth="7"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path
+          fill="#dbc2b2"
+          d="M106 111c19-34 79-34 102 0 20 30 26 85 14 143-7 34-28 60-66 60-40 0-62-25-70-60-13-58 0-113 20-143Z"
+        />
+        <path fill="#8aa46f" d="M118 76c35-24 70-24 99 1-30 17-63 20-99-1Z" />
+        <path fill="#6f8459" d="M158 40c28 7 44 22 50 45-27 0-49-12-50-45Z" />
+        <path fill="#f4f0c4" d="M204 34c11 10 18 21 21 35-15-5-26-15-21-35Z" />
+        <path fill="#f9f4e9" d="M96 306h148l36 28H48l48-28Z" />
+        <path fill="#9f6f67" d="M84 281h160l-21 30H62l22-30Z" />
+        <path fill="#70809d" d="M52 318h210l35 25H24l28-25Z" />
+        <path d="M138 136c-3 17-22 27-39 18M178 136c5 17 24 26 40 16" />
+        <circle className="plato-wise-owl-eye-white" cx="124" cy="153" r="18" fill="#f5f4ec" />
+        <circle className="plato-wise-owl-eye-white" cx="194" cy="153" r="18" fill="#f5f4ec" />
+        <circle
+          className="plato-wise-owl-pupil plato-wise-owl-pupil-left"
+          cx="127"
+          cy="155"
+          r="7"
+          fill="#17130f"
+        />
+        <circle
+          className="plato-wise-owl-pupil plato-wise-owl-pupil-right"
+          cx="191"
+          cy="155"
+          r="7"
+          fill="#17130f"
+        />
+        <path fill="#d59f6c" d="M154 171l18 2-10 15-8-17Z" />
+        <path d="M148 202c9 8 24 8 33-1M98 222c18 10 36 12 54 5M168 228c21 6 41 2 58-12M115 253c25 12 55 13 86 1" />
+        <path d="M126 114c23-10 48-10 72 0M120 92c25 14 56 17 92 3" />
+        <path d="M226 82l24-16M242 85l24-4M230 96l22 10" />
+      </g>
+    </svg>
+  );
+}
+
 export type AvatarPackageAsset = {
   packagePath: string;
   publicPath: string;
@@ -576,7 +643,6 @@ export function AvatarRenderer({
   const config = getAvatarRendererConfig(companionState);
   const [runtimeState, setRuntimeState] =
     useState<RiveRuntimeState>("loading");
-  const fallbackState = runtimeState === "failed" ? "visible" : "hidden";
   const markRiveReady = useCallback(() => {
     setRuntimeState("ready");
   }, []);
@@ -599,7 +665,8 @@ export function AvatarRenderer({
       data-rive-input-is-sad={String(config.rive.inputs.isSad ?? false)}
       data-rive-input-mouth={String(config.rive.inputs.mouth ?? 0)}
       data-fallback-renderer={config.fallback.renderer}
-      data-avatar-fallback-state={fallbackState}
+      data-avatar-fallback-state="visible"
+      data-avatar-eye-tracking="source-svg-pupils"
       data-fallback-src={config.fallback.src}
     >
       <BrowserRiveCanvas
@@ -613,30 +680,7 @@ export function AvatarRenderer({
         onLoad={markRiveReady}
         onLoadError={markRiveFailed}
       />
-      <img
-        className="plato-avatar-asset plato-avatar-fallback-asset"
-        src={config.fallback.src}
-        alt=""
-        decoding="async"
-        draggable={false}
-        hidden={fallbackState === "hidden"}
-        data-avatar-fallback-surface="commercial-safe-mascot"
-      />
-      <div
-        className="plato-avatar-eye-tracking"
-        data-avatar-eye-tracking="fallback-overlay"
-        data-avatar-eye-x={String(eyeDirection.x)}
-        data-avatar-eye-y={String(eyeDirection.y)}
-        style={avatarEyeDirectionStyle(eyeDirection)}
-        aria-hidden="true"
-      >
-        <span className="plato-avatar-eye plato-avatar-eye-left">
-          <span className="plato-avatar-pupil" />
-        </span>
-        <span className="plato-avatar-eye plato-avatar-eye-right">
-          <span className="plato-avatar-pupil" />
-        </span>
-      </div>
+      <PlatoWiseOwlSourceSvg eyeDirection={eyeDirection} />
     </div>
   );
 }
