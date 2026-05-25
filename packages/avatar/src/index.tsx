@@ -153,6 +153,35 @@ export function avatarEyeDirectionToVrmLookAtTarget(
   };
 }
 
+export type AvatarVrmLoadCapabilityStatus =
+  | "ready"
+  | "missing-vrm"
+  | "missing-look-at";
+
+type AvatarVrmLookAtCapability = Pick<VRM, "lookAt">;
+
+export function avatarVrmLoadCapabilityStatus(
+  vrm: AvatarVrmLookAtCapability | null | undefined,
+): AvatarVrmLoadCapabilityStatus {
+  if (!vrm) {
+    return "missing-vrm";
+  }
+
+  if (!vrm.lookAt) {
+    return "missing-look-at";
+  }
+
+  return "ready";
+}
+
+function avatarVrmSupportsLookAt(
+  vrm: AvatarVrmLookAtCapability | null | undefined,
+): vrm is AvatarVrmLookAtCapability & {
+  lookAt: NonNullable<VRM["lookAt"]>;
+} {
+  return avatarVrmLoadCapabilityStatus(vrm) === "ready";
+}
+
 export function avatarEyeDirectionFromCursor({
   cursorX,
   cursorY,
@@ -942,6 +971,12 @@ function BrowserVrmCanvas({
             return;
           }
 
+          if (!avatarVrmSupportsLookAt(vrm)) {
+            VRMUtils.deepDispose(vrm.scene);
+            onLoadError();
+            return;
+          }
+
           VRMUtils.rotateVRM0(vrm);
           loadedVrm = vrm;
           vrm.scene.position.fromArray(
@@ -967,11 +1002,6 @@ function BrowserVrmCanvas({
                 waveBoneRotations.set(normalizedBoneName, bone.rotation.clone());
               }
             }
-          }
-
-          if (!vrm.lookAt) {
-            onLoadError();
-            return;
           }
 
           vrm.lookAt.target = lookAtTarget;

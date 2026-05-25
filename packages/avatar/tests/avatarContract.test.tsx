@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 import { renderToStaticMarkup } from "react-dom/server";
+import type { VRM } from "@pixiv/three-vrm";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -13,6 +14,7 @@ import {
   avatarEyeDirectionFromCursor,
   avatarEyeDirectionNeutral,
   avatarEyeDirectionStyle,
+  avatarVrmLoadCapabilityStatus,
   avatarHelloWaveHumanoidBoneMotion,
   avatarIdleWavePolicy,
   avatarLaunchSequence,
@@ -424,6 +426,18 @@ describe("avatar package contract", () => {
       y: 1.5,
       z: 4.97,
     });
+  });
+
+  it("rejects VRM runtime loading when lookAt capability is missing", () => {
+    expect(avatarVrmLoadCapabilityStatus(undefined)).toBe("missing-vrm");
+    expect(avatarVrmLoadCapabilityStatus({ lookAt: undefined })).toBe(
+      "missing-look-at",
+    );
+    expect(
+      avatarVrmLoadCapabilityStatus({
+        lookAt: { target: null } as NonNullable<VRM["lookAt"]>,
+      }),
+    ).toBe("ready");
   });
 
   it("represents startup sound ownership in the avatar package API", () => {
