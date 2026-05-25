@@ -297,6 +297,7 @@ export function renderedPresenceStateFor({
   voiceInteractionSessionState,
   voiceInteractionActivationSource = "voice",
   voiceInteractionIsMuted = false,
+  voiceOutputIsMuted = false,
   sharedPresenceState,
 }: {
   audioActivationState?: AudioActivationState;
@@ -304,15 +305,17 @@ export function renderedPresenceStateFor({
   voiceInteractionSessionState: VoiceSessionState;
   voiceInteractionActivationSource?: "voice" | "text";
   voiceInteractionIsMuted?: boolean;
+  voiceOutputIsMuted?: boolean;
   sharedPresenceState: string;
 }) {
+  const isAgentSpeechMuted = voiceInteractionIsMuted || voiceOutputIsMuted;
   const activePresenceState = (() => {
     if (voiceInteractionSessionState === "idle") {
       return sharedPresenceState;
     }
 
     if (voiceInteractionSessionState === "speaking") {
-      if (voiceInteractionIsMuted) {
+      if (isAgentSpeechMuted) {
         return "muted";
       }
 
@@ -325,7 +328,11 @@ export function renderedPresenceStateFor({
   })();
 
   if (voiceOutputPresenceState === "speaking") {
-    return "speaking";
+    if (!voiceOutputIsMuted) {
+      return "speaking";
+    }
+
+    return activePresenceState === "idle" ? "muted" : activePresenceState;
   }
 
   if (voiceOutputPresenceState === "muted" && activePresenceState === "idle") {
@@ -2634,6 +2641,7 @@ export function App({
   const renderedPresenceState = renderedPresenceStateFor({
     audioActivationState: audioActivation.state,
     voiceOutputPresenceState: voiceSession.presenceState,
+    voiceOutputIsMuted: voiceSession.isMuted,
     voiceInteractionSessionState: voiceInteraction.sessionState,
     voiceInteractionActivationSource: voiceInteraction.activationSource,
     voiceInteractionIsMuted: voiceInteraction.isMuted,
@@ -2650,7 +2658,10 @@ export function App({
     idleWaveCompanionState ??
     undefined;
   const agentOutputRuntimeControls: AvatarRuntimeControls | undefined =
-    renderedPresenceState === "speaking" && !activeAvatarCompanionState
+    renderedPresenceState === "speaking" &&
+    !voiceSession.isMuted &&
+    !voiceInteraction.isMuted &&
+    !activeAvatarCompanionState
       ? runtimeControlsForAgentOutputFrame({
           frameIndex: agentOutputFrame,
           responseText:
