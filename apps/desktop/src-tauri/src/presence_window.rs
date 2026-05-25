@@ -4,7 +4,9 @@ use crate::local_data::PresenceWindowPosition;
 
 const PRESENCE_MARGIN: i32 = 18;
 #[cfg(target_os = "macos")]
-const MACOS_COMPANION_OVERLAY_WINDOW_LEVEL: objc2_app_kit::NSWindowLevel = 1000;
+fn macos_companion_overlay_window_level() -> objc2_app_kit::NSWindowLevel {
+    (unsafe { core_graphics::display::CGShieldingWindowLevel() } + 1) as _
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct PresencePlacement {
@@ -442,7 +444,7 @@ fn configure_native_companion_overlay(window: &WebviewWindow) -> tauri::Result<(
         let ns_window: &NSWindow = &*ns_window.cast();
         let behavior = ns_window.collectionBehavior();
 
-        ns_window.setLevel(MACOS_COMPANION_OVERLAY_WINDOW_LEVEL);
+        ns_window.setLevel(macos_companion_overlay_window_level());
         ns_window.setCollectionBehavior(companion_overlay_collection_behavior(behavior));
         ns_window.setAnimationBehavior(NSWindowAnimationBehavior::UtilityWindow);
         ns_window.setCanHide(false);
@@ -930,11 +932,10 @@ mod tests {
 
     #[cfg(target_os = "macos")]
     #[test]
-    fn companion_overlay_level_matches_screen_saver_level_for_fullscreen_apps() {
-        assert_eq!(
-            MACOS_COMPANION_OVERLAY_WINDOW_LEVEL,
-            objc2_app_kit::NSScreenSaverWindowLevel
-        );
-        assert!(MACOS_COMPANION_OVERLAY_WINDOW_LEVEL > objc2_app_kit::NSPopUpMenuWindowLevel);
+    fn companion_overlay_level_sits_above_fullscreen_shielding() {
+        let overlay_level = macos_companion_overlay_window_level();
+
+        assert!(overlay_level > objc2_app_kit::NSScreenSaverWindowLevel);
+        assert!(overlay_level > objc2_app_kit::NSPopUpMenuWindowLevel);
     }
 }
