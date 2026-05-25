@@ -701,7 +701,7 @@ button {
 }
 
 .live2d-avatar-surface
-  .live2d-avatar-stage[data-avatar-command="greet.wave"] {
+  .live2d-avatar-stage[data-avatar-command="expression.greeting"] {
   animation: avatar-greet-wave 960ms ease-in-out;
 }
 
