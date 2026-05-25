@@ -3,6 +3,10 @@ use tauri::{PhysicalPosition, PhysicalRect, PhysicalSize, Position, WebviewWindo
 use crate::local_data::PresenceWindowPosition;
 
 const PRESENCE_MARGIN: i32 = 18;
+#[cfg(target_os = "macos")]
+fn macos_companion_overlay_window_level() -> objc2_app_kit::NSWindowLevel {
+    (unsafe { core_graphics::display::CGShieldingWindowLevel() } + 1) as _
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct PresencePlacement {
@@ -78,8 +82,8 @@ pub fn configure_floating_presence_window(
     saved_position: Option<PresenceWindowPosition>,
 ) -> tauri::Result<()> {
     reinforce_presence_window_layer(window)?;
-    window.set_visible_on_all_workspaces(false)?;
-    configure_active_space_following(window)?;
+    window.set_visible_on_all_workspaces(true)?;
+    configure_native_companion_overlay(window)?;
 
     if let Some(placement) = placement_for_window(window, saved_position)? {
         window.set_position(Position::Physical(PhysicalPosition {
@@ -123,6 +127,7 @@ pub fn follow_presence_window_to_active_display(
 
 pub fn reinforce_presence_window_layer(window: &WebviewWindow) -> tauri::Result<()> {
     window.set_always_on_top(true)?;
+    configure_native_companion_overlay(window)?;
     Ok(())
 }
 
@@ -430,7 +435,7 @@ fn clamp_position_to_display(
 }
 
 #[cfg(target_os = "macos")]
-fn configure_active_space_following(window: &WebviewWindow) -> tauri::Result<()> {
+fn configure_native_companion_overlay(window: &WebviewWindow) -> tauri::Result<()> {
     use objc2_app_kit::{NSWindow, NSWindowAnimationBehavior};
 
     let ns_window = window.ns_window()?;
@@ -439,8 +444,11 @@ fn configure_active_space_following(window: &WebviewWindow) -> tauri::Result<()>
         let ns_window: &NSWindow = &*ns_window.cast();
         let behavior = ns_window.collectionBehavior();
 
-        ns_window.setCollectionBehavior(active_space_collection_behavior(behavior));
+        ns_window.setLevel(macos_companion_overlay_window_level());
+        ns_window.setCollectionBehavior(companion_overlay_collection_behavior(behavior));
         ns_window.setAnimationBehavior(NSWindowAnimationBehavior::UtilityWindow);
+        ns_window.setCanHide(false);
+        ns_window.orderFrontRegardless();
     }
 
     Ok(())
@@ -563,17 +571,22 @@ fn dictionary_f64(
 }
 
 #[cfg(target_os = "macos")]
-fn active_space_collection_behavior(
+fn companion_overlay_collection_behavior(
     behavior: objc2_app_kit::NSWindowCollectionBehavior,
 ) -> objc2_app_kit::NSWindowCollectionBehavior {
     use objc2_app_kit::NSWindowCollectionBehavior;
 
-    (behavior | NSWindowCollectionBehavior::MoveToActiveSpace)
-        - NSWindowCollectionBehavior::CanJoinAllSpaces
+    (behavior
+        | NSWindowCollectionBehavior::CanJoinAllSpaces
+        | NSWindowCollectionBehavior::FullScreenAuxiliary
+        | NSWindowCollectionBehavior::Stationary
+        | NSWindowCollectionBehavior::IgnoresCycle)
+        - NSWindowCollectionBehavior::MoveToActiveSpace
+        - NSWindowCollectionBehavior::FullScreenPrimary
 }
 
 #[cfg(not(target_os = "macos"))]
-fn configure_active_space_following(_window: &WebviewWindow) -> tauri::Result<()> {
+fn configure_native_companion_overlay(_window: &WebviewWindow) -> tauri::Result<()> {
     Ok(())
 }
 
@@ -901,16 +914,28 @@ mod tests {
 
     #[cfg(target_os = "macos")]
     #[test]
-    fn active_space_behavior_moves_to_active_space_without_joining_all_spaces() {
+    fn companion_overlay_behavior_joins_spaces_without_becoming_primary() {
         use objc2_app_kit::NSWindowCollectionBehavior;
 
-        let behavior = active_space_collection_behavior(
-            NSWindowCollectionBehavior::CanJoinAllSpaces
-                | NSWindowCollectionBehavior::FullScreenAuxiliary,
+        let behavior = companion_overlay_collection_behavior(
+            NSWindowCollectionBehavior::MoveToActiveSpace
+                | NSWindowCollectionBehavior::FullScreenPrimary,
         );
 
-        assert!(behavior.contains(NSWindowCollectionBehavior::MoveToActiveSpace));
-        assert!(!behavior.contains(NSWindowCollectionBehavior::CanJoinAllSpaces));
+        assert!(behavior.contains(NSWindowCollectionBehavior::CanJoinAllSpaces));
         assert!(behavior.contains(NSWindowCollectionBehavior::FullScreenAuxiliary));
+        assert!(behavior.contains(NSWindowCollectionBehavior::Stationary));
+        assert!(behavior.contains(NSWindowCollectionBehavior::IgnoresCycle));
+        assert!(!behavior.contains(NSWindowCollectionBehavior::MoveToActiveSpace));
+        assert!(!behavior.contains(NSWindowCollectionBehavior::FullScreenPrimary));
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn companion_overlay_level_sits_above_fullscreen_shielding() {
+        let overlay_level = macos_companion_overlay_window_level();
+
+        assert!(overlay_level > objc2_app_kit::NSScreenSaverWindowLevel);
+        assert!(overlay_level > objc2_app_kit::NSPopUpMenuWindowLevel);
     }
 }
