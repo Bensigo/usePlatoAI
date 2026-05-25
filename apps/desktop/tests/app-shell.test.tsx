@@ -218,7 +218,7 @@ describe("desktop app shell", () => {
     expect(markup).toContain("Wake name: Plato");
     expect(markup).toContain("Idle presence");
     expect(markup).toContain("data-avatar-motion-group=\"idle\"");
-    expect(markup).toContain("data-avatar-expression=\"neutral\"");
+    expect(markup).toContain("data-avatar-expression=\"idle\"");
     expect(markup).toContain("React with Plato");
     expect(markup).toContain("Open Plato controls");
     expect(markup).toContain("Drag Plato presence");
@@ -260,7 +260,7 @@ describe("desktop app shell", () => {
         "listening",
         "idle",
       ]);
-      expect(startupCompanionStateForPresenceState("listening")).toBe("greet");
+      expect(startupCompanionStateForPresenceState("listening")).toBe("greeting");
       expect(states).toEqual(["appearing"]);
       expect(playSound).toHaveBeenCalledTimes(1);
       expect(storage.getItem(startupSoundReplayStorageKey)).toBe("true");
@@ -595,7 +595,7 @@ describe("desktop app shell", () => {
       /\.live2d-avatar-surface\[data-presence-state="listening"\]\s+\.live2d-avatar-stage\s*{[^}]*animation-duration:\s*var\(--plato-motion-listening\);/s,
     );
     expect(css).toMatch(
-      /\.live2d-avatar-surface\s+\.live2d-avatar-stage\[data-avatar-command="greet\.wave"\]\s*{[^}]*animation:\s*avatar-greet-wave/s,
+      /\.live2d-avatar-surface\s+\.live2d-avatar-stage\[data-avatar-command="expression\.greeting"\]\s*{[^}]*animation:\s*avatar-greet-wave/s,
     );
     expect(css).not.toMatch(
       /\.live2d-avatar-surface\[data-presence-state="listening"\]\s+\.live2d-avatar-stage\s*{[^}]*avatar-greet-wave/s,
@@ -624,49 +624,49 @@ describe("desktop app shell", () => {
         state: "appearing",
         statusText: "Coming online",
         motionGroup: "appear",
-        expression: "bright",
+        expression: "startup",
       },
       {
         state: "idle",
         statusText: "Idle presence",
         motionGroup: "idle",
-        expression: "neutral",
+        expression: "idle",
       },
       {
         state: "listening",
         statusText: "Listening now",
         motionGroup: "tap_body",
-        expression: "attentive",
+        expression: "listening",
       },
       {
         state: "thinking",
         statusText: "Thinking through it",
         motionGroup: "thinking",
-        expression: "focused",
+        expression: "thinking",
       },
       {
         state: "speaking",
         statusText: "Speaking",
         motionGroup: "speak",
-        expression: "talking",
+        expression: "speaking",
       },
       {
         state: "waitingApproval",
         statusText: "Waiting for approval",
         motionGroup: "approval",
-        expression: "concerned",
+        expression: "sad",
       },
       {
         state: "muted",
         statusText: "Muted",
         motionGroup: "quiet",
-        expression: "soft",
+        expression: "idle",
       },
       {
         state: "error",
         statusText: "Needs repair",
         motionGroup: "error",
-        expression: "strained",
+        expression: "error",
       },
     ];
 
@@ -709,12 +709,12 @@ describe("desktop app shell", () => {
     expect(markup).toContain("plato-three-vrm-canvas");
     expect(markup).toContain('data-avatar-renderer="three-vrm"');
     expect(markup).toContain('data-avatar-companion-state="listening"');
-    expect(markup).toContain('data-avatar-command="voice.listen"');
+    expect(markup).toContain('data-avatar-command="expression.listening"');
     expect(markup).toContain('data-vrm-loader="@pixiv/three-vrm"');
     expect(markup).toContain('data-three-alpha="true"');
     expect(markup).toContain('data-avatar-control-mouth-open="0.05"');
     expect(markup).toContain('data-avatar-control-smile="0"');
-    expect(markup).not.toContain('data-avatar-command="greet.wave"');
+    expect(markup).not.toContain('data-avatar-command="expression.greeting"');
     expect(markup).toContain("live2d-presence-mark");
     expect(markup).toContain("live2d-presence-core");
     expect(markup).toContain("live2d-presence-meter");
@@ -810,7 +810,7 @@ describe("desktop app shell", () => {
     expect(markup).toContain("Waiting for approval");
     expect(markup).toContain('data-presence-state="waitingApproval"');
     expect(markup).toContain('data-avatar-motion-group="approval"');
-    expect(markup).toContain('data-avatar-expression="concerned"');
+    expect(markup).toContain('data-avatar-expression="sad"');
   });
 
   it("recognizes valid URL presence states for visual smoke checks", () => {
@@ -920,11 +920,14 @@ describe("desktop app shell", () => {
   });
 
   it("maps hidden avatar test commands to product companion states", () => {
-    expect(avatarCompanionStateFromTestCommand("greeting")).toBe("greet");
-    expect(avatarCompanionStateFromTestCommand("happy")).toBe("happy");
-    expect(avatarCompanionStateFromTestCommand("smile")).toBe("happy");
+    expect(avatarCompanionStateFromTestCommand("greeting")).toBe("greeting");
+    expect(avatarCompanionStateFromTestCommand("happy")).toBe("smile");
+    expect(avatarCompanionStateFromTestCommand("smile")).toBe("smile");
+    expect(avatarCompanionStateFromTestCommand("laugh")).toBe("laugh");
     expect(avatarCompanionStateFromTestCommand("sad")).toBe("sad");
-    expect(avatarCompanionStateFromTestCommand("talking")).toBe("talking");
+    expect(avatarCompanionStateFromTestCommand("error")).toBe("error");
+    expect(avatarCompanionStateFromTestCommand("thinking")).toBe("thinking");
+    expect(avatarCompanionStateFromTestCommand("talking")).toBe("speaking");
     expect(avatarCompanionStateFromTestCommand("dance")).toBe("celebrating");
     expect(avatarCompanionStateFromTestCommand("celebration")).toBe(
       "celebrating",
@@ -941,12 +944,31 @@ describe("desktop app shell", () => {
     );
 
     expect(markup).toContain('data-avatar-companion-state="celebrating"');
-    expect(markup).toContain('data-avatar-command="celebration.dance"');
+    expect(markup).toContain('data-avatar-command="expression.celebrating"');
+    expect(markup).toContain('data-avatar-expression="celebrating"');
+    expect(markup).toContain("VRM: expression.celebrating / celebrating");
     expect(markup).toContain('data-avatar-control-laugh="0.75"');
-    expect(markup).toContain('data-avatar-control-wave="0.7"');
+    expect(markup).toContain('data-avatar-control-wave="0.85"');
     expect(markup).not.toContain("avatarTestCommand");
     expect(markup).not.toContain("Hidden avatar test");
     expect(markup).not.toContain('aria-label="Top Plato control surface"');
+  });
+
+  it("reports overridden avatar expression metadata from the renderer command", () => {
+    const markup = renderToStaticMarkup(
+      <Live2DAvatarSurface
+        presenceState="idle"
+        companionStateOverride="laugh"
+      />,
+    );
+
+    expect(markup).toContain('data-presence-state="idle"');
+    expect(markup).toContain('data-avatar-companion-state="laugh"');
+    expect(markup).toContain('data-avatar-command="expression.laugh"');
+    expect(markup).toContain('data-avatar-expression="laugh"');
+    expect(markup).toContain("VRM: expression.laugh / laugh");
+    expect(markup).not.toContain('data-avatar-expression="idle"');
+    expect(markup).not.toContain("VRM: expression.laugh / idle");
   });
 
   it("renders presence state through the shared source boundary", () => {
@@ -960,9 +982,9 @@ describe("desktop app shell", () => {
 
     expect(markup).toContain("Listening");
     expect(markup).toContain('data-presence-state="listening"');
-    expect(markup).toContain('data-avatar-command="voice.listen"');
+    expect(markup).toContain('data-avatar-command="expression.listening"');
     expect(markup).toContain('data-avatar-motion-group="tap_body"');
-    expect(markup).toContain('data-avatar-expression="attentive"');
+    expect(markup).toContain('data-avatar-expression="listening"');
   });
 
   it("does not let passive mute hide active product presence states", () => {
@@ -1827,13 +1849,13 @@ describe("desktop app shell", () => {
       .toMatchObject({
         state: "thinking",
         motionGroup: "thinking",
-        expression: "focused",
+        expression: "thinking",
       });
     expect(getLive2DAvatarSurfaceHook(avatarPresenceStateFrom(speakingState)!))
       .toMatchObject({
         state: "speaking",
         motionGroup: "speak",
-        expression: "talking",
+        expression: "speaking",
       });
   });
 
