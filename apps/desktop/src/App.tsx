@@ -121,6 +121,7 @@ import {
 } from "./voiceInteraction";
 import {
   millisecondsUntilNextStartupIdleWave,
+  nextStartupIdleWaveIntervalMs,
   runStartupCompanionSequence,
   startupCompanionStateForPresenceState,
   startupIdleWaveDurationMs,
@@ -2005,6 +2006,7 @@ export function App({
   );
   const idleWaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastIdleWaveAtMs = useRef<number | null>(null);
+  const nextIdleWaveIntervalMs = useRef(nextStartupIdleWaveIntervalMs());
   const presenceDragIdleTimer = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
@@ -2790,6 +2792,7 @@ export function App({
       renderedPresenceState,
       nowMs: Date.now(),
       lastWaveAtMs: lastIdleWaveAtMs.current,
+      scheduledIntervalMs: nextIdleWaveIntervalMs.current,
     });
     const isIdleWavePaused =
       avatarIdleWavePolicy.pausedPresenceStates.some(
@@ -2808,6 +2811,7 @@ export function App({
 
       idleWaveTimer.current = setTimeout(() => {
         setIdleWaveCompanionState(null);
+        nextIdleWaveIntervalMs.current = nextStartupIdleWaveIntervalMs();
         setIdleWaveCycle((cycle) => cycle + 1);
         idleWaveTimer.current = null;
       }, startupIdleWaveDurationMs);
