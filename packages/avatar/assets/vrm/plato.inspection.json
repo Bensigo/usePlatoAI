@@ -1,6 +1,7 @@
 {
   "sourceIssue": 317,
   "implementationIssue": 311,
+  "permissionCorrectionIssue": 319,
   "sourceFile": "/Users/macbook/Downloads/plato.vrm",
   "visualReference": "/Users/macbook/Downloads/plato-vroid-front.png",
   "fileName": "plato.vrm",
@@ -9,7 +10,7 @@
   "format": "VRM 1.0 / glTF binary",
   "license": {
     "licenseUrl": "https://vrm.dev/licenses/1.0/",
-    "avatarPermission": "onlyAuthor",
+    "avatarPermission": "everyone",
     "commercialUsage": "personalProfit",
     "allowRedistribution": true,
     "modification": "allowModification",

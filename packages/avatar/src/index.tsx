@@ -167,7 +167,7 @@ export const vroidAvatarSource = {
   license: {
     name: "VRM Public License 1.0 metadata",
     url: "https://vrm.dev/licenses/1.0/",
-    avatarPermission: "onlyAuthor",
+    avatarPermission: "everyone",
     commercialUsage: "personalProfit",
     allowRedistribution: true,
     modification: "allowModification",

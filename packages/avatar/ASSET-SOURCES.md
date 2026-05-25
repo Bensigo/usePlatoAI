@@ -12,15 +12,18 @@
 - Author: Bensigo
 - Source issue: GitHub issue #317
 - Implementation issue: GitHub issue #311
+- Permission correction issue: GitHub issue #319
 
 ### Embedded License Metadata
 
 - License URL: https://vrm.dev/licenses/1.0/
-- Avatar permission: `onlyAuthor`
+- Avatar permission: `everyone`
 - Commercial usage: `personalProfit`
 - Redistribution: allowed
 - Modification: `allowModification`
 - Credit notation: unnecessary
+
+The corrected default avatar permission allows app users and downstream redistributors to manipulate/use the bundled default companion avatar as shipped by usePlatoAI. The selected production avatar direction, author attribution, redistribution flag, modification flag, and commercial-use metadata are otherwise unchanged from the operator-selected VRoid source.
 
 ### Inspection Summary
 

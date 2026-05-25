@@ -90,6 +90,7 @@ describe("avatar package contract", () => {
     expect(vroidAvatarSource.exportedForIssue).toBe(317);
     expect(vroidAvatarSource.license).toMatchObject({
       url: "https://vrm.dev/licenses/1.0/",
+      avatarPermission: "everyone",
       commercialUsage: "personalProfit",
       allowRedistribution: true,
       modification: "allowModification",
@@ -119,7 +120,7 @@ describe("avatar package contract", () => {
       name: "plato",
       authors: ["Bensigo"],
       licenseUrl: "https://vrm.dev/licenses/1.0/",
-      avatarPermission: "onlyAuthor",
+      avatarPermission: "everyone",
       commercialUsage: "personalProfit",
       allowRedistribution: true,
       modification: "allowModification",
