@@ -945,11 +945,30 @@ describe("desktop app shell", () => {
 
     expect(markup).toContain('data-avatar-companion-state="celebrating"');
     expect(markup).toContain('data-avatar-command="expression.celebrating"');
+    expect(markup).toContain('data-avatar-expression="celebrating"');
+    expect(markup).toContain("VRM: expression.celebrating / celebrating");
     expect(markup).toContain('data-avatar-control-laugh="0.75"');
     expect(markup).toContain('data-avatar-control-wave="0.85"');
     expect(markup).not.toContain("avatarTestCommand");
     expect(markup).not.toContain("Hidden avatar test");
     expect(markup).not.toContain('aria-label="Top Plato control surface"');
+  });
+
+  it("reports overridden avatar expression metadata from the renderer command", () => {
+    const markup = renderToStaticMarkup(
+      <Live2DAvatarSurface
+        presenceState="idle"
+        companionStateOverride="laugh"
+      />,
+    );
+
+    expect(markup).toContain('data-presence-state="idle"');
+    expect(markup).toContain('data-avatar-companion-state="laugh"');
+    expect(markup).toContain('data-avatar-command="expression.laugh"');
+    expect(markup).toContain('data-avatar-expression="laugh"');
+    expect(markup).toContain("VRM: expression.laugh / laugh");
+    expect(markup).not.toContain('data-avatar-expression="idle"');
+    expect(markup).not.toContain("VRM: expression.laugh / idle");
   });
 
   it("renders presence state through the shared source boundary", () => {
