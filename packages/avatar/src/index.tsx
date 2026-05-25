@@ -1298,13 +1298,14 @@ export function Live2DAvatarSurface({
   const rendererConfig = companionStateOverride
     ? getAvatarRendererConfig(companionStateOverride)
     : hook.rendererConfig;
+  const surfaceExpression = rendererConfig.companionState;
 
   return (
     <figure
       className="live2d-avatar-surface"
       data-presence-state={hook.state}
       data-avatar-motion-group={hook.motionGroup}
-      data-avatar-expression={hook.expression}
+      data-avatar-expression={surfaceExpression}
       aria-label={`Plato avatar surface: ${hook.statusText}`}
     >
       <div
@@ -1334,7 +1335,7 @@ export function Live2DAvatarSurface({
       <figcaption className="live2d-avatar-caption sr-only">
         <span>{hook.label}</span>
         <small>
-          VRM: {rendererConfig.command} / {hook.expression}
+          VRM: {rendererConfig.command} / {surfaceExpression}
         </small>
       </figcaption>
     </figure>
