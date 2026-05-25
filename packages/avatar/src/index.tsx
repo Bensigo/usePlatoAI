@@ -123,6 +123,112 @@ function roundAvatarEyeAxis(value: number) {
   );
 }
 
+function roundAvatarEyeCoordinate(value: number) {
+  if (!Number.isFinite(value)) {
+    return 0;
+  }
+
+  return (
+    Math.round(value * avatarEyeDirectionPrecision) /
+    avatarEyeDirectionPrecision
+  );
+}
+
+export const avatarVrmEyeGazeCalibration = {
+  controlSource: "vrm-look-at-target",
+  backedBy: ["VRM lookAt target", "leftEye bone", "rightEye bone"],
+  targetNeutral: {
+    x: 0,
+    y: 1.24,
+    z: 4.97,
+  },
+  targetRange: {
+    x: 0.45,
+    y: 0.26,
+  },
+} as const;
+
+export function avatarEyeDirectionToVrmLookAtTarget(
+  direction: AvatarEyeDirection = avatarEyeDirectionNeutral,
+) {
+  const eyeX = roundAvatarEyeAxis(direction.x);
+  const eyeY = roundAvatarEyeAxis(direction.y);
+
+  return {
+    x: roundAvatarEyeCoordinate(
+      avatarVrmEyeGazeCalibration.targetNeutral.x +
+        eyeX * avatarVrmEyeGazeCalibration.targetRange.x,
+    ),
+    y: roundAvatarEyeCoordinate(
+      avatarVrmEyeGazeCalibration.targetNeutral.y -
+        eyeY * avatarVrmEyeGazeCalibration.targetRange.y,
+    ),
+    z: avatarVrmEyeGazeCalibration.targetNeutral.z,
+  };
+}
+
+export type AvatarVrmLoadCapabilityStatus =
+  | "ready"
+  | "missing-vrm"
+  | "missing-look-at";
+
+type AvatarVrmLookAtCapability = Pick<VRM, "lookAt">;
+type AvatarVrmRuntimeLoadCandidate = Pick<VRM, "lookAt" | "scene">;
+export type AvatarVrmRuntimeLoadFailureStatus = Exclude<
+  AvatarVrmLoadCapabilityStatus,
+  "ready"
+>;
+
+export function avatarVrmLoadCapabilityStatus(
+  vrm: AvatarVrmLookAtCapability | null | undefined,
+): AvatarVrmLoadCapabilityStatus {
+  if (!vrm) {
+    return "missing-vrm";
+  }
+
+  if (!vrm.lookAt) {
+    return "missing-look-at";
+  }
+
+  return "ready";
+}
+
+function avatarVrmSupportsLookAt(
+  vrm: AvatarVrmLookAtCapability | null | undefined,
+): vrm is AvatarVrmLookAtCapability & {
+  lookAt: NonNullable<VRM["lookAt"]>;
+} {
+  return avatarVrmLoadCapabilityStatus(vrm) === "ready";
+}
+
+export function avatarHandleVrmRuntimeLoad<
+  TVrm extends AvatarVrmRuntimeLoadCandidate,
+>({
+  vrm,
+  disposeScene,
+  onReady,
+  onFailed,
+}: {
+  vrm: TVrm | null | undefined;
+  disposeScene: (scene: ThreeNamespace.Object3D) => void;
+  onReady: (vrm: TVrm & { lookAt: NonNullable<VRM["lookAt"]> }) => void;
+  onFailed: (status: AvatarVrmRuntimeLoadFailureStatus) => void;
+}): AvatarVrmLoadCapabilityStatus {
+  const status = avatarVrmLoadCapabilityStatus(vrm);
+
+  if (status !== "ready") {
+    if (vrm) {
+      disposeScene(vrm.scene);
+    }
+    onFailed(status);
+    return status;
+  }
+
+  onReady(vrm as TVrm & { lookAt: NonNullable<VRM["lookAt"]> });
+
+  return status;
+}
+
 export function avatarEyeDirectionFromCursor({
   cursorX,
   cursorY,
@@ -217,11 +323,11 @@ export const vendoredVrmAssetContract = {
   },
   runtimeControls: {
     eyeX: {
-      backedBy: ["VRM lookAt target", "leftEye bone", "rightEye bone"],
+      backedBy: avatarVrmEyeGazeCalibration.backedBy,
       missing: false,
     },
     eyeY: {
-      backedBy: ["VRM lookAt target", "leftEye bone", "rightEye bone"],
+      backedBy: avatarVrmEyeGazeCalibration.backedBy,
       missing: false,
     },
     blink: {
@@ -905,6 +1011,24 @@ function applyVrmExpressionControls(vrm: VRM, controls: AvatarRuntimeControls) {
   );
 }
 
+function normalizeAvatarRuntimeControls(
+  controls: AvatarRuntimeControls,
+): AvatarRuntimeControls {
+  return {
+    eyeX: roundAvatarEyeAxis(controls.eyeX),
+    eyeY: roundAvatarEyeAxis(controls.eyeY),
+    blink: clampRuntimeControl(controls.blink),
+    mouthOpen: clampRuntimeControl(controls.mouthOpen),
+    smile: clampRuntimeControl(controls.smile),
+    laugh: clampRuntimeControl(controls.laugh),
+    wave: clampRuntimeControl(controls.wave),
+    sad: clampRuntimeControl(controls.sad),
+    headPitch: clampSignedRuntimeControl(controls.headPitch),
+    headYaw: clampSignedRuntimeControl(controls.headYaw),
+    headRoll: clampSignedRuntimeControl(controls.headRoll),
+  };
+}
+
 function applyNeutralHumanoidBonePose(
   vrm: VRM,
   THREE: typeof import("three"),
@@ -1068,57 +1192,67 @@ function BrowserVrmCanvas({
             return;
           }
 
-          const vrm = gltf.userData.vrm as VRM | undefined;
+          avatarHandleVrmRuntimeLoad({
+            vrm: gltf.userData.vrm as VRM | undefined,
+            disposeScene: (sceneToDispose) => {
+              VRMUtils.deepDispose(sceneToDispose);
+            },
+            onFailed: () => {
+              onLoadError();
+            },
+            onReady: (vrm) => {
+              VRMUtils.rotateVRM0(vrm);
+              loadedVrm = vrm;
+              vrm.scene.position.fromArray(
+                vendoredVrmAssetContract.framing.modelPosition,
+              );
+              vrm.scene.scale.setScalar(
+                vendoredVrmAssetContract.framing.modelScale,
+              );
+              scene.add(vrm.scene);
 
-          if (!vrm) {
-            onLoadError();
-            return;
-          }
+              applyNeutralHumanoidBonePose(vrm, THREE, waveBoneRotations);
 
-          VRMUtils.rotateVRM0(vrm);
-          loadedVrm = vrm;
-          vrm.scene.position.fromArray(
-            vendoredVrmAssetContract.framing.modelPosition,
-          );
-          vrm.scene.scale.setScalar(vendoredVrmAssetContract.framing.modelScale);
-          scene.add(vrm.scene);
+              for (const boneName of vendoredVrmAssetContract.runtimeControls
+                .wave.backedBy) {
+                const normalizedBoneName = boneName.replace(
+                  "humanoid bone: ",
+                  "",
+                );
+                const bone = vrm.humanoid.getNormalizedBoneNode(
+                  normalizedBoneName as Parameters<
+                    typeof vrm.humanoid.getNormalizedBoneNode
+                  >[0],
+                );
 
-          applyNeutralHumanoidBonePose(vrm, THREE, waveBoneRotations);
-
-          for (const boneName of vendoredVrmAssetContract.runtimeControls.wave
-            .backedBy) {
-            const normalizedBoneName = boneName.replace("humanoid bone: ", "");
-            const bone = vrm.humanoid.getNormalizedBoneNode(
-              normalizedBoneName as Parameters<
-                typeof vrm.humanoid.getNormalizedBoneNode
-              >[0],
-            );
-
-            if (bone) {
-              waveBones.set(normalizedBoneName, bone);
-              if (!waveBoneRotations.has(normalizedBoneName)) {
-                waveBoneRotations.set(normalizedBoneName, bone.rotation.clone());
+                if (bone) {
+                  waveBones.set(normalizedBoneName, bone);
+                  if (!waveBoneRotations.has(normalizedBoneName)) {
+                    waveBoneRotations.set(
+                      normalizedBoneName,
+                      bone.rotation.clone(),
+                    );
+                  }
+                }
               }
-            }
-          }
 
-          for (const boneName of ["neck", "head"]) {
-            const bone = vrm.humanoid.getNormalizedBoneNode(
-              boneName as Parameters<
-                typeof vrm.humanoid.getNormalizedBoneNode
-              >[0],
-            );
+              for (const boneName of ["neck", "head"]) {
+                const bone = vrm.humanoid.getNormalizedBoneNode(
+                  boneName as Parameters<
+                    typeof vrm.humanoid.getNormalizedBoneNode
+                  >[0],
+                );
 
-            if (bone && !waveBoneRotations.has(boneName)) {
-              waveBoneRotations.set(boneName, bone.rotation.clone());
-            }
-          }
+                if (bone && !waveBoneRotations.has(boneName)) {
+                  waveBoneRotations.set(boneName, bone.rotation.clone());
+                }
+              }
 
-          if (vrm.lookAt) {
-            vrm.lookAt.target = lookAtTarget;
-          }
-          applyVrmExpressionControls(vrm, controlsRef.current);
-          onLoad();
+              vrm.lookAt.target = lookAtTarget;
+              applyVrmExpressionControls(vrm, controlsRef.current);
+              onLoad();
+            },
+          });
         },
         undefined,
         () => {
@@ -1137,10 +1271,15 @@ function BrowserVrmCanvas({
         elapsedSeconds += delta;
         const currentControls = controlsRef.current;
 
+        const lookAtTargetPosition =
+          avatarEyeDirectionToVrmLookAtTarget({
+            x: currentControls.eyeX,
+            y: currentControls.eyeY,
+          });
         lookAtTarget.position.set(
-          currentControls.eyeX * 0.34,
-          1.24 + currentControls.eyeY * 0.22,
-          camera.position.z - 0.28,
+          lookAtTargetPosition.x,
+          lookAtTargetPosition.y,
+          lookAtTargetPosition.z,
         );
 
         if (loadedVrm) {
@@ -1239,11 +1378,12 @@ export function AvatarRenderer({
 }) {
   const config = getAvatarRendererConfig(companionState);
   const controls = useMemo(
-    () => ({
-      ...config.controls,
-      eyeX: eyeDirection.x,
-      eyeY: eyeDirection.y,
-    }),
+    () =>
+      normalizeAvatarRuntimeControls({
+        ...config.controls,
+        eyeX: eyeDirection.x,
+        eyeY: eyeDirection.y,
+      }),
     [config.controls, eyeDirection.x, eyeDirection.y],
   );
   const [runtimeState, setRuntimeState] =
@@ -1267,6 +1407,7 @@ export function AvatarRenderer({
       data-three-renderer={config.three.renderer}
       data-three-alpha={String(config.three.transparentCanvas)}
       data-vrm-loader={config.three.loader}
+      data-avatar-eye-control-source={avatarVrmEyeGazeCalibration.controlSource}
       data-avatar-control-eye-x={String(controls.eyeX)}
       data-avatar-control-eye-y={String(controls.eyeY)}
       data-avatar-control-blink={String(controls.blink)}
