@@ -486,7 +486,11 @@ export function TaskTrayPanel({
     .filter(({ notification }) => notification.tier !== "quiet");
 
   return (
-    <section className="task-tray" aria-label="Task tray">
+    <section
+      className="task-tray"
+      aria-label="Task tray"
+      data-native-hit-region="capture"
+    >
       <header className="task-tray-header">
         <div>
           <p className="status-label">Task tray</p>

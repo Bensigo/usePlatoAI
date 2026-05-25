@@ -54,6 +54,11 @@ import {
   type PresenceWindowPosition,
 } from "./presencePosition";
 import {
+  shouldCapturePresenceCursor,
+  type PresenceHitTestPoint,
+  type PresenceHitTestRect,
+} from "./presenceHitTest";
+import {
   createTauriSettingsStore,
   defaultCompanionSettings,
   providerPlaceholderLabel,
@@ -116,6 +121,7 @@ import {
 } from "./voiceInteraction";
 import {
   millisecondsUntilNextStartupIdleWave,
+  nextStartupIdleWaveIntervalMs,
   runStartupCompanionSequence,
   startupCompanionStateForPresenceState,
   startupIdleWaveDurationMs,
@@ -174,6 +180,51 @@ function startPresenceDrag(
   event.preventDefault();
   options.onDragStart?.();
   void getCurrentWindow().startDragging();
+}
+
+type CursorEventWindow = ReturnType<typeof getCurrentWindow> & {
+  setIgnoreCursorEvents?: (ignore: boolean) => Promise<void>;
+};
+
+function elementRect(
+  element: Element | null | undefined,
+): PresenceHitTestRect | null {
+  if (!element) {
+    return null;
+  }
+
+  const rect = element.getBoundingClientRect();
+
+  return {
+    left: rect.left,
+    top: rect.top,
+    width: rect.width,
+    height: rect.height,
+  };
+}
+
+function nativeCaptureElementAt(point: PresenceHitTestPoint) {
+  const element = document.elementFromPoint(point.x, point.y);
+  const avatarAction = element?.closest("[data-native-hit-region='avatar']");
+
+  if (avatarAction) {
+    return null;
+  }
+
+  return element?.closest("[data-native-hit-region='capture']") ?? null;
+}
+
+async function setPresenceWindowIgnoresCursorEvents(
+  window: ReturnType<typeof getCurrentWindow>,
+  ignore: boolean,
+) {
+  const cursorEventWindow = window as CursorEventWindow;
+
+  if (typeof cursorEventWindow.setIgnoreCursorEvents !== "function") {
+    return;
+  }
+
+  await cursorEventWindow.setIgnoreCursorEvents(ignore);
 }
 
 async function reinforcePresenceWindowLayer() {
@@ -414,7 +465,11 @@ export function openControlSurfaceEntryFromEvent({
 
 export function DismissedPresence({ onRestore }: { onRestore: () => void }) {
   return (
-    <section className="restore-card" aria-label="Plato presence hidden">
+    <section
+      className="restore-card"
+      aria-label="Plato presence hidden"
+      data-native-hit-region="capture"
+    >
       <p id="restore-title">Plato is hidden</p>
       <button className="restore-button" type="button" onClick={onRestore}>
         Show Plato presence
@@ -1172,6 +1227,7 @@ export function CenteredChatPanel({
     <section
       className="centered-chat-panel"
       aria-label="Centered Plato chat panel"
+      data-native-hit-region="capture"
     >
       <header className="centered-chat-header">
         <div>
@@ -1294,6 +1350,7 @@ export function PresenceListeningBubble({
       className="presence-listening-bubble"
       type="button"
       data-presence-bubble-state={state}
+      data-native-hit-region="capture"
       onClick={onOpenControls}
       aria-label={ariaLabel ?? `Open voice controls: ${label}`}
     >
@@ -1949,9 +2006,11 @@ export function App({
   );
   const idleWaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastIdleWaveAtMs = useRef<number | null>(null);
+  const nextIdleWaveIntervalMs = useRef(nextStartupIdleWaveIntervalMs());
   const presenceDragIdleTimer = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
+  const areNativeCursorEventsIgnored = useRef<boolean | null>(null);
   const correctionPromptRequestId = useRef(0);
   const isPresenceDraggable = presenceDragMode === "draggable";
 
@@ -2733,6 +2792,7 @@ export function App({
       renderedPresenceState,
       nowMs: Date.now(),
       lastWaveAtMs: lastIdleWaveAtMs.current,
+      scheduledIntervalMs: nextIdleWaveIntervalMs.current,
     });
     const isIdleWavePaused =
       avatarIdleWavePolicy.pausedPresenceStates.some(
@@ -2751,6 +2811,7 @@ export function App({
 
       idleWaveTimer.current = setTimeout(() => {
         setIdleWaveCompanionState(null);
+        nextIdleWaveIntervalMs.current = nextStartupIdleWaveIntervalMs();
         setIdleWaveCycle((cycle) => cycle + 1);
         idleWaveTimer.current = null;
       }, startupIdleWaveDurationMs);
@@ -2822,6 +2883,25 @@ export function App({
               windowPosition,
               scaleFactor,
             });
+            const shouldCaptureCursor = shouldCapturePresenceCursor({
+              point: clientPoint,
+              avatarRect: elementRect(avatarActionRef.current),
+              capturedElementRect: elementRect(
+                nativeCaptureElementAt(clientPoint),
+              ),
+              isPresenceDraggable,
+            });
+            const shouldIgnoreCursorEvents = !shouldCaptureCursor;
+
+            if (
+              areNativeCursorEventsIgnored.current !== shouldIgnoreCursorEvents
+            ) {
+              areNativeCursorEventsIgnored.current = shouldIgnoreCursorEvents;
+              void setPresenceWindowIgnoresCursorEvents(
+                appWindow,
+                shouldIgnoreCursorEvents,
+              );
+            }
 
             trackAvatarEyes(clientPoint.x, clientPoint.y);
           }
@@ -2844,6 +2924,8 @@ export function App({
 
       return () => {
         isDisposed = true;
+        areNativeCursorEventsIgnored.current = false;
+        void setPresenceWindowIgnoresCursorEvents(appWindow, false);
 
         if (animationFrame !== null) {
           window.cancelAnimationFrame(animationFrame);
@@ -2893,7 +2975,7 @@ export function App({
       window.removeEventListener("pointermove", handlePointerMove);
       document.removeEventListener("mouseleave", resetEyeTracking);
     };
-  }, [trackAvatarEyes]);
+  }, [isPresenceDraggable, trackAvatarEyes]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -2977,6 +3059,7 @@ export function App({
         <section
           className="control-surface"
           aria-label="Top Plato control surface"
+          data-native-hit-region="capture"
         >
           <div className="control-surface-header">
             <span>Plato controls</span>
@@ -3125,7 +3208,7 @@ export function App({
               presencePosition ? `${presencePosition.x},${presencePosition.y}` : "default"
             }
           >
-            <div className="presence-controls">
+            <div className="presence-controls" data-native-hit-region="capture">
               <button
                 className="controls-opener-button"
                 type="button"
@@ -3174,6 +3257,7 @@ export function App({
                 ref={avatarActionRef}
                 className="avatar-action"
                 type="button"
+                data-native-hit-region="avatar"
                 onClick={reactToAvatarClick}
                 onMouseDown={startAvatarDrag}
                 onMouseUp={stopAvatarDrag}

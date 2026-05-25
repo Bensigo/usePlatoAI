@@ -21,6 +21,7 @@ import {
   fallbackRendererFor,
   getAvatarRendererConfig,
   millisecondsUntilNextAvatarIdleWave,
+  nextAvatarIdleWaveIntervalMs,
   vendoredVrmAssetContract,
   vrmCapabilityInventory,
   vroidAvatarSource,
@@ -396,8 +397,9 @@ describe("avatar package contract", () => {
     expect(avatarIdleWavePolicy).toMatchObject({
       companionState: "greet",
       command: "greet.wave",
-      initialDelayMs: 60_000,
+      initialDelayMs: 90_000,
       minimumIntervalMs: 60_000,
+      maximumIntervalMs: 120_000,
       activeStateBackoffMs: 6_000,
       waveDurationMs: 960,
     });
@@ -417,8 +419,12 @@ describe("avatar package contract", () => {
         presenceState: "idle",
         nowMs: 10_000,
         lastWaveAtMs: 1_000,
+        scheduledIntervalMs: 75_000,
       }),
-    ).toBe(51_000);
+    ).toBe(66_000);
+    expect(nextAvatarIdleWaveIntervalMs({ random: () => 0 })).toBe(60_000);
+    expect(nextAvatarIdleWaveIntervalMs({ random: () => 0.5 })).toBe(90_000);
+    expect(nextAvatarIdleWaveIntervalMs({ random: () => 1 })).toBe(120_000);
     expect(
       millisecondsUntilNextAvatarIdleWave({
         presenceState: "focused",

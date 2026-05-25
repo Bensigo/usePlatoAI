@@ -3,6 +3,7 @@ import {
   avatarLaunchSequence,
   avatarStartupSound,
   millisecondsUntilNextAvatarIdleWave,
+  nextAvatarIdleWaveIntervalMs,
   type AvatarCompanionState,
 } from "./avatarSurface";
 import {
@@ -50,17 +51,22 @@ export function millisecondsUntilNextStartupIdleWave({
   renderedPresenceState,
   nowMs,
   lastWaveAtMs,
+  scheduledIntervalMs,
 }: {
   renderedPresenceState: string;
   nowMs: number;
   lastWaveAtMs: number | null;
+  scheduledIntervalMs?: number;
 }) {
   return millisecondsUntilNextAvatarIdleWave({
     presenceState: renderedPresenceState,
     nowMs,
     lastWaveAtMs,
+    scheduledIntervalMs,
   });
 }
+
+export const nextStartupIdleWaveIntervalMs = nextAvatarIdleWaveIntervalMs;
 
 export const startupIdleWaveDurationMs = avatarIdleWavePolicy.waveDurationMs;
 
