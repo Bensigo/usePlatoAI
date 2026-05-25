@@ -51,6 +51,7 @@ export type AvatarAnimationCommand = (typeof avatarAnimationCommands)[number];
 
 export const avatarTestAnimationCommands = [
   "greeting",
+  "wave",
   "happy",
   "smile",
   "laugh",
@@ -721,6 +722,7 @@ export function millisecondsUntilNextAvatarIdleWave({
 
 const hiddenTestCommandStateByCommand = {
   greeting: "greeting",
+  wave: "greeting",
   happy: "smile",
   smile: "smile",
   laugh: "laugh",

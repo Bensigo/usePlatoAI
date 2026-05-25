@@ -11,6 +11,7 @@ not the Vite browser page.
 
 Commands:
   greeting
+  wave
   happy
   smile
   laugh
@@ -32,7 +33,7 @@ fi
 command="$1"
 
 case "$command" in
-  greeting|happy|smile|laugh|sad|error|thinking|talking|speaking|dance|celebration)
+  greeting|wave|happy|smile|laugh|sad|error|thinking|talking|speaking|dance|celebration)
     ;;
   *)
     usage >&2

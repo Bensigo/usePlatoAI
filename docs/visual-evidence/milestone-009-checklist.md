@@ -25,6 +25,7 @@ The desktop app accepts hidden avatar test commands through `VITE_PLATO_AVATAR_T
 Supported commands:
 
 - `greeting`
+- `wave`
 - `happy`
 - `smile`
 - `laugh`
@@ -39,13 +40,13 @@ Supported commands:
 Launch a state-specific desktop run from the repo root:
 
 ```bash
-scripts/milestone-009-avatar-state dance
+scripts/milestone-009-avatar-state wave
 ```
 
 Equivalent raw command:
 
 ```bash
-VITE_PLATO_AVATAR_TEST_COMMAND=dance pnpm desktop:dev
+VITE_PLATO_AVATAR_TEST_COMMAND=wave pnpm desktop:dev
 ```
 
 The command must open the native `usePlatoAI` Tauri window. Do not use the browser page that Vite also serves as milestone evidence.

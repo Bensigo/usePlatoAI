@@ -929,6 +929,7 @@ describe("desktop app shell", () => {
 
   it("maps hidden avatar test commands to product companion states", () => {
     expect(avatarCompanionStateFromTestCommand("greeting")).toBe("greeting");
+    expect(avatarCompanionStateFromTestCommand("wave")).toBe("greeting");
     expect(avatarCompanionStateFromTestCommand("happy")).toBe("smile");
     expect(avatarCompanionStateFromTestCommand("smile")).toBe("smile");
     expect(avatarCompanionStateFromTestCommand("laugh")).toBe("laugh");
