@@ -24,6 +24,7 @@ import {
   avatarNeutralHumanoidBonePose,
   avatarPackageAssets,
   avatarStartupSound,
+  avatarTestAnimationCommands,
   avatarVrmEyeGazeCalibration,
   fallbackRendererFor,
   getAvatarRendererConfig,
@@ -182,6 +183,7 @@ describe("avatar package contract", () => {
       "expression.error",
       "expression.celebrating",
     ]);
+    expect(avatarTestAnimationCommands).toContain("wave");
   });
 
   it("maps every companion state to a Three.js VRM renderer config", () => {
@@ -277,6 +279,15 @@ describe("avatar package contract", () => {
     });
     expect(
       avatarExpressionCommandForEvent({ type: "idle-wave" }),
+    ).toMatchObject({
+      expression: "greeting",
+      command: "expression.greeting",
+    });
+    expect(
+      avatarExpressionCommandForEvent({
+        type: "test-command",
+        command: "wave",
+      }),
     ).toMatchObject({
       expression: "greeting",
       command: "expression.greeting",
