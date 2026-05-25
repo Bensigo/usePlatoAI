@@ -227,6 +227,16 @@ describe("avatar package contract", () => {
     });
     expect(
       avatarExpressionCommandForEvent({
+        type: "startup",
+        presenceState: "listening",
+      }),
+    ).toMatchObject({
+      expression: "greeting",
+      companionState: "greeting",
+      command: "expression.greeting",
+    });
+    expect(
+      avatarExpressionCommandForEvent({
         type: "presence",
         presenceState: "speaking",
       }),

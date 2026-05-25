@@ -664,6 +664,14 @@ function avatarExpressionStateForEvent(
     );
   }
 
+  if (event.type === "startup") {
+    return (
+      avatarLaunchSequence.find(
+        (step) => step.presenceState === event.presenceState,
+      )?.companionState ?? null
+    );
+  }
+
   return presenceToExpression[event.presenceState] ?? "idle";
 }
 

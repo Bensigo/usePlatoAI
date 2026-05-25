@@ -1,4 +1,5 @@
 import {
+  avatarExpressionCommandForEvent,
   avatarIdleWavePolicy,
   avatarLaunchSequence,
   avatarStartupSound,
@@ -42,8 +43,10 @@ export function startupCompanionStateForPresenceState(
   }
 
   return (
-    avatarLaunchSequence.find((step) => step.presenceState === state)
-      ?.companionState ?? null
+    avatarExpressionCommandForEvent({
+      type: "startup",
+      presenceState: state,
+    })?.companionState ?? null
   );
 }
 
