@@ -14,6 +14,7 @@ import {
   avatarEyeDirectionFromCursor,
   avatarEyeDirectionNeutral,
   avatarEyeDirectionStyle,
+  avatarHandleVrmRuntimeLoad,
   avatarVrmLoadCapabilityStatus,
   avatarHelloWaveHumanoidBoneMotion,
   avatarIdleWavePolicy,
@@ -438,6 +439,32 @@ describe("avatar package contract", () => {
         lookAt: { target: null } as NonNullable<VRM["lookAt"]>,
       }),
     ).toBe("ready");
+  });
+
+  it("keeps missing-lookAt VRMs out of the runtime ready path", () => {
+    const loadedScene = { name: "unsupported-vrm-scene" };
+    const runtimeEvents: string[] = [];
+
+    const status = avatarHandleVrmRuntimeLoad({
+      vrm: {
+        lookAt: undefined,
+        scene: loadedScene,
+      } as unknown as VRM,
+      disposeScene: (scene) => {
+        expect(scene).toBe(loadedScene);
+        runtimeEvents.push("dispose");
+      },
+      onReady: () => {
+        runtimeEvents.push("ready");
+      },
+      onFailed: (reason) => {
+        expect(reason).toBe("missing-look-at");
+        runtimeEvents.push("failed");
+      },
+    });
+
+    expect(status).toBe("missing-look-at");
+    expect(runtimeEvents).toEqual(["dispose", "failed"]);
   });
 
   it("represents startup sound ownership in the avatar package API", () => {
