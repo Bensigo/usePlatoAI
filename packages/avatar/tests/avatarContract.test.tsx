@@ -7,6 +7,8 @@ import { describe, expect, it } from "vitest";
 import {
   AvatarRenderer,
   avatarAnimationCommands,
+  avatarExpressionCommandForEvent,
+  avatarExpressionStates,
   avatarCompanionStates,
   avatarCompanionStateForClickReaction,
   avatarEyeDirectionFromCursor,
@@ -20,6 +22,7 @@ import {
   avatarStartupSound,
   fallbackRendererFor,
   getAvatarRendererConfig,
+  getAvatarExpressionCommand,
   millisecondsUntilNextAvatarIdleWave,
   nextAvatarIdleWaveIntervalMs,
   vendoredVrmAssetContract,
@@ -149,23 +152,30 @@ describe("avatar package contract", () => {
   it("exports companion states and animation commands required by the milestone slice", () => {
     expect(avatarCompanionStates).toEqual([
       "startup",
-      "greet",
       "idle",
+      "greeting",
       "listening",
-      "happy",
+      "thinking",
+      "speaking",
+      "smile",
+      "laugh",
       "sad",
-      "talking",
+      "error",
       "celebrating",
     ]);
+    expect(avatarExpressionStates).toEqual(avatarCompanionStates);
     expect(avatarAnimationCommands).toEqual([
-      "startup.appear",
-      "greet.wave",
-      "idle.breathe",
-      "voice.listen",
-      "mood.smile",
-      "mood.sad",
-      "voice.talk",
-      "celebration.dance",
+      "expression.startup",
+      "expression.idle",
+      "expression.greeting",
+      "expression.listening",
+      "expression.thinking",
+      "expression.speaking",
+      "expression.smile",
+      "expression.laugh",
+      "expression.sad",
+      "expression.error",
+      "expression.celebrating",
     ]);
   });
 
@@ -186,9 +196,129 @@ describe("avatar package contract", () => {
         "smile",
         "laugh",
         "wave",
+        "sad",
+        "headPitch",
+        "headYaw",
+        "headRoll",
       ]);
       expect(config.capabilityInventory).toBe(vrmCapabilityInventory);
     }
+  });
+
+  it("maps product events through the typed expression controller", () => {
+    expect(
+      avatarExpressionCommandForEvent({
+        type: "presence",
+        presenceState: "idle",
+      }),
+    ).toMatchObject({
+      expression: "idle",
+      companionState: "idle",
+      command: "expression.idle",
+    });
+    expect(
+      avatarExpressionCommandForEvent({
+        type: "presence",
+        presenceState: "thinking",
+      }),
+    ).toMatchObject({
+      expression: "thinking",
+      companionState: "thinking",
+      command: "expression.thinking",
+    });
+    expect(
+      avatarExpressionCommandForEvent({
+        type: "startup",
+        presenceState: "listening",
+      }),
+    ).toMatchObject({
+      expression: "greeting",
+      companionState: "greeting",
+      command: "expression.greeting",
+    });
+    expect(
+      avatarExpressionCommandForEvent({
+        type: "presence",
+        presenceState: "speaking",
+      }),
+    ).toMatchObject({
+      expression: "speaking",
+      companionState: "speaking",
+      command: "expression.speaking",
+    });
+    expect(
+      avatarExpressionCommandForEvent({
+        type: "presence",
+        presenceState: "waiting_for_approval",
+      }),
+    ).toMatchObject({
+      expression: "sad",
+      command: "expression.sad",
+    });
+    expect(
+      avatarExpressionCommandForEvent({
+        type: "presence",
+        presenceState: "error",
+      }),
+    ).toMatchObject({
+      expression: "error",
+      command: "expression.error",
+    });
+    expect(
+      avatarExpressionCommandForEvent({ type: "click-reaction" }),
+    ).toMatchObject({
+      expression: "smile",
+      command: "expression.smile",
+    });
+    expect(
+      avatarExpressionCommandForEvent({ type: "idle-wave" }),
+    ).toMatchObject({
+      expression: "greeting",
+      command: "expression.greeting",
+    });
+    expect(
+      avatarExpressionCommandForEvent({
+        type: "test-command",
+        command: "laugh",
+      }),
+    ).toMatchObject({
+      expression: "laugh",
+      command: "expression.laugh",
+    });
+    expect(
+      avatarExpressionCommandForEvent({
+        type: "test-command",
+        command: "celebration",
+      }),
+    ).toMatchObject({
+      expression: "celebrating",
+      command: "expression.celebrating",
+    });
+    expect(
+      avatarExpressionCommandForEvent({
+        type: "test-command",
+        command: "not-a-state",
+      }),
+    ).toBeNull();
+  });
+
+  it("keeps smile, laugh, sad, thinking, and celebration visibly distinct in runtime controls", () => {
+    const smile = getAvatarExpressionCommand("smile").controls;
+    const laugh = getAvatarExpressionCommand("laugh").controls;
+    const sad = getAvatarExpressionCommand("sad").controls;
+    const thinking = getAvatarExpressionCommand("thinking").controls;
+    const celebrating = getAvatarExpressionCommand("celebrating").controls;
+
+    expect(smile.smile).toBeGreaterThan(0);
+    expect(smile.laugh).toBe(0);
+    expect(laugh.laugh).toBeGreaterThan(0);
+    expect(laugh.mouthOpen).toBeGreaterThan(smile.mouthOpen);
+    expect(sad.sad).toBeGreaterThan(0);
+    expect(sad.smile).toBe(0);
+    expect(thinking.headPitch).toBeGreaterThan(0);
+    expect(thinking.headYaw).toBeLessThan(0);
+    expect(celebrating.wave).toBeGreaterThan(smile.wave);
+    expect(celebrating.laugh).toBeGreaterThan(0);
   });
 
   it("documents the normalized runtime contract with real VRM backing", () => {
@@ -216,6 +346,12 @@ describe("avatar package contract", () => {
     expect(vendoredVrmAssetContract.runtimeControls.wave.backedBy).toContain(
       "humanoid bone: rightUpperArm",
     );
+    expect(vendoredVrmAssetContract.runtimeControls.sad.backedBy).toContain(
+      "VRM expression: sad",
+    );
+    expect(
+      vendoredVrmAssetContract.runtimeControls.headPitch.backedBy,
+    ).toContain("humanoid bone: head");
     expect(vrmCapabilityInventory.armGestureControls).toEqual(
       expect.arrayContaining([
         "leftUpperArm",
@@ -367,19 +503,19 @@ describe("avatar package contract", () => {
         delayMs: 0,
         presenceState: "appearing",
         companionState: "startup",
-        command: "startup.appear",
+        command: "expression.startup",
       },
       {
         delayMs: 560,
         presenceState: "listening",
-        companionState: "greet",
-        command: "greet.wave",
+        companionState: "greeting",
+        command: "expression.greeting",
       },
       {
         delayMs: 1520,
         presenceState: "idle",
         companionState: "idle",
-        command: "idle.breathe",
+        command: "expression.idle",
       },
     ]);
   });
@@ -395,8 +531,8 @@ describe("avatar package contract", () => {
 
   it("defines a rate-limited idle wave policy that backs off outside idle", () => {
     expect(avatarIdleWavePolicy).toMatchObject({
-      companionState: "greet",
-      command: "greet.wave",
+      companionState: "greeting",
+      command: "expression.greeting",
       initialDelayMs: 90_000,
       minimumIntervalMs: 60_000,
       maximumIntervalMs: 120_000,
@@ -437,13 +573,13 @@ describe("avatar package contract", () => {
   it("renders a transparent Three.js VRM React entrypoint", () => {
     const markup = renderToStaticMarkup(
       <AvatarRenderer
-        companionState="greet"
+        companionState="greeting"
         eyeDirection={{
-          x: 0.25,
-          y: -0.5,
-        }}
-      />,
-    );
+        x: 0.25,
+        y: -0.5,
+      }}
+    />,
+  );
 
     expect(markup).toContain('data-avatar-package="@useplatoai/avatar"');
     expect(markup).toContain('data-avatar-renderer="three-vrm"');
@@ -455,6 +591,8 @@ describe("avatar package contract", () => {
     expect(markup).toContain('data-avatar-control-eye-y="-0.5"');
     expect(markup).toContain('data-avatar-control-smile="0.55"');
     expect(markup).toContain('data-avatar-control-wave="1"');
+    expect(markup).toContain('data-avatar-control-sad="0"');
+    expect(markup).toContain('data-avatar-control-head-pitch="0"');
     expect(markup).toContain('data-avatar-fallback-state="none"');
     expect(markup).toContain("plato-three-vrm-canvas");
     expect(markup).toContain("/avatar/plato/vrm/plato.vrm");

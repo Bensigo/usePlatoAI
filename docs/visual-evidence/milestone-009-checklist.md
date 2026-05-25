@@ -27,8 +27,12 @@ Supported commands:
 - `greeting`
 - `happy`
 - `smile`
+- `laugh`
 - `sad`
+- `error`
+- `thinking`
 - `talking`
+- `speaking`
 - `dance`
 - `celebration`
 

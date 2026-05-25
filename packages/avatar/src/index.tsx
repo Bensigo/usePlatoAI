@@ -15,26 +15,36 @@ import type {
 
 export const avatarCompanionStates = [
   "startup",
-  "greet",
   "idle",
+  "greeting",
   "listening",
-  "happy",
+  "thinking",
+  "speaking",
+  "smile",
+  "laugh",
   "sad",
-  "talking",
+  "error",
   "celebrating",
 ] as const;
 
 export type AvatarCompanionState = (typeof avatarCompanionStates)[number];
 
+export const avatarExpressionStates = avatarCompanionStates;
+
+export type AvatarExpressionState = (typeof avatarExpressionStates)[number];
+
 export const avatarAnimationCommands = [
-  "startup.appear",
-  "greet.wave",
-  "idle.breathe",
-  "voice.listen",
-  "mood.smile",
-  "mood.sad",
-  "voice.talk",
-  "celebration.dance",
+  "expression.startup",
+  "expression.idle",
+  "expression.greeting",
+  "expression.listening",
+  "expression.thinking",
+  "expression.speaking",
+  "expression.smile",
+  "expression.laugh",
+  "expression.sad",
+  "expression.error",
+  "expression.celebrating",
 ] as const;
 
 export type AvatarAnimationCommand = (typeof avatarAnimationCommands)[number];
@@ -43,8 +53,12 @@ export const avatarTestAnimationCommands = [
   "greeting",
   "happy",
   "smile",
+  "laugh",
   "sad",
+  "error",
+  "thinking",
   "talking",
+  "speaking",
   "dance",
   "celebration",
 ] as const;
@@ -241,6 +255,22 @@ export const vendoredVrmAssetContract = {
       missing: false,
       note: "The VRM has no bundled animations; wave is authored through real humanoid arm bone transforms.",
     },
+    sad: {
+      backedBy: ["VRM expression: sad", "morph target: Fcl_MTH_Sorrow"],
+      missing: false,
+    },
+    headPitch: {
+      backedBy: ["humanoid bone: neck", "humanoid bone: head"],
+      missing: false,
+    },
+    headYaw: {
+      backedBy: ["humanoid bone: neck", "humanoid bone: head"],
+      missing: false,
+    },
+    headRoll: {
+      backedBy: ["humanoid bone: neck", "humanoid bone: head"],
+      missing: false,
+    },
   },
 } as const;
 
@@ -340,6 +370,10 @@ export type AvatarRuntimeControls = {
   smile: number;
   laugh: number;
   wave: number;
+  sad: number;
+  headPitch: number;
+  headYaw: number;
+  headRoll: number;
 };
 
 const avatarRuntimeControlsNeutral = {
@@ -350,46 +384,100 @@ const avatarRuntimeControlsNeutral = {
   smile: 0,
   laugh: 0,
   wave: 0,
+  sad: 0,
+  headPitch: 0,
+  headYaw: 0,
+  headRoll: 0,
 } as const satisfies AvatarRuntimeControls;
 
-const runtimeControlByState = {
+const runtimeControlByExpression = {
   startup: {
     ...avatarRuntimeControlsNeutral,
     mouthOpen: 0.1,
     smile: 0.25,
     wave: 0.2,
   },
-  greet: {
+  idle: avatarRuntimeControlsNeutral,
+  greeting: {
     ...avatarRuntimeControlsNeutral,
     smile: 0.55,
     wave: 1,
   },
-  idle: avatarRuntimeControlsNeutral,
   listening: {
     ...avatarRuntimeControlsNeutral,
     eyeY: 0.12,
     mouthOpen: 0.05,
+    headPitch: -0.18,
   },
-  happy: {
+  thinking: {
     ...avatarRuntimeControlsNeutral,
-    smile: 1,
+    eyeY: -0.2,
+    blink: 0.14,
+    mouthOpen: 0.02,
+    headPitch: 0.44,
+    headYaw: -0.26,
+    headRoll: -0.22,
+  },
+  speaking: {
+    ...avatarRuntimeControlsNeutral,
+    mouthOpen: 0.75,
+    headPitch: -0.08,
+  },
+  smile: {
+    ...avatarRuntimeControlsNeutral,
+    smile: 0.9,
+    wave: 0.28,
+    headPitch: -0.12,
+  },
+  laugh: {
+    ...avatarRuntimeControlsNeutral,
+    mouthOpen: 0.5,
+    smile: 0.58,
+    laugh: 1,
+    headPitch: -0.34,
+    headRoll: 0.18,
   },
   sad: {
     ...avatarRuntimeControlsNeutral,
+    eyeY: -0.28,
     mouthOpen: 0.04,
+    sad: 0.85,
+    headPitch: 0.38,
+    headYaw: 0.18,
   },
-  talking: {
+  error: {
     ...avatarRuntimeControlsNeutral,
-    mouthOpen: 0.75,
+    eyeY: -0.32,
+    mouthOpen: 0.22,
+    sad: 1,
+    headPitch: 0.48,
+    headYaw: -0.22,
   },
   celebrating: {
     ...avatarRuntimeControlsNeutral,
     mouthOpen: 0.42,
     smile: 0.85,
     laugh: 0.75,
-    wave: 0.7,
+    wave: 0.85,
+    headPitch: -0.22,
+    headRoll: 0.24,
   },
 } as const satisfies Record<AvatarCompanionState, AvatarRuntimeControls>;
+
+export type AvatarExpressionEvent =
+  | { type: "presence"; presenceState: string }
+  | { type: "startup"; presenceState: string }
+  | { type: "click-reaction" }
+  | { type: "idle-wave" }
+  | { type: "test-command"; command: string | null | undefined };
+
+export type AvatarExpressionCommand = {
+  expression: AvatarExpressionState;
+  companionState: AvatarCompanionState;
+  command: AvatarAnimationCommand;
+  controls: AvatarRuntimeControls;
+  event: AvatarExpressionEvent;
+};
 
 type ThreeVrmRendererConfig = {
   primaryRenderer: "three-vrm";
@@ -405,15 +493,18 @@ type ThreeVrmRendererConfig = {
   capabilityInventory: typeof vrmCapabilityInventory;
 };
 
-const commandByState = {
-  startup: "startup.appear",
-  greet: "greet.wave",
-  idle: "idle.breathe",
-  listening: "voice.listen",
-  happy: "mood.smile",
-  sad: "mood.sad",
-  talking: "voice.talk",
-  celebrating: "celebration.dance",
+const commandByExpression = {
+  startup: "expression.startup",
+  idle: "expression.idle",
+  greeting: "expression.greeting",
+  listening: "expression.listening",
+  thinking: "expression.thinking",
+  speaking: "expression.speaking",
+  smile: "expression.smile",
+  laugh: "expression.laugh",
+  sad: "expression.sad",
+  error: "expression.error",
+  celebrating: "expression.celebrating",
 } as const satisfies Record<AvatarCompanionState, AvatarAnimationCommand>;
 
 export const avatarLaunchSequence = [
@@ -421,19 +512,19 @@ export const avatarLaunchSequence = [
     delayMs: 0,
     presenceState: "appearing",
     companionState: "startup",
-    command: "startup.appear",
+    command: "expression.startup",
   },
   {
     delayMs: 560,
     presenceState: "listening",
-    companionState: "greet",
-    command: "greet.wave",
+    companionState: "greeting",
+    command: "expression.greeting",
   },
   {
     delayMs: 1520,
     presenceState: "idle",
     companionState: "idle",
-    command: "idle.breathe",
+    command: "expression.idle",
   },
 ] as const satisfies ReadonlyArray<{
   delayMs: number;
@@ -443,8 +534,8 @@ export const avatarLaunchSequence = [
 }>;
 
 export const avatarIdleWavePolicy = {
-  companionState: "greet",
-  command: "greet.wave",
+  companionState: "greeting",
+  command: "expression.greeting",
   initialDelayMs: 90_000,
   minimumIntervalMs: 60_000,
   maximumIntervalMs: 120_000,
@@ -519,47 +610,124 @@ export function millisecondsUntilNextAvatarIdleWave({
 }
 
 const hiddenTestCommandStateByCommand = {
-  greeting: "greet",
-  happy: "happy",
-  smile: "happy",
+  greeting: "greeting",
+  happy: "smile",
+  smile: "smile",
+  laugh: "laugh",
   sad: "sad",
-  talking: "talking",
+  error: "error",
+  thinking: "thinking",
+  talking: "speaking",
+  speaking: "speaking",
   dance: "celebrating",
   celebration: "celebrating",
 } as const satisfies Record<AvatarTestAnimationCommand, AvatarCompanionState>;
 
+const presenceToExpression: Record<string, AvatarCompanionState> = {
+  appearing: "startup",
+  idle: "idle",
+  listening: "listening",
+  thinking: "thinking",
+  speaking: "speaking",
+  focused: "thinking",
+  happy: "smile",
+  confused: "thinking",
+  waiting_for_approval: "sad",
+  waitingApproval: "sad",
+  muted: "idle",
+  error: "error",
+  task_running: "thinking",
+  task_paused: "sad",
+  sleeping: "idle",
+};
+
+function avatarExpressionStateForEvent(
+  event: AvatarExpressionEvent,
+): AvatarCompanionState | null {
+  if (event.type === "click-reaction") {
+    return "smile";
+  }
+
+  if (event.type === "idle-wave") {
+    return avatarIdleWavePolicy.companionState;
+  }
+
+  if (event.type === "test-command") {
+    if (!event.command) {
+      return null;
+    }
+
+    return (
+      hiddenTestCommandStateByCommand[
+        event.command as AvatarTestAnimationCommand
+      ] ?? null
+    );
+  }
+
+  if (event.type === "startup") {
+    return (
+      avatarLaunchSequence.find(
+        (step) => step.presenceState === event.presenceState,
+      )?.companionState ?? null
+    );
+  }
+
+  return presenceToExpression[event.presenceState] ?? "idle";
+}
+
+export function getAvatarExpressionCommand(
+  companionState: AvatarCompanionState,
+  event: AvatarExpressionEvent = { type: "presence", presenceState: companionState },
+): AvatarExpressionCommand {
+  return {
+    expression: companionState,
+    companionState,
+    command: commandByExpression[companionState],
+    controls: runtimeControlByExpression[companionState],
+    event,
+  };
+}
+
+export function avatarExpressionCommandForEvent(
+  event: AvatarExpressionEvent,
+): AvatarExpressionCommand | null {
+  const companionState = avatarExpressionStateForEvent(event);
+
+  return companionState ? getAvatarExpressionCommand(companionState, event) : null;
+}
+
 export function avatarCompanionStateForClickReaction(): AvatarCompanionState {
-  return "greet";
+  return (
+    avatarExpressionCommandForEvent({ type: "click-reaction" })
+      ?.companionState ?? "smile"
+  );
 }
 
 export function avatarCompanionStateFromTestCommand(
   command: string | null | undefined,
 ): AvatarCompanionState | null {
-  if (!command) {
-    return null;
-  }
-
   return (
-    hiddenTestCommandStateByCommand[
-      command as AvatarTestAnimationCommand
-    ] ?? null
+    avatarExpressionCommandForEvent({ type: "test-command", command })
+      ?.companionState ?? null
   );
 }
 
 export function getAvatarRendererConfig(
   companionState: AvatarCompanionState,
 ): ThreeVrmRendererConfig {
+  const expressionCommand = getAvatarExpressionCommand(companionState);
+
   return {
     primaryRenderer: "three-vrm",
     companionState,
-    command: commandByState[companionState],
+    command: expressionCommand.command,
     three: {
       src: avatarPackageAssets.vrm.publicPath,
       loader: vendoredVrmAssetContract.loader,
       renderer: vendoredVrmAssetContract.renderer,
       transparentCanvas: true,
     },
-    controls: runtimeControlByState[companionState],
+    controls: expressionCommand.controls,
     capabilityInventory: vrmCapabilityInventory,
   };
 }
@@ -571,17 +739,6 @@ export function fallbackRendererFor(reason: AvatarFallbackReason) {
     src: null,
   };
 }
-
-const presenceToCompanionState = {
-  appearing: "startup",
-  idle: "idle",
-  listening: "listening",
-  thinking: "idle",
-  speaking: "talking",
-  waitingApproval: "sad",
-  muted: "idle",
-  error: "sad",
-} as const satisfies Record<AvatarPresenceState, AvatarCompanionState>;
 
 export type Live2DAvatarSurfaceHook = {
   state: AvatarPresenceState;
@@ -597,15 +754,8 @@ export type Live2DAvatarSurfaceHook = {
     | "approval"
     | "quiet"
     | "error";
-  expression:
-    | "bright"
-    | "neutral"
-    | "attentive"
-    | "focused"
-    | "talking"
-    | "concerned"
-    | "soft"
-    | "strained";
+  expression: AvatarExpressionState;
+  expressionCommand: AvatarExpressionCommand;
   companionState: AvatarCompanionState;
   rendererConfig: ThreeVrmRendererConfig;
   parameterHints: {
@@ -621,68 +771,68 @@ const live2dAvatarSurfaceHookBase = {
     label: "Appearing",
     statusText: "Coming online",
     motionGroup: "appear",
-    expression: "bright",
     parameterHints: { eyeOpen: 1, mouthOpen: 0.16, bodyAngleX: 0, bodyAngleY: -4 },
   },
   idle: {
     label: "Idle",
     statusText: "Idle presence",
     motionGroup: "idle",
-    expression: "neutral",
     parameterHints: { eyeOpen: 0.82, mouthOpen: 0, bodyAngleX: 0, bodyAngleY: 0 },
   },
   listening: {
     label: "Listening",
     statusText: "Listening now",
     motionGroup: "tap_body",
-    expression: "attentive",
     parameterHints: { eyeOpen: 1, mouthOpen: 0.08, bodyAngleX: -5, bodyAngleY: 4 },
   },
   thinking: {
     label: "Thinking",
     statusText: "Thinking through it",
     motionGroup: "thinking",
-    expression: "focused",
     parameterHints: { eyeOpen: 0.6, mouthOpen: 0, bodyAngleX: 4, bodyAngleY: -3 },
   },
   speaking: {
     label: "Speaking",
     statusText: "Speaking",
     motionGroup: "speak",
-    expression: "talking",
     parameterHints: { eyeOpen: 0.9, mouthOpen: 0.72, bodyAngleX: 2, bodyAngleY: 0 },
   },
   waitingApproval: {
     label: "Waiting for approval",
     statusText: "Waiting for approval",
     motionGroup: "approval",
-    expression: "concerned",
     parameterHints: { eyeOpen: 0.72, mouthOpen: 0.18, bodyAngleX: -2, bodyAngleY: 2 },
   },
   muted: {
     label: "Muted",
     statusText: "Muted",
     motionGroup: "quiet",
-    expression: "soft",
     parameterHints: { eyeOpen: 0.68, mouthOpen: 0, bodyAngleX: 0, bodyAngleY: 3 },
   },
   error: {
     label: "Error",
     statusText: "Needs repair",
     motionGroup: "error",
-    expression: "strained",
     parameterHints: { eyeOpen: 0.5, mouthOpen: 0.22, bodyAngleX: -4, bodyAngleY: 0 },
   },
 } as const;
 
 export const live2dAvatarSurfaceHooks = Object.fromEntries(
   avatarPresenceStates.map((state) => {
-    const companionState = presenceToCompanionState[state];
+    const expressionCommand =
+      avatarExpressionCommandForEvent({
+        type: "presence",
+        presenceState: state,
+      }) ?? getAvatarExpressionCommand("idle");
+    const companionState = expressionCommand.companionState;
+
     return [
       state,
       {
         state,
         ...live2dAvatarSurfaceHookBase[state],
+        expression: expressionCommand.expression,
+        expressionCommand,
         avatarAssetPath: avatarPackageAssets.vrm.publicPath,
         companionState,
         rendererConfig: getAvatarRendererConfig(companionState),
@@ -724,6 +874,14 @@ function clampRuntimeControl(value: number) {
   return Math.max(0, Math.min(1, value));
 }
 
+function clampSignedRuntimeControl(value: number) {
+  if (!Number.isFinite(value)) {
+    return 0;
+  }
+
+  return Math.max(-1, Math.min(1, value));
+}
+
 function applyVrmExpressionControls(vrm: VRM, controls: AvatarRuntimeControls) {
   const expressionManager = vrm.expressionManager;
 
@@ -740,6 +898,7 @@ function applyVrmExpressionControls(vrm: VRM, controls: AvatarRuntimeControls) {
     ),
   );
   expressionManager.setValue("happy", clampRuntimeControl(controls.smile));
+  expressionManager.setValue("sad", clampRuntimeControl(controls.sad));
   expressionManager.setValue(
     "relaxed",
     clampRuntimeControl(controls.laugh) * 0.72,
@@ -767,6 +926,38 @@ function applyNeutralHumanoidBonePose(
       boneName,
       new THREE.Euler(rotation.x, rotation.y, rotation.z, bone.rotation.order),
     );
+  }
+}
+
+function applyHeadPoseControls(
+  vrm: VRM,
+  boneRotations: Map<string, ThreeNamespace.Euler>,
+  controls: AvatarRuntimeControls,
+) {
+  const poseControls = [
+    { boneName: "neck", pitchScale: 0.1, yawScale: 0.08, rollScale: 0.06 },
+    { boneName: "head", pitchScale: 0.18, yawScale: 0.14, rollScale: 0.12 },
+  ] as const;
+  const headPitch = clampSignedRuntimeControl(controls.headPitch);
+  const headYaw = clampSignedRuntimeControl(controls.headYaw);
+  const headRoll = clampSignedRuntimeControl(controls.headRoll);
+
+  for (const poseControl of poseControls) {
+    const bone = vrm.humanoid.getNormalizedBoneNode(
+      poseControl.boneName as Parameters<
+        typeof vrm.humanoid.getNormalizedBoneNode
+      >[0],
+    );
+    const baseRotation = boneRotations.get(poseControl.boneName);
+
+    if (!bone || !baseRotation) {
+      continue;
+    }
+
+    bone.rotation.copy(baseRotation);
+    bone.rotation.x += headPitch * poseControl.pitchScale;
+    bone.rotation.y += headYaw * poseControl.yawScale;
+    bone.rotation.z += headRoll * poseControl.rollScale;
   }
 }
 
@@ -911,6 +1102,18 @@ function BrowserVrmCanvas({
             }
           }
 
+          for (const boneName of ["neck", "head"]) {
+            const bone = vrm.humanoid.getNormalizedBoneNode(
+              boneName as Parameters<
+                typeof vrm.humanoid.getNormalizedBoneNode
+              >[0],
+            );
+
+            if (bone && !waveBoneRotations.has(boneName)) {
+              waveBoneRotations.set(boneName, bone.rotation.clone());
+            }
+          }
+
           if (vrm.lookAt) {
             vrm.lookAt.target = lookAtTarget;
           }
@@ -942,6 +1145,7 @@ function BrowserVrmCanvas({
 
         if (loadedVrm) {
           applyVrmExpressionControls(loadedVrm, currentControls);
+          applyHeadPoseControls(loadedVrm, waveBoneRotations, currentControls);
 
           const wave = clampRuntimeControl(currentControls.wave);
           for (const [boneName, bone] of waveBones) {
@@ -1070,6 +1274,10 @@ export function AvatarRenderer({
       data-avatar-control-smile={String(controls.smile)}
       data-avatar-control-laugh={String(controls.laugh)}
       data-avatar-control-wave={String(controls.wave)}
+      data-avatar-control-sad={String(controls.sad)}
+      data-avatar-control-head-pitch={String(controls.headPitch)}
+      data-avatar-control-head-yaw={String(controls.headYaw)}
+      data-avatar-control-head-roll={String(controls.headRoll)}
       data-avatar-fallback-state="none"
       style={avatarEyeDirectionStyle(eyeDirection)}
     >
@@ -1098,13 +1306,14 @@ export function Live2DAvatarSurface({
   const rendererConfig = companionStateOverride
     ? getAvatarRendererConfig(companionStateOverride)
     : hook.rendererConfig;
+  const surfaceExpression = rendererConfig.companionState;
 
   return (
     <figure
       className="live2d-avatar-surface"
       data-presence-state={hook.state}
       data-avatar-motion-group={hook.motionGroup}
-      data-avatar-expression={hook.expression}
+      data-avatar-expression={surfaceExpression}
       aria-label={`Plato avatar surface: ${hook.statusText}`}
     >
       <div
@@ -1134,7 +1343,7 @@ export function Live2DAvatarSurface({
       <figcaption className="live2d-avatar-caption sr-only">
         <span>{hook.label}</span>
         <small>
-          VRM: {rendererConfig.command} / {hook.expression}
+          VRM: {rendererConfig.command} / {surfaceExpression}
         </small>
       </figcaption>
     </figure>
