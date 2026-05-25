@@ -34,8 +34,13 @@ import {
   type AvatarEyeDirection,
   type AvatarCompanionState,
   type AvatarPresenceState,
+  type AvatarRuntimeControls,
   type AvatarTestAnimationCommand,
 } from "./avatarSurface";
+import {
+  agentOutputAvatarReactionForText,
+  runtimeControlsForAgentOutputFrame,
+} from "./agentOutputAvatar";
 import {
   createMemoryPresenceStateSource,
   type CompanionPresenceState,
@@ -290,20 +295,44 @@ export function renderedPresenceStateFor({
   audioActivationState = "inactive",
   voiceOutputPresenceState,
   voiceInteractionSessionState,
+  voiceInteractionActivationSource = "voice",
+  voiceInteractionIsMuted = false,
+  voiceOutputIsMuted = false,
   sharedPresenceState,
 }: {
   audioActivationState?: AudioActivationState;
   voiceOutputPresenceState: VoiceOutputPresenceState;
   voiceInteractionSessionState: VoiceSessionState;
+  voiceInteractionActivationSource?: "voice" | "text";
+  voiceInteractionIsMuted?: boolean;
+  voiceOutputIsMuted?: boolean;
   sharedPresenceState: string;
 }) {
-  const activePresenceState =
-    voiceInteractionSessionState === "idle"
-      ? sharedPresenceState
-      : companionPresenceForVoiceState(voiceInteractionSessionState);
+  const isAgentSpeechMuted = voiceInteractionIsMuted || voiceOutputIsMuted;
+  const activePresenceState = (() => {
+    if (voiceInteractionSessionState === "idle") {
+      return sharedPresenceState;
+    }
+
+    if (voiceInteractionSessionState === "speaking") {
+      if (isAgentSpeechMuted) {
+        return "muted";
+      }
+
+      if (voiceInteractionActivationSource === "text") {
+        return sharedPresenceState;
+      }
+    }
+
+    return companionPresenceForVoiceState(voiceInteractionSessionState);
+  })();
 
   if (voiceOutputPresenceState === "speaking") {
-    return "speaking";
+    if (!voiceOutputIsMuted) {
+      return "speaking";
+    }
+
+    return activePresenceState === "idle" ? "muted" : activePresenceState;
   }
 
   if (voiceOutputPresenceState === "muted" && activePresenceState === "idle") {
@@ -1997,6 +2026,7 @@ export function App({
     useState<PresenceWindowPosition | null>(null);
   const [avatarEyeDirection, setAvatarEyeDirection] =
     useState<AvatarEyeDirection>(avatarEyeDirectionNeutral);
+  const [agentOutputFrame, setAgentOutputFrame] = useState(0);
   const latestTasks = useRef<LocalTaskRecord[]>(initialTasks);
   const avatarActionRef = useRef<HTMLButtonElement | null>(null);
   const voiceTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
@@ -2012,6 +2042,9 @@ export function App({
   );
   const areNativeCursorEventsIgnored = useRef<boolean | null>(null);
   const correctionPromptRequestId = useRef(0);
+  const previousVoiceInteractionSessionState =
+    useRef<VoiceSessionState>(voiceInteraction.sessionState);
+  const latestAgentResponseText = useRef(voiceInteraction.response);
   const isPresenceDraggable = presenceDragMode === "draggable";
 
   const trackAvatarEyes = useCallback((cursorX: number, cursorY: number) => {
@@ -2077,6 +2110,29 @@ export function App({
   useEffect(() => {
     latestTasks.current = tasks;
   }, [tasks]);
+
+  useEffect(() => {
+    if (voiceInteraction.sessionState === "speaking") {
+      latestAgentResponseText.current = voiceInteraction.response;
+    }
+
+    if (
+      previousVoiceInteractionSessionState.current === "speaking" &&
+      voiceInteraction.sessionState === "idle" &&
+      !voiceInteraction.isMuted
+    ) {
+      showAvatarOutputReaction(
+        agentOutputAvatarReactionForText(latestAgentResponseText.current),
+      );
+    }
+
+    previousVoiceInteractionSessionState.current =
+      voiceInteraction.sessionState;
+  }, [
+    voiceInteraction.isMuted,
+    voiceInteraction.response,
+    voiceInteraction.sessionState,
+  ]);
 
   function scheduleVoiceState(
     delay: number,
@@ -2170,6 +2226,24 @@ export function App({
       setAvatarReactionCompanionState(null);
       avatarReactionTimer.current = null;
     }, 520);
+  }
+
+  function showAvatarOutputReaction(
+    companionState: AvatarCompanionState | null,
+  ) {
+    if (!companionState) {
+      return;
+    }
+
+    if (avatarReactionTimer.current) {
+      clearTimeout(avatarReactionTimer.current);
+    }
+
+    setAvatarReactionCompanionState(companionState);
+    avatarReactionTimer.current = setTimeout(() => {
+      setAvatarReactionCompanionState(null);
+      avatarReactionTimer.current = null;
+    }, 900);
   }
 
   function openCenteredChatPanel() {
@@ -2567,7 +2641,10 @@ export function App({
   const renderedPresenceState = renderedPresenceStateFor({
     audioActivationState: audioActivation.state,
     voiceOutputPresenceState: voiceSession.presenceState,
+    voiceOutputIsMuted: voiceSession.isMuted,
     voiceInteractionSessionState: voiceInteraction.sessionState,
+    voiceInteractionActivationSource: voiceInteraction.activationSource,
+    voiceInteractionIsMuted: voiceInteraction.isMuted,
     sharedPresenceState: startupPresenceState ?? taskAwarePresence.state,
   });
   const avatarPresenceState = avatarPresenceStateFor(renderedPresenceState);
@@ -2580,10 +2657,38 @@ export function App({
     startupAvatarCompanionState ??
     idleWaveCompanionState ??
     undefined;
+  const agentOutputRuntimeControls: AvatarRuntimeControls | undefined =
+    renderedPresenceState === "speaking" &&
+    !voiceSession.isMuted &&
+    !voiceInteraction.isMuted &&
+    !activeAvatarCompanionState
+      ? runtimeControlsForAgentOutputFrame({
+          frameIndex: agentOutputFrame,
+          responseText:
+            voiceInteraction.response ||
+            voiceSession.spokenText ||
+            voiceSession.textFallback,
+        })
+      : undefined;
   const showCenteredChatPanelOpener = shouldShowCenteredChatPanelOpener({
     voiceInteractionSessionState: voiceInteraction.sessionState,
     currentTaskState: taskAwarePresence,
   });
+
+  useEffect(() => {
+    if (renderedPresenceState !== "speaking") {
+      setAgentOutputFrame(0);
+      return undefined;
+    }
+
+    const speechFrameTimer = setInterval(() => {
+      setAgentOutputFrame((currentFrame) => currentFrame + 1);
+    }, 140);
+
+    return () => {
+      clearInterval(speechFrameTimer);
+    };
+  }, [renderedPresenceState]);
 
   useEffect(() => {
     if (initialSettings) {
@@ -3270,6 +3375,7 @@ export function App({
                   presenceState={avatarPresenceState}
                   companionStateOverride={activeAvatarCompanionState}
                   eyeDirection={avatarEyeDirection}
+                  runtimeControlsOverride={agentOutputRuntimeControls}
                 />
               </button>
             </div>

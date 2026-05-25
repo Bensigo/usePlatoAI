@@ -482,6 +482,10 @@ export type AvatarRuntimeControls = {
   headRoll: number;
 };
 
+export type AvatarRuntimeControlsOverride = Partial<AvatarRuntimeControls>;
+
+export type AvatarSpeechCue = "neutral" | "smile" | "laugh";
+
 const avatarRuntimeControlsNeutral = {
   eyeX: 0,
   eyeY: 0,
@@ -1029,6 +1033,45 @@ function normalizeAvatarRuntimeControls(
   };
 }
 
+export const avatarSpeakingMouthOpenLoop = [
+  0.18, 0.72, 0.34, 0.86, 0.26, 0.64,
+] as const;
+
+export function avatarSpeakingControlsForFrame({
+  frameIndex,
+  cue = "neutral",
+}: {
+  frameIndex: number;
+  cue?: AvatarSpeechCue;
+}): AvatarRuntimeControls {
+  const safeFrameIndex =
+    Number.isFinite(frameIndex) && frameIndex >= 0 ? Math.floor(frameIndex) : 0;
+  const mouthOpen =
+    avatarSpeakingMouthOpenLoop[
+      safeFrameIndex % avatarSpeakingMouthOpenLoop.length
+    ];
+  const baseControls =
+    cue === "laugh"
+      ? runtimeControlByExpression.laugh
+      : cue === "smile"
+        ? runtimeControlByExpression.smile
+        : runtimeControlByExpression.speaking;
+
+  return normalizeAvatarRuntimeControls({
+    ...baseControls,
+    mouthOpen:
+      cue === "laugh"
+        ? Math.max(mouthOpen, runtimeControlByExpression.laugh.mouthOpen)
+        : mouthOpen,
+    smile:
+      cue === "smile"
+        ? Math.max(runtimeControlByExpression.smile.smile, 0.7)
+        : baseControls.smile,
+    laugh: cue === "laugh" ? runtimeControlByExpression.laugh.laugh : 0,
+    wave: 0,
+  });
+}
+
 function applyNeutralHumanoidBonePose(
   vrm: VRM,
   THREE: typeof import("three"),
@@ -1372,19 +1415,22 @@ function BrowserVrmCanvas({
 export function AvatarRenderer({
   companionState,
   eyeDirection = avatarEyeDirectionNeutral,
+  runtimeControlsOverride,
 }: {
   companionState: AvatarCompanionState;
   eyeDirection?: AvatarEyeDirection;
+  runtimeControlsOverride?: AvatarRuntimeControlsOverride;
 }) {
   const config = getAvatarRendererConfig(companionState);
   const controls = useMemo(
     () =>
       normalizeAvatarRuntimeControls({
         ...config.controls,
+        ...runtimeControlsOverride,
         eyeX: eyeDirection.x,
         eyeY: eyeDirection.y,
       }),
-    [config.controls, eyeDirection.x, eyeDirection.y],
+    [config.controls, eyeDirection.x, eyeDirection.y, runtimeControlsOverride],
   );
   const [runtimeState, setRuntimeState] =
     useState<VrmRuntimeState>("loading");
@@ -1438,10 +1484,12 @@ export function Live2DAvatarSurface({
   presenceState,
   companionStateOverride,
   eyeDirection = avatarEyeDirectionNeutral,
+  runtimeControlsOverride,
 }: {
   presenceState: AvatarPresenceState;
   companionStateOverride?: AvatarCompanionState;
   eyeDirection?: AvatarEyeDirection;
+  runtimeControlsOverride?: AvatarRuntimeControlsOverride;
 }) {
   const hook = getLive2DAvatarSurfaceHook(presenceState);
   const rendererConfig = companionStateOverride
@@ -1469,6 +1517,7 @@ export function Live2DAvatarSurface({
         <AvatarRenderer
           companionState={rendererConfig.companionState}
           eyeDirection={eyeDirection}
+          runtimeControlsOverride={runtimeControlsOverride}
         />
         <div
           className="live2d-presence-mark"

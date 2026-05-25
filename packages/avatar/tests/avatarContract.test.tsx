@@ -23,6 +23,8 @@ import {
   avatarLaunchSequence,
   avatarNeutralHumanoidBonePose,
   avatarPackageAssets,
+  avatarSpeakingControlsForFrame,
+  avatarSpeakingMouthOpenLoop,
   avatarStartupSound,
   avatarVrmEyeGazeCalibration,
   fallbackRendererFor,
@@ -324,6 +326,33 @@ describe("avatar package contract", () => {
     expect(thinking.headYaw).toBeLessThan(0);
     expect(celebrating.wave).toBeGreaterThan(smile.wave);
     expect(celebrating.laugh).toBeGreaterThan(0);
+  });
+
+  it("drives speaking with a changing VRM mouth-control loop", () => {
+    const firstFrame = avatarSpeakingControlsForFrame({ frameIndex: 0 });
+    const secondFrame = avatarSpeakingControlsForFrame({ frameIndex: 1 });
+    const wrappedFrame = avatarSpeakingControlsForFrame({
+      frameIndex: avatarSpeakingMouthOpenLoop.length,
+    });
+    const smileFrame = avatarSpeakingControlsForFrame({
+      frameIndex: 1,
+      cue: "smile",
+    });
+    const laughFrame = avatarSpeakingControlsForFrame({
+      frameIndex: 1,
+      cue: "laugh",
+    });
+
+    expect(firstFrame.mouthOpen).toBe(avatarSpeakingMouthOpenLoop[0]);
+    expect(secondFrame.mouthOpen).toBe(avatarSpeakingMouthOpenLoop[1]);
+    expect(secondFrame.mouthOpen).not.toBe(firstFrame.mouthOpen);
+    expect(wrappedFrame.mouthOpen).toBe(firstFrame.mouthOpen);
+    expect(smileFrame.smile).toBeGreaterThan(0);
+    expect(smileFrame.laugh).toBe(0);
+    expect(laughFrame.laugh).toBeGreaterThan(0);
+    expect(laughFrame.mouthOpen).toBeGreaterThanOrEqual(
+      secondFrame.mouthOpen,
+    );
   });
 
   it("documents the normalized runtime contract with real VRM backing", () => {
