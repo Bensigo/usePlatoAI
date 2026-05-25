@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 import { renderToStaticMarkup } from "react-dom/server";
+import type { VRM } from "@pixiv/three-vrm";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -13,6 +14,8 @@ import {
   avatarEyeDirectionFromCursor,
   avatarEyeDirectionNeutral,
   avatarEyeDirectionStyle,
+  avatarHandleVrmRuntimeLoad,
+  avatarVrmLoadCapabilityStatus,
   avatarHelloWaveHumanoidBoneMotion,
   avatarIdleWavePolicy,
   avatarLaunchSequence,
@@ -424,6 +427,44 @@ describe("avatar package contract", () => {
       y: 1.5,
       z: 4.97,
     });
+  });
+
+  it("rejects VRM runtime loading when lookAt capability is missing", () => {
+    expect(avatarVrmLoadCapabilityStatus(undefined)).toBe("missing-vrm");
+    expect(avatarVrmLoadCapabilityStatus({ lookAt: undefined })).toBe(
+      "missing-look-at",
+    );
+    expect(
+      avatarVrmLoadCapabilityStatus({
+        lookAt: { target: null } as NonNullable<VRM["lookAt"]>,
+      }),
+    ).toBe("ready");
+  });
+
+  it("keeps missing-lookAt VRMs out of the runtime ready path", () => {
+    const loadedScene = { name: "unsupported-vrm-scene" };
+    const runtimeEvents: string[] = [];
+
+    const status = avatarHandleVrmRuntimeLoad({
+      vrm: {
+        lookAt: undefined,
+        scene: loadedScene,
+      } as unknown as VRM,
+      disposeScene: (scene) => {
+        expect(scene).toBe(loadedScene);
+        runtimeEvents.push("dispose");
+      },
+      onReady: () => {
+        runtimeEvents.push("ready");
+      },
+      onFailed: (reason) => {
+        expect(reason).toBe("missing-look-at");
+        runtimeEvents.push("failed");
+      },
+    });
+
+    expect(status).toBe("missing-look-at");
+    expect(runtimeEvents).toEqual(["dispose", "failed"]);
   });
 
   it("represents startup sound ownership in the avatar package API", () => {
