@@ -9,6 +9,7 @@ import {
   avatarAnimationCommands,
   avatarCompanionStates,
   avatarCompanionStateForClickReaction,
+  avatarEyeDirectionToVrmLookAtTarget,
   avatarEyeDirectionFromCursor,
   avatarEyeDirectionNeutral,
   avatarEyeDirectionStyle,
@@ -18,6 +19,7 @@ import {
   avatarNeutralHumanoidBonePose,
   avatarPackageAssets,
   avatarStartupSound,
+  avatarVrmEyeGazeCalibration,
   fallbackRendererFor,
   getAvatarRendererConfig,
   millisecondsUntilNextAvatarIdleWave,
@@ -313,6 +315,46 @@ describe("avatar package contract", () => {
       x: 0.5,
       y: 0.5,
     });
+    expect(
+      avatarEyeDirectionFromCursor({
+        cursorX: 52,
+        cursorY: 200 + 240 * 0.42,
+        avatarBounds,
+      }),
+    ).toEqual({
+      x: -1,
+      y: 0,
+    });
+    expect(
+      avatarEyeDirectionFromCursor({
+        cursorX: 348,
+        cursorY: 200 + 240 * 0.42,
+        avatarBounds,
+      }),
+    ).toEqual({
+      x: 1,
+      y: 0,
+    });
+    expect(
+      avatarEyeDirectionFromCursor({
+        cursorX: 200,
+        cursorY: 200 + 240 * 0.42 - 139.2,
+        avatarBounds,
+      }),
+    ).toEqual({
+      x: 0,
+      y: -1,
+    });
+    expect(
+      avatarEyeDirectionFromCursor({
+        cursorX: 200,
+        cursorY: 200 + 240 * 0.42 + 139.2,
+        avatarBounds,
+      }),
+    ).toEqual({
+      x: 0,
+      y: 1,
+    });
   });
 
   it("clamps eye direction at the avatar package boundary", () => {
@@ -346,6 +388,41 @@ describe("avatar package contract", () => {
     expect(avatarEyeDirectionStyle({ x: 0.25, y: -0.5 })).toEqual({
       "--plato-avatar-eye-x": 0.25,
       "--plato-avatar-eye-y": -0.5,
+    });
+  });
+
+  it("maps normalized eye controls into a calibrated VRM lookAt target", () => {
+    expect(avatarVrmEyeGazeCalibration).toMatchObject({
+      controlSource: "vrm-look-at-target",
+      backedBy: ["VRM lookAt target", "leftEye bone", "rightEye bone"],
+    });
+    expect(avatarEyeDirectionToVrmLookAtTarget()).toEqual(
+      avatarVrmEyeGazeCalibration.targetNeutral,
+    );
+    expect(avatarEyeDirectionToVrmLookAtTarget({ x: -1, y: 0 })).toEqual({
+      x: -0.45,
+      y: 1.24,
+      z: 4.97,
+    });
+    expect(avatarEyeDirectionToVrmLookAtTarget({ x: 1, y: 0 })).toEqual({
+      x: 0.45,
+      y: 1.24,
+      z: 4.97,
+    });
+    expect(avatarEyeDirectionToVrmLookAtTarget({ x: 0, y: -1 })).toEqual({
+      x: 0,
+      y: 1.5,
+      z: 4.97,
+    });
+    expect(avatarEyeDirectionToVrmLookAtTarget({ x: 0, y: 1 })).toEqual({
+      x: 0,
+      y: 0.98,
+      z: 4.97,
+    });
+    expect(avatarEyeDirectionToVrmLookAtTarget({ x: 2, y: -2 })).toEqual({
+      x: 0.45,
+      y: 1.5,
+      z: 4.97,
     });
   });
 
@@ -451,6 +528,9 @@ describe("avatar package contract", () => {
     expect(markup).toContain('data-three-renderer="three"');
     expect(markup).toContain('data-three-alpha="true"');
     expect(markup).toContain('data-vrm-loader="@pixiv/three-vrm"');
+    expect(markup).toContain(
+      'data-avatar-eye-control-source="vrm-look-at-target"',
+    );
     expect(markup).toContain('data-avatar-control-eye-x="0.25"');
     expect(markup).toContain('data-avatar-control-eye-y="-0.5"');
     expect(markup).toContain('data-avatar-control-smile="0.55"');
@@ -462,5 +542,20 @@ describe("avatar package contract", () => {
     expect(markup).not.toContain("rive");
     expect(markup).not.toContain("source-svg");
     expect(markup).not.toContain('data-fallback-renderer="svg"');
+  });
+
+  it("clamps invalid renderer eye controls before they reach the VRM path", () => {
+    const markup = renderToStaticMarkup(
+      <AvatarRenderer
+        companionState="idle"
+        eyeDirection={{
+          x: Number.POSITIVE_INFINITY,
+          y: 5,
+        }}
+      />,
+    );
+
+    expect(markup).toContain('data-avatar-control-eye-x="0"');
+    expect(markup).toContain('data-avatar-control-eye-y="1"');
   });
 });

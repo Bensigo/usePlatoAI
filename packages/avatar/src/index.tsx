@@ -109,6 +109,50 @@ function roundAvatarEyeAxis(value: number) {
   );
 }
 
+function roundAvatarEyeCoordinate(value: number) {
+  if (!Number.isFinite(value)) {
+    return 0;
+  }
+
+  return (
+    Math.round(value * avatarEyeDirectionPrecision) /
+    avatarEyeDirectionPrecision
+  );
+}
+
+export const avatarVrmEyeGazeCalibration = {
+  controlSource: "vrm-look-at-target",
+  backedBy: ["VRM lookAt target", "leftEye bone", "rightEye bone"],
+  targetNeutral: {
+    x: 0,
+    y: 1.24,
+    z: 4.97,
+  },
+  targetRange: {
+    x: 0.45,
+    y: 0.26,
+  },
+} as const;
+
+export function avatarEyeDirectionToVrmLookAtTarget(
+  direction: AvatarEyeDirection = avatarEyeDirectionNeutral,
+) {
+  const eyeX = roundAvatarEyeAxis(direction.x);
+  const eyeY = roundAvatarEyeAxis(direction.y);
+
+  return {
+    x: roundAvatarEyeCoordinate(
+      avatarVrmEyeGazeCalibration.targetNeutral.x +
+        eyeX * avatarVrmEyeGazeCalibration.targetRange.x,
+    ),
+    y: roundAvatarEyeCoordinate(
+      avatarVrmEyeGazeCalibration.targetNeutral.y -
+        eyeY * avatarVrmEyeGazeCalibration.targetRange.y,
+    ),
+    z: avatarVrmEyeGazeCalibration.targetNeutral.z,
+  };
+}
+
 export function avatarEyeDirectionFromCursor({
   cursorX,
   cursorY,
@@ -203,11 +247,11 @@ export const vendoredVrmAssetContract = {
   },
   runtimeControls: {
     eyeX: {
-      backedBy: ["VRM lookAt target", "leftEye bone", "rightEye bone"],
+      backedBy: avatarVrmEyeGazeCalibration.backedBy,
       missing: false,
     },
     eyeY: {
-      backedBy: ["VRM lookAt target", "leftEye bone", "rightEye bone"],
+      backedBy: avatarVrmEyeGazeCalibration.backedBy,
       missing: false,
     },
     blink: {
@@ -746,6 +790,20 @@ function applyVrmExpressionControls(vrm: VRM, controls: AvatarRuntimeControls) {
   );
 }
 
+function normalizeAvatarRuntimeControls(
+  controls: AvatarRuntimeControls,
+): AvatarRuntimeControls {
+  return {
+    eyeX: roundAvatarEyeAxis(controls.eyeX),
+    eyeY: roundAvatarEyeAxis(controls.eyeY),
+    blink: clampRuntimeControl(controls.blink),
+    mouthOpen: clampRuntimeControl(controls.mouthOpen),
+    smile: clampRuntimeControl(controls.smile),
+    laugh: clampRuntimeControl(controls.laugh),
+    wave: clampRuntimeControl(controls.wave),
+  };
+}
+
 function applyNeutralHumanoidBonePose(
   vrm: VRM,
   THREE: typeof import("three"),
@@ -911,9 +969,12 @@ function BrowserVrmCanvas({
             }
           }
 
-          if (vrm.lookAt) {
-            vrm.lookAt.target = lookAtTarget;
+          if (!vrm.lookAt) {
+            onLoadError();
+            return;
           }
+
+          vrm.lookAt.target = lookAtTarget;
           applyVrmExpressionControls(vrm, controlsRef.current);
           onLoad();
         },
@@ -934,10 +995,15 @@ function BrowserVrmCanvas({
         elapsedSeconds += delta;
         const currentControls = controlsRef.current;
 
+        const lookAtTargetPosition =
+          avatarEyeDirectionToVrmLookAtTarget({
+            x: currentControls.eyeX,
+            y: currentControls.eyeY,
+          });
         lookAtTarget.position.set(
-          currentControls.eyeX * 0.34,
-          1.24 + currentControls.eyeY * 0.22,
-          camera.position.z - 0.28,
+          lookAtTargetPosition.x,
+          lookAtTargetPosition.y,
+          lookAtTargetPosition.z,
         );
 
         if (loadedVrm) {
@@ -1035,11 +1101,12 @@ export function AvatarRenderer({
 }) {
   const config = getAvatarRendererConfig(companionState);
   const controls = useMemo(
-    () => ({
-      ...config.controls,
-      eyeX: eyeDirection.x,
-      eyeY: eyeDirection.y,
-    }),
+    () =>
+      normalizeAvatarRuntimeControls({
+        ...config.controls,
+        eyeX: eyeDirection.x,
+        eyeY: eyeDirection.y,
+      }),
     [config.controls, eyeDirection.x, eyeDirection.y],
   );
   const [runtimeState, setRuntimeState] =
@@ -1063,6 +1130,7 @@ export function AvatarRenderer({
       data-three-renderer={config.three.renderer}
       data-three-alpha={String(config.three.transparentCanvas)}
       data-vrm-loader={config.three.loader}
+      data-avatar-eye-control-source={avatarVrmEyeGazeCalibration.controlSource}
       data-avatar-control-eye-x={String(controls.eyeX)}
       data-avatar-control-eye-y={String(controls.eyeY)}
       data-avatar-control-blink={String(controls.blink)}
