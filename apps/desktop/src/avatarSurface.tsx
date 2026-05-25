@@ -14,6 +14,8 @@ export {
   avatarPackageAssets,
   avatarPresenceStateFrom,
   avatarPresenceStates,
+  avatarSpeakingControlsForFrame,
+  avatarSpeakingMouthOpenLoop,
   avatarTestAnimationCommands,
   avatarStartupSound,
   fallbackRendererFor,
@@ -37,5 +39,8 @@ export {
   type AvatarEyeTrackingCursor,
   type AvatarCompanionState,
   type AvatarPresenceState,
+  type AvatarRuntimeControls,
+  type AvatarRuntimeControlsOverride,
+  type AvatarSpeechCue,
   type Live2DAvatarSurfaceHook,
 } from "@useplatoai/avatar";

@@ -30,6 +30,14 @@ import {
   shouldShowCenteredChatPanelOpener,
 } from "../src/App";
 import {
+  agentOutputAvatarCueForText,
+  agentOutputAvatarReactionForText,
+  completeAgentOutputAvatar,
+  progressAgentOutputAvatar,
+  runtimeControlsForAgentOutputFrame,
+  startAgentOutputAvatar,
+} from "../src/agentOutputAvatar";
+import {
   audioActivationSnapshotForState,
   audioActivationStateFrom,
   audioActivationStateLabel,
@@ -1020,6 +1028,27 @@ describe("desktop app shell", () => {
         sharedPresenceState: "waiting_for_approval",
       }),
     ).toBe("speaking");
+  });
+
+  it("does not animate muted or text-fallback agent output as active speech", () => {
+    expect(
+      renderedPresenceStateFor({
+        audioActivationState: "active",
+        voiceOutputPresenceState: "idle",
+        voiceInteractionSessionState: "speaking",
+        voiceInteractionIsMuted: true,
+        sharedPresenceState: "idle",
+      }),
+    ).toBe("muted");
+    expect(
+      renderedPresenceStateFor({
+        audioActivationState: "active",
+        voiceOutputPresenceState: "idle",
+        voiceInteractionSessionState: "speaking",
+        voiceInteractionActivationSource: "text",
+        sharedPresenceState: "idle",
+      }),
+    ).toBe("idle");
   });
 
   it("maps explicit audio activation errors into avatar error presence", () => {
@@ -2431,5 +2460,100 @@ describe("desktop app shell", () => {
     expect(stoppedSession.spokenText).toBeNull();
     expect(stoppedSession.textFallback).toBe(mockVoiceResponse);
     expect(stoppedSession.statusLabel).toBe("Speech stopped");
+  });
+
+  it("controls agent-output speech frames without network calls", () => {
+    const started = startAgentOutputAvatar({
+      isMuted: false,
+      initialText: "Yes, I can do that.",
+    });
+    const progressed = progressAgentOutputAvatar(started, {
+      deltaText: " Done.",
+      frameIndex: 1,
+    });
+    const completed = completeAgentOutputAvatar(progressed);
+
+    expect(started.phase).toBe("speaking");
+    expect(started.presenceState).toBe("speaking");
+    expect(started.companionStateOverride).toBe("speaking");
+    expect(progressed.runtimeControlsOverride?.mouthOpen).not.toBe(
+      started.runtimeControlsOverride?.mouthOpen,
+    );
+    expect(progressed.runtimeControlsOverride?.smile).toBeGreaterThan(0);
+    expect(completed.phase).toBe("idle");
+    expect(completed.presenceState).toBe("idle");
+    expect(completed.companionStateOverride).toBe("smile");
+    expect(completed.runtimeControlsOverride).toBeNull();
+  });
+
+  it("keeps laugh cues distinct from smile and normal talking", () => {
+    const laughing = progressAgentOutputAvatar(
+      startAgentOutputAvatar({
+        isMuted: false,
+        initialText: "Haha, that was funny.",
+      }),
+      { frameIndex: 1 },
+    );
+
+    expect(agentOutputAvatarCueForText("Haha, that was funny.")).toBe("laugh");
+    expect(agentOutputAvatarReactionForText("Haha, that was funny.")).toBe(
+      "laugh",
+    );
+    expect(laughing.runtimeControlsOverride?.laugh).toBeGreaterThan(0);
+    expect(laughing.runtimeControlsOverride?.smile).toBeGreaterThan(0);
+  });
+
+  it("does not create speech controls for muted or fallback text responses", () => {
+    const muted = startAgentOutputAvatar({
+      isMuted: true,
+      initialText: "Good, text only.",
+    });
+    const fallbackText = startAgentOutputAvatar({
+      isMuted: false,
+      mode: "text_fallback",
+      initialText: "Good, text only.",
+    });
+
+    expect(muted.phase).toBe("text_fallback");
+    expect(muted.presenceState).toBe("muted");
+    expect(muted.runtimeControlsOverride).toBeNull();
+    expect(completeAgentOutputAvatar(muted).companionStateOverride).toBeNull();
+    expect(fallbackText.phase).toBe("text_fallback");
+    expect(fallbackText.presenceState).toBe("idle");
+    expect(fallbackText.runtimeControlsOverride).toBeNull();
+    expect(completeAgentOutputAvatar(fallbackText).companionStateOverride).toBe(
+      "smile",
+    );
+  });
+
+  it("passes agent-output mouth frames into the VRM avatar surface", () => {
+    const firstFrame = runtimeControlsForAgentOutputFrame({
+      frameIndex: 0,
+      responseText: "Speaking now.",
+    });
+    const secondFrame = runtimeControlsForAgentOutputFrame({
+      frameIndex: 1,
+      responseText: "Speaking now.",
+    });
+    const firstMarkup = renderToStaticMarkup(
+      <Live2DAvatarSurface
+        presenceState="speaking"
+        runtimeControlsOverride={firstFrame}
+      />,
+    );
+    const secondMarkup = renderToStaticMarkup(
+      <Live2DAvatarSurface
+        presenceState="speaking"
+        runtimeControlsOverride={secondFrame}
+      />,
+    );
+
+    expect(firstMarkup).toContain(
+      `data-avatar-control-mouth-open="${firstFrame.mouthOpen}"`,
+    );
+    expect(secondMarkup).toContain(
+      `data-avatar-control-mouth-open="${secondFrame.mouthOpen}"`,
+    );
+    expect(secondFrame.mouthOpen).not.toBe(firstFrame.mouthOpen);
   });
 });

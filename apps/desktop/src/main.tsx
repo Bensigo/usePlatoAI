@@ -33,7 +33,8 @@ const initialAudioActivationState = audioActivationStateFrom(
   searchParams.get("audioState"),
 );
 const initialVoiceSessionState = voiceSessionStateFrom(
-  searchParams.get("voiceState"),
+  searchParams.get("voiceState") ??
+    import.meta.env.VITE_PLATO_INITIAL_VOICE_STATE,
 );
 const avatarTestCommand =
   searchParams.get("avatarTestCommand") ??
