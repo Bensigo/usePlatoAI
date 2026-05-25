@@ -159,6 +159,11 @@ export type AvatarVrmLoadCapabilityStatus =
   | "missing-look-at";
 
 type AvatarVrmLookAtCapability = Pick<VRM, "lookAt">;
+type AvatarVrmRuntimeLoadCandidate = Pick<VRM, "lookAt" | "scene">;
+export type AvatarVrmRuntimeLoadFailureStatus = Exclude<
+  AvatarVrmLoadCapabilityStatus,
+  "ready"
+>;
 
 export function avatarVrmLoadCapabilityStatus(
   vrm: AvatarVrmLookAtCapability | null | undefined,
@@ -180,6 +185,34 @@ function avatarVrmSupportsLookAt(
   lookAt: NonNullable<VRM["lookAt"]>;
 } {
   return avatarVrmLoadCapabilityStatus(vrm) === "ready";
+}
+
+export function avatarHandleVrmRuntimeLoad<
+  TVrm extends AvatarVrmRuntimeLoadCandidate,
+>({
+  vrm,
+  disposeScene,
+  onReady,
+  onFailed,
+}: {
+  vrm: TVrm | null | undefined;
+  disposeScene: (scene: ThreeNamespace.Object3D) => void;
+  onReady: (vrm: TVrm & { lookAt: NonNullable<VRM["lookAt"]> }) => void;
+  onFailed: (status: AvatarVrmRuntimeLoadFailureStatus) => void;
+}): AvatarVrmLoadCapabilityStatus {
+  const status = avatarVrmLoadCapabilityStatus(vrm);
+
+  if (status !== "ready") {
+    if (vrm) {
+      disposeScene(vrm.scene);
+    }
+    onFailed(status);
+    return status;
+  }
+
+  onReady(vrm as TVrm & { lookAt: NonNullable<VRM["lookAt"]> });
+
+  return status;
 }
 
 export function avatarEyeDirectionFromCursor({
@@ -964,49 +997,55 @@ function BrowserVrmCanvas({
             return;
           }
 
-          const vrm = gltf.userData.vrm as VRM | undefined;
+          avatarHandleVrmRuntimeLoad({
+            vrm: gltf.userData.vrm as VRM | undefined,
+            disposeScene: (sceneToDispose) => {
+              VRMUtils.deepDispose(sceneToDispose);
+            },
+            onFailed: () => {
+              onLoadError();
+            },
+            onReady: (vrm) => {
+              VRMUtils.rotateVRM0(vrm);
+              loadedVrm = vrm;
+              vrm.scene.position.fromArray(
+                vendoredVrmAssetContract.framing.modelPosition,
+              );
+              vrm.scene.scale.setScalar(
+                vendoredVrmAssetContract.framing.modelScale,
+              );
+              scene.add(vrm.scene);
 
-          if (!vrm) {
-            onLoadError();
-            return;
-          }
+              applyNeutralHumanoidBonePose(vrm, THREE, waveBoneRotations);
 
-          if (!avatarVrmSupportsLookAt(vrm)) {
-            VRMUtils.deepDispose(vrm.scene);
-            onLoadError();
-            return;
-          }
+              for (const boneName of vendoredVrmAssetContract.runtimeControls
+                .wave.backedBy) {
+                const normalizedBoneName = boneName.replace(
+                  "humanoid bone: ",
+                  "",
+                );
+                const bone = vrm.humanoid.getNormalizedBoneNode(
+                  normalizedBoneName as Parameters<
+                    typeof vrm.humanoid.getNormalizedBoneNode
+                  >[0],
+                );
 
-          VRMUtils.rotateVRM0(vrm);
-          loadedVrm = vrm;
-          vrm.scene.position.fromArray(
-            vendoredVrmAssetContract.framing.modelPosition,
-          );
-          vrm.scene.scale.setScalar(vendoredVrmAssetContract.framing.modelScale);
-          scene.add(vrm.scene);
-
-          applyNeutralHumanoidBonePose(vrm, THREE, waveBoneRotations);
-
-          for (const boneName of vendoredVrmAssetContract.runtimeControls.wave
-            .backedBy) {
-            const normalizedBoneName = boneName.replace("humanoid bone: ", "");
-            const bone = vrm.humanoid.getNormalizedBoneNode(
-              normalizedBoneName as Parameters<
-                typeof vrm.humanoid.getNormalizedBoneNode
-              >[0],
-            );
-
-            if (bone) {
-              waveBones.set(normalizedBoneName, bone);
-              if (!waveBoneRotations.has(normalizedBoneName)) {
-                waveBoneRotations.set(normalizedBoneName, bone.rotation.clone());
+                if (bone) {
+                  waveBones.set(normalizedBoneName, bone);
+                  if (!waveBoneRotations.has(normalizedBoneName)) {
+                    waveBoneRotations.set(
+                      normalizedBoneName,
+                      bone.rotation.clone(),
+                    );
+                  }
+                }
               }
-            }
-          }
 
-          vrm.lookAt.target = lookAtTarget;
-          applyVrmExpressionControls(vrm, controlsRef.current);
-          onLoad();
+              vrm.lookAt.target = lookAtTarget;
+              applyVrmExpressionControls(vrm, controlsRef.current);
+              onLoad();
+            },
+          });
         },
         undefined,
         () => {
