@@ -1043,6 +1043,24 @@ describe("desktop app shell", () => {
     expect(
       renderedPresenceStateFor({
         audioActivationState: "active",
+        voiceOutputPresenceState: "muted",
+        voiceOutputIsMuted: true,
+        voiceInteractionSessionState: "speaking",
+        sharedPresenceState: "idle",
+      }),
+    ).toBe("muted");
+    expect(
+      renderedPresenceStateFor({
+        audioActivationState: "active",
+        voiceOutputPresenceState: "speaking",
+        voiceOutputIsMuted: true,
+        voiceInteractionSessionState: "idle",
+        sharedPresenceState: "idle",
+      }),
+    ).toBe("muted");
+    expect(
+      renderedPresenceStateFor({
+        audioActivationState: "active",
         voiceOutputPresenceState: "idle",
         voiceInteractionSessionState: "speaking",
         voiceInteractionActivationSource: "text",
