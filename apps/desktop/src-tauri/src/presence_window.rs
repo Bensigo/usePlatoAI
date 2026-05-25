@@ -4,7 +4,7 @@ use crate::local_data::PresenceWindowPosition;
 
 const PRESENCE_MARGIN: i32 = 18;
 #[cfg(target_os = "macos")]
-const MACOS_COMPANION_OVERLAY_WINDOW_LEVEL: objc2_app_kit::NSWindowLevel = 102;
+const MACOS_COMPANION_OVERLAY_WINDOW_LEVEL: objc2_app_kit::NSWindowLevel = 1000;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct PresencePlacement {
@@ -930,8 +930,11 @@ mod tests {
 
     #[cfg(target_os = "macos")]
     #[test]
-    fn companion_overlay_level_sits_above_popup_menu_level() {
+    fn companion_overlay_level_matches_screen_saver_level_for_fullscreen_apps() {
+        assert_eq!(
+            MACOS_COMPANION_OVERLAY_WINDOW_LEVEL,
+            objc2_app_kit::NSScreenSaverWindowLevel
+        );
         assert!(MACOS_COMPANION_OVERLAY_WINDOW_LEVEL > objc2_app_kit::NSPopUpMenuWindowLevel);
-        assert!(MACOS_COMPANION_OVERLAY_WINDOW_LEVEL < objc2_app_kit::NSScreenSaverWindowLevel);
     }
 }
