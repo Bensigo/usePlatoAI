@@ -12,7 +12,7 @@ These captures replace placeholder/Rive evidence with native desktop evidence fr
 - Hidden laugh command: `VITE_PLATO_AVATAR_TEST_COMMAND=laugh pnpm desktop:dev`
 - Hidden celebration command: `VITE_PLATO_AVATAR_TEST_COMMAND=celebration pnpm desktop:dev`
 - Multi-display check: `system_profiler SPDisplaysDataType`
-- Native Space/Desktop switch check: `pnpm desktop:dev`, then switch macOS Spaces with Mission Control/Control+Right and confirm the companion remains visible. The Space/Desktop captures are cropped to the companion area to avoid publishing private desktop or account content.
+- Native Space/Desktop switch check: `pnpm desktop:dev`, then switch macOS Spaces with Mission Control/Control+Right and confirm the companion remains visible. The Space/Desktop captures redact private desktop, account, and conversation content while keeping enough desktop/app context to verify the behavior.
 
 ## Evidence
 
