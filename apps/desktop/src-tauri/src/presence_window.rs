@@ -578,10 +578,12 @@ fn companion_overlay_collection_behavior(
 
     (behavior
         | NSWindowCollectionBehavior::CanJoinAllSpaces
-        | NSWindowCollectionBehavior::FullScreenAuxiliary
         | NSWindowCollectionBehavior::Stationary
-        | NSWindowCollectionBehavior::IgnoresCycle)
+        | NSWindowCollectionBehavior::IgnoresCycle
+        | NSWindowCollectionBehavior::FullScreenAuxiliary)
         - NSWindowCollectionBehavior::MoveToActiveSpace
+        - NSWindowCollectionBehavior::Managed
+        - NSWindowCollectionBehavior::Transient
         - NSWindowCollectionBehavior::FullScreenPrimary
 }
 
@@ -928,6 +930,20 @@ mod tests {
         assert!(behavior.contains(NSWindowCollectionBehavior::IgnoresCycle));
         assert!(!behavior.contains(NSWindowCollectionBehavior::MoveToActiveSpace));
         assert!(!behavior.contains(NSWindowCollectionBehavior::FullScreenPrimary));
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn companion_overlay_behavior_stays_out_of_space_management_groups() {
+        use objc2_app_kit::NSWindowCollectionBehavior;
+
+        let behavior = companion_overlay_collection_behavior(
+            NSWindowCollectionBehavior::Managed | NSWindowCollectionBehavior::Transient,
+        );
+
+        assert!(behavior.contains(NSWindowCollectionBehavior::Stationary));
+        assert!(!behavior.contains(NSWindowCollectionBehavior::Managed));
+        assert!(!behavior.contains(NSWindowCollectionBehavior::Transient));
     }
 
     #[cfg(target_os = "macos")]

@@ -12,6 +12,7 @@ These captures replace placeholder/Rive evidence with native desktop evidence fr
 - Hidden laugh command: `VITE_PLATO_AVATAR_TEST_COMMAND=laugh pnpm desktop:dev`
 - Hidden celebration command: `VITE_PLATO_AVATAR_TEST_COMMAND=celebration pnpm desktop:dev`
 - Multi-display check: `system_profiler SPDisplaysDataType`
+- Native Space/Desktop switch check: `pnpm desktop:dev`, then switch macOS Spaces with Mission Control/Control+Right and confirm the companion remains visible. The Space/Desktop captures redact private desktop, account, and conversation content while keeping enough desktop/app context to verify the behavior.
 
 ## Evidence
 
@@ -30,6 +31,8 @@ These captures replace placeholder/Rive evidence with native desktop evidence fr
 | Hidden `laugh` command | `hidden-laugh.png` |
 | Hidden `celebration` command | `hidden-celebration.png` |
 | Multi-display runner proof | `multi-display-system-profiler.txt` |
+| Companion visible before switching macOS Spaces | `native-spaces-before-switch.png` |
+| Companion visible after switching to another Space/Desktop | `native-spaces-after-control-right.png`, `native-spaces-desktop-2.png` |
 
 ## Acceptance Criteria Coverage
 
@@ -45,3 +48,5 @@ These captures replace placeholder/Rive evidence with native desktop evidence fr
 | Click reaction, draggable mode, drag persistence after restart, always-on-top over another native app | `native-click-reaction.png`, `native-draggable-mode.png`, `native-dragged-position.png`, and `native-persisted-position-relaunch.png`; all captures show the companion above ChatGPT. |
 | Hidden command path covers greeting/wave, smile/happy, sad/error, talking, laugh, and celebration | `hidden-wave.png`, `hidden-smile.png`, `hidden-sad.png`, `hidden-talking.png`, `hidden-laugh.png`, and `hidden-celebration.png`. |
 | Multi-display behavior verified on a multi-display runner | `multi-display-system-profiler.txt` records the built-in display plus a connected BenQ external display during verification. |
+| Companion remains visible when switching macOS Spaces/desktops | `native-spaces-before-switch.png`, `native-spaces-after-control-right.png`, and `native-spaces-desktop-2.png` capture the companion before and after Space/Desktop changes. |
+| Companion remains always-on-top after Space/Desktop changes | `native-spaces-before-switch.png` and `native-spaces-after-control-right.png` capture the companion composited above the active app before and after the Space switch. |
