@@ -78,7 +78,7 @@ pub fn configure_floating_presence_window(
     saved_position: Option<PresenceWindowPosition>,
 ) -> tauri::Result<()> {
     reinforce_presence_window_layer(window)?;
-    window.set_visible_on_all_workspaces(false)?;
+    window.set_visible_on_all_workspaces(true)?;
     configure_active_space_following(window)?;
 
     if let Some(placement) = placement_for_window(window, saved_position)? {
@@ -123,6 +123,7 @@ pub fn follow_presence_window_to_active_display(
 
 pub fn reinforce_presence_window_layer(window: &WebviewWindow) -> tauri::Result<()> {
     window.set_always_on_top(true)?;
+    configure_active_space_following(window)?;
     Ok(())
 }
 
@@ -431,7 +432,7 @@ fn clamp_position_to_display(
 
 #[cfg(target_os = "macos")]
 fn configure_active_space_following(window: &WebviewWindow) -> tauri::Result<()> {
-    use objc2_app_kit::{NSWindow, NSWindowAnimationBehavior};
+    use objc2_app_kit::{NSScreenSaverWindowLevel, NSWindow, NSWindowAnimationBehavior};
 
     let ns_window = window.ns_window()?;
 
@@ -441,6 +442,9 @@ fn configure_active_space_following(window: &WebviewWindow) -> tauri::Result<()>
 
         ns_window.setCollectionBehavior(active_space_collection_behavior(behavior));
         ns_window.setAnimationBehavior(NSWindowAnimationBehavior::UtilityWindow);
+        ns_window.setCanHide(false);
+        ns_window.setLevel(NSScreenSaverWindowLevel);
+        ns_window.orderFrontRegardless();
     }
 
     Ok(())
@@ -568,8 +572,14 @@ fn active_space_collection_behavior(
 ) -> objc2_app_kit::NSWindowCollectionBehavior {
     use objc2_app_kit::NSWindowCollectionBehavior;
 
-    (behavior | NSWindowCollectionBehavior::MoveToActiveSpace)
-        - NSWindowCollectionBehavior::CanJoinAllSpaces
+    (behavior
+        | NSWindowCollectionBehavior::CanJoinAllSpaces
+        | NSWindowCollectionBehavior::Stationary
+        | NSWindowCollectionBehavior::IgnoresCycle
+        | NSWindowCollectionBehavior::FullScreenAuxiliary)
+        - NSWindowCollectionBehavior::MoveToActiveSpace
+        - NSWindowCollectionBehavior::Managed
+        - NSWindowCollectionBehavior::Transient
 }
 
 #[cfg(not(target_os = "macos"))]
@@ -901,16 +911,20 @@ mod tests {
 
     #[cfg(target_os = "macos")]
     #[test]
-    fn active_space_behavior_moves_to_active_space_without_joining_all_spaces() {
+    fn active_space_behavior_joins_all_spaces_for_desktop_companion_presence() {
         use objc2_app_kit::NSWindowCollectionBehavior;
 
         let behavior = active_space_collection_behavior(
-            NSWindowCollectionBehavior::CanJoinAllSpaces
+            NSWindowCollectionBehavior::MoveToActiveSpace
                 | NSWindowCollectionBehavior::FullScreenAuxiliary,
         );
 
-        assert!(behavior.contains(NSWindowCollectionBehavior::MoveToActiveSpace));
-        assert!(!behavior.contains(NSWindowCollectionBehavior::CanJoinAllSpaces));
+        assert!(behavior.contains(NSWindowCollectionBehavior::CanJoinAllSpaces));
+        assert!(behavior.contains(NSWindowCollectionBehavior::Stationary));
+        assert!(behavior.contains(NSWindowCollectionBehavior::IgnoresCycle));
         assert!(behavior.contains(NSWindowCollectionBehavior::FullScreenAuxiliary));
+        assert!(!behavior.contains(NSWindowCollectionBehavior::MoveToActiveSpace));
+        assert!(!behavior.contains(NSWindowCollectionBehavior::Managed));
+        assert!(!behavior.contains(NSWindowCollectionBehavior::Transient));
     }
 }
