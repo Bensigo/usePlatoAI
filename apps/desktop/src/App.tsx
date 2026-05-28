@@ -2283,12 +2283,22 @@ export function App({
       adapters: productionVoiceAdapters,
     };
 
+    const isOutputMuted =
+      latestVoiceInteraction.current.isMuted ||
+      voiceSession.isMuted ||
+      audioActivation.state === "muted";
+
     void runAdapterDrivenVoiceSession({
+      runtime: createVoiceSessionRuntimeSnapshot({
+        providers: voiceSessionProviderAvailabilityForAdapters(
+          productionVoiceAdapters,
+        ),
+        isMuted: isOutputMuted,
+      }),
       adapters: productionVoiceAdapters,
       context: { signal: controller.signal },
       isSessionActive: () =>
-        activeAdapterVoiceSession.current?.requestId === requestId &&
-        !latestVoiceInteraction.current.isMuted,
+        activeAdapterVoiceSession.current?.requestId === requestId,
       responseTextForTranscript: (transcript) =>
         transcript
           ? `Voice input captured: ${transcript}`

@@ -622,6 +622,17 @@ export async function runAdapterDrivenVoiceSession({
     };
   }
 
+  if (speakingRuntime.isMuted) {
+    progress(transitionVoiceSession(currentRuntime, { type: "complete" }));
+
+    return {
+      runtime: currentRuntime,
+      transcript,
+      responseText,
+      speechToTextResult,
+    };
+  }
+
   const textToSpeechResult = await adapters.textToSpeech
     .speak({ text: responseText }, context)
     .catch((error) =>

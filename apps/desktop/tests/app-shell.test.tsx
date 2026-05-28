@@ -1227,12 +1227,32 @@ describe("desktop app shell", () => {
     expect(source).toContain('stopActiveAdapterVoiceSession("replacement_start")');
     expect(source).toContain("context: { signal: controller.signal }");
     expect(source).toContain("isSessionActive");
+    expect(source).toContain("isMuted: isOutputMuted");
     expect(source).toContain('stopActiveAdapterVoiceSession("user_stop")');
     expect(source).toContain('stopActiveAdapterVoiceSession("user_muted")');
     expect(source).toContain('stopActiveAdapterVoiceSession("text_fallback")');
     expect(source).toContain("canStartVoiceInteractionWithAudio(nextSnapshot)");
     expect(source).not.toContain("onStartVoiceInteraction={startVoiceInteraction}");
     expect(source).not.toContain("startupSoundAttempted");
+  });
+
+  it("keeps adapter voice start active when output is already muted", () => {
+    const source = readFileSync(resolve(process.cwd(), "src/App.tsx"), "utf8");
+    const runtimeSnapshot = source.match(
+      /const isOutputMuted =[\s\S]*?adapters: productionVoiceAdapters,/,
+    )?.[0];
+    const activeSessionPredicate = source.match(
+      /isSessionActive:\s*\(\) =>[\s\S]*?responseTextForTranscript:/,
+    )?.[0];
+
+    expect(runtimeSnapshot).toContain("latestVoiceInteraction.current.isMuted");
+    expect(runtimeSnapshot).toContain("voiceSession.isMuted");
+    expect(runtimeSnapshot).toContain('audioActivation.state === "muted"');
+    expect(runtimeSnapshot).toContain("isMuted: isOutputMuted");
+    expect(activeSessionPredicate).toContain(
+      "activeAdapterVoiceSession.current?.requestId === requestId",
+    );
+    expect(activeSessionPredicate).not.toContain("isMuted");
   });
 
   it("can render initial audio state for visual smoke captures", () => {

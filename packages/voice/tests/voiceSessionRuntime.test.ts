@@ -263,6 +263,61 @@ describe("voice session runtime", () => {
     });
   });
 
+  it("keeps adapter-driven voice input active while output is muted", async () => {
+    const progressStates: string[] = [];
+    let speakCalls = 0;
+    const result = await runAdapterDrivenVoiceSession({
+      runtime: createVoiceSessionRuntimeSnapshot({
+        providers: availableProviders,
+        isMuted: true,
+      }),
+      adapters: {
+        speechToText: createMockSpeechToTextAdapter({
+          providerId: "prod-stt",
+          transcript: "start while muted",
+        }),
+        textToSpeech: {
+          providerId: "prod-tts",
+          async speak() {
+            speakCalls += 1;
+            return {
+              providerId: "prod-tts",
+              status: "stopped",
+              startedAt: "2026-01-01T00:00:00.000Z",
+              completedAt: "2026-01-01T00:00:00.000Z",
+            };
+          },
+          async stop() {
+            return {
+              providerId: "prod-tts",
+              status: "stopped",
+              startedAt: "2026-01-01T00:00:00.000Z",
+              completedAt: "2026-01-01T00:00:00.000Z",
+            };
+          },
+        },
+      },
+      responseTextForTranscript: (transcript) => `Captured: ${transcript}`,
+      isSessionActive: () => true,
+      onProgress: ({ runtime }) => {
+        progressStates.push(runtime.state);
+      },
+    });
+
+    expect(progressStates).toEqual([
+      "listening",
+      "thinking",
+      "speaking",
+      "idle",
+    ]);
+    expect(result.runtime.state).toBe("idle");
+    expect(result.runtime.isMuted).toBe(true);
+    expect(result.transcript).toBe("start while muted");
+    expect(result.responseText).toBe("Captured: start while muted");
+    expect(result.textToSpeechResult).toBeUndefined();
+    expect(speakCalls).toBe(0);
+  });
+
   it("reports adapter failures through runtime events", async () => {
     const progressStates: string[] = [];
     const result = await runAdapterDrivenVoiceSession({
