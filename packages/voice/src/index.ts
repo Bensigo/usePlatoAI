@@ -235,7 +235,15 @@ export function transitionVoiceSession(
   }
 
   if (event.type === "interrupt") {
-    if (snapshot.state === "idle" || snapshot.state === "muted") {
+    if (
+      snapshot.state === "idle" ||
+      (snapshot.state === "muted" &&
+        (snapshot.previousState === undefined ||
+          snapshot.previousState === "idle" ||
+          snapshot.previousState === "interrupted" ||
+          snapshot.previousState === "unavailable" ||
+          snapshot.previousState === "error"))
+    ) {
       throw new VoiceSessionTransitionError(snapshot.state, event.type);
     }
 
@@ -292,7 +300,16 @@ export function transitionVoiceSession(
   }
 
   if (event.type === "complete") {
-    if (snapshot.state !== "speaking" && snapshot.state !== "thinking") {
+    const canCompleteMutedSession =
+      snapshot.state === "muted" &&
+      (snapshot.previousState === "speaking" ||
+        snapshot.previousState === "thinking");
+
+    if (
+      snapshot.state !== "speaking" &&
+      snapshot.state !== "thinking" &&
+      !canCompleteMutedSession
+    ) {
       throw new VoiceSessionTransitionError(snapshot.state, event.type);
     }
 

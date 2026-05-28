@@ -1506,6 +1506,29 @@ describe("desktop app shell", () => {
     expect(markup).toContain("Send text");
   });
 
+  it("keeps muted active voice sessions stoppable", () => {
+    const markup = renderToStaticMarkup(
+      <VoiceInteractionPanel
+        voiceInteraction={{
+          ...defaultVoiceInteractionSnapshot,
+          sessionState: "muted",
+          isMuted: true,
+          runtime: {
+            ...defaultVoiceInteractionSnapshot.runtime,
+            state: "muted",
+            previousState: "listening",
+            isMuted: true,
+          },
+        }}
+      />,
+    );
+
+    expect(markup).toContain("<dd>muted</dd>");
+    expect(markup).toContain("Stop</button>");
+    expect(markup).toContain("Start listening</button>");
+    expect(markup).toContain('type="submit" disabled="">Send text</button>');
+  });
+
   it("renders the compact listening bubble without transcript text", () => {
     const markup = renderToStaticMarkup(
       <PresenceListeningBubble state="listening" />,
