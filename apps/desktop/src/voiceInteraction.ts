@@ -299,6 +299,23 @@ export function setVoiceInteractionMutedSnapshot(
   };
 }
 
+export function setCancelledVoiceInteractionMutedSnapshot(
+  snapshot: VoiceInteractionSnapshot,
+): VoiceInteractionSnapshot {
+  const canInterrupt =
+    snapshot.runtime.state === "listening" ||
+    snapshot.runtime.state === "thinking" ||
+    snapshot.runtime.state === "speaking";
+  const cancelledSnapshot = canInterrupt
+    ? idleVoiceInteractionSnapshot(
+        interruptVoiceSessionSnapshot(snapshot),
+        "Voice session interrupted.",
+      )
+    : idleVoiceInteractionSnapshot(snapshot, "Voice session interrupted.");
+
+  return setVoiceInteractionMutedSnapshot(cancelledSnapshot, true);
+}
+
 export function voiceDevelopmentSnapshotForState(
   sessionState: VoiceSessionState,
 ): VoiceInteractionSnapshot {
