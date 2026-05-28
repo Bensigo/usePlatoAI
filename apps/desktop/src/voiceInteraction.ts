@@ -8,8 +8,14 @@ import {
   type LocalMemoryRecord,
   type MemoryStore,
 } from "./memory";
+import {
+  createVoiceSessionRuntimeSnapshot,
+  transitionVoiceSession,
+  type VoiceSessionRuntimeSnapshot,
+  type VoiceSessionState as RuntimeVoiceSessionState,
+} from "@useplatoai/voice";
 
-export type VoiceSessionState = "idle" | "listening" | "thinking" | "speaking";
+export type VoiceSessionState = RuntimeVoiceSessionState;
 
 export function voiceSessionStateFrom(
   value: string | null,
@@ -18,7 +24,11 @@ export function voiceSessionStateFrom(
     value === "idle" ||
     value === "listening" ||
     value === "thinking" ||
-    value === "speaking"
+    value === "speaking" ||
+    value === "interrupted" ||
+    value === "unavailable" ||
+    value === "error" ||
+    value === "muted"
   ) {
     return value;
   }
@@ -32,7 +42,9 @@ export type CompanionPresenceState =
   | "idle"
   | "listening"
   | "thinking"
-  | "speaking";
+  | "speaking"
+  | "muted"
+  | "error";
 
 export type VoiceInteractionSnapshot = {
   sessionState: VoiceSessionState;
@@ -43,6 +55,7 @@ export type VoiceInteractionSnapshot = {
   submittedFallbackText: string | null;
   response: string;
   companionPrompt: string | null;
+  runtime: VoiceSessionRuntimeSnapshot;
 };
 
 export const defaultVoiceInteractionSnapshot: VoiceInteractionSnapshot = {
@@ -54,6 +67,7 @@ export const defaultVoiceInteractionSnapshot: VoiceInteractionSnapshot = {
   submittedFallbackText: null,
   response: "Ready for voice or text.",
   companionPrompt: null,
+  runtime: createVoiceSessionRuntimeSnapshot(),
 };
 
 export const mockVoiceTranscript = "Mock voice input: help me plan the next step.";
@@ -107,6 +121,18 @@ function appendCorrectionMemoryPrompt(
 export function companionPresenceForVoiceState(
   sessionState: VoiceSessionState,
 ): CompanionPresenceState {
+  if (sessionState === "unavailable" || sessionState === "error") {
+    return "error";
+  }
+
+  if (sessionState === "interrupted") {
+    return "idle";
+  }
+
+  if (sessionState === "muted") {
+    return "muted";
+  }
+
   return sessionState;
 }
 
@@ -118,9 +144,120 @@ export function presenceLabelForState(state: CompanionPresenceState): string {
       return "Thinking";
     case "speaking":
       return "Speaking";
+    case "muted":
+      return "Muted";
+    case "error":
+      return "Needs repair";
     case "idle":
       return "Idle presence";
   }
+}
+
+function voiceResponseForRuntime(runtime: VoiceSessionRuntimeSnapshot): string {
+  switch (runtime.state) {
+    case "listening":
+      return "Listening for speech.";
+    case "thinking":
+      return "Processing speech input.";
+    case "speaking":
+      return runtime.isMuted ? "Voice response ready; output is muted." : "Speaking.";
+    case "interrupted":
+      return "Voice session interrupted.";
+    case "unavailable":
+      return `Voice unavailable: ${runtime.error?.message ?? "provider is unavailable."}`;
+    case "error":
+      return `Voice error: ${runtime.error?.message ?? "provider failed."}`;
+    case "muted":
+      return "Voice output muted.";
+    case "idle":
+      return "Ready for voice or text.";
+  }
+}
+
+export function productionVoiceListeningSnapshot(
+  snapshot: VoiceInteractionSnapshot,
+): VoiceInteractionSnapshot {
+  const runtime =
+    snapshot.runtime.state === "idle"
+      ? transitionVoiceSession(snapshot.runtime, { type: "start_listening" })
+      : transitionVoiceSession(snapshot.runtime, { type: "recover" });
+  const listeningRuntime =
+    runtime.state === "idle"
+      ? transitionVoiceSession(runtime, { type: "start_listening" })
+      : runtime;
+
+  return {
+    ...snapshot,
+    activationSource: "voice",
+    sessionState: listeningRuntime.state,
+    transcript: "",
+    submittedFallbackText: null,
+    response: voiceResponseForRuntime(listeningRuntime),
+    companionPrompt: null,
+    runtime: listeningRuntime,
+  };
+}
+
+export function interruptVoiceSessionSnapshot(
+  snapshot: VoiceInteractionSnapshot,
+): VoiceInteractionSnapshot {
+  const canInterrupt =
+    snapshot.runtime.state === "listening" ||
+    snapshot.runtime.state === "thinking" ||
+    snapshot.runtime.state === "speaking";
+  const runtime = canInterrupt
+    ? transitionVoiceSession(snapshot.runtime, {
+        type: "interrupt",
+        reason: "user_stop",
+      })
+    : createVoiceSessionRuntimeSnapshot({
+        ...snapshot.runtime,
+        state: "idle",
+        activeProvider: undefined,
+      });
+
+  return {
+    ...snapshot,
+    sessionState: runtime.state,
+    response: voiceResponseForRuntime(runtime),
+    companionPrompt: null,
+    runtime,
+  };
+}
+
+export function setVoiceInteractionMutedSnapshot(
+  snapshot: VoiceInteractionSnapshot,
+  isMuted: boolean,
+): VoiceInteractionSnapshot {
+  const runtime = transitionVoiceSession(snapshot.runtime, {
+    type: "set_muted",
+    muted: isMuted,
+  });
+
+  return {
+    ...snapshot,
+    isMuted,
+    sessionState: runtime.state,
+    response: voiceResponseForRuntime(runtime),
+    companionPrompt: null,
+    runtime,
+  };
+}
+
+export function voiceDevelopmentSnapshotForState(
+  sessionState: VoiceSessionState,
+): VoiceInteractionSnapshot {
+  const runtime = createVoiceSessionRuntimeSnapshot({
+    state: sessionState,
+    isMuted: sessionState === "muted",
+  });
+
+  return {
+    ...defaultVoiceInteractionSnapshot,
+    sessionState,
+    response: voiceResponseForRuntime(runtime),
+    runtime,
+  };
 }
 
 export function nextMockVoiceSnapshot(
@@ -137,6 +274,7 @@ export function nextMockVoiceSnapshot(
       response: "Waiting for speech.",
       submittedFallbackText: null,
       companionPrompt: null,
+      runtime: createVoiceSessionRuntimeSnapshot({ state: sessionState }),
     };
   }
 
@@ -147,6 +285,7 @@ export function nextMockVoiceSnapshot(
       transcript: mockVoiceTranscript,
       response: "Thinking through the mock voice request.",
       companionPrompt: null,
+      runtime: createVoiceSessionRuntimeSnapshot({ state: sessionState }),
     };
   }
 
@@ -161,6 +300,10 @@ export function nextMockVoiceSnapshot(
       sessionState,
       response: snapshot.isMuted ? "Muted response ready." : mockVoiceResponse,
       companionPrompt,
+      runtime: createVoiceSessionRuntimeSnapshot({
+        state: sessionState,
+        isMuted: snapshot.isMuted,
+      }),
     };
   }
 
@@ -169,6 +312,7 @@ export function nextMockVoiceSnapshot(
     sessionState,
     response: "Voice session complete.",
     companionPrompt: null,
+    runtime: createVoiceSessionRuntimeSnapshot({ state: sessionState }),
   };
 }
 
@@ -185,6 +329,10 @@ export function textFallbackThinkingSnapshot(
     submittedFallbackText: fallbackText,
     response: "Reading text fallback.",
     companionPrompt: null,
+    runtime: createVoiceSessionRuntimeSnapshot({
+      state: "thinking",
+      isMuted: snapshot.isMuted,
+    }),
   };
 }
 
@@ -208,5 +356,9 @@ export function textFallbackResponseSnapshot(
       ? "Muted text response ready."
       : `Text fallback received: ${submittedFallbackText}`,
     companionPrompt,
+    runtime: createVoiceSessionRuntimeSnapshot({
+      state: "speaking",
+      isMuted: snapshot.isMuted,
+    }),
   };
 }

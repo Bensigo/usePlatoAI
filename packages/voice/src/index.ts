@@ -94,6 +94,273 @@ export type WakeWordAdapter = {
   stop: (input?: VoiceStopInput) => Promise<VoiceAdapterResultBase>;
 };
 
+export type VoiceProviderKind = "speechToText" | "textToSpeech";
+
+export type VoiceProviderAvailability = {
+  providerId?: string;
+  available: boolean;
+  unavailableReason?: string;
+};
+
+export type VoiceSessionProviderAvailability = Record<
+  VoiceProviderKind,
+  VoiceProviderAvailability
+>;
+
+export type VoiceSessionState =
+  | "idle"
+  | "listening"
+  | "thinking"
+  | "speaking"
+  | "interrupted"
+  | "unavailable"
+  | "error"
+  | "muted";
+
+export type VoiceSessionRuntimeSnapshot = {
+  state: VoiceSessionState;
+  previousState?: Exclude<VoiceSessionState, "muted">;
+  isMuted: boolean;
+  providers: VoiceSessionProviderAvailability;
+  activeProvider?: VoiceProviderKind;
+  error?: VoiceAdapterError;
+  interruptedReason?: string;
+};
+
+export type VoiceSessionRuntimeEvent =
+  | { type: "start_listening" }
+  | { type: "start_thinking" }
+  | { type: "start_speaking" }
+  | { type: "complete" }
+  | { type: "interrupt"; reason?: string }
+  | { type: "set_muted"; muted: boolean }
+  | { type: "provider_unavailable"; provider: VoiceProviderKind; reason: string }
+  | { type: "provider_failed"; provider: VoiceProviderKind; error: VoiceAdapterError }
+  | { type: "recover" };
+
+export class VoiceSessionTransitionError extends Error {
+  constructor(
+    readonly from: VoiceSessionState,
+    readonly event: VoiceSessionRuntimeEvent["type"],
+  ) {
+    super(`Cannot apply voice session event ${event} from ${from}.`);
+    this.name = "VoiceSessionTransitionError";
+  }
+}
+
+const defaultUnavailableProviders: VoiceSessionProviderAvailability = {
+  speechToText: {
+    available: false,
+    unavailableReason: "No speech-to-text provider is configured.",
+  },
+  textToSpeech: {
+    available: false,
+    unavailableReason: "No text-to-speech provider is configured.",
+  },
+};
+
+export function createVoiceSessionRuntimeSnapshot(
+  options: Partial<VoiceSessionRuntimeSnapshot> = {},
+): VoiceSessionRuntimeSnapshot {
+  return {
+    state: options.state ?? "idle",
+    isMuted: options.isMuted ?? false,
+    providers: options.providers ?? defaultUnavailableProviders,
+    previousState: options.previousState,
+    activeProvider: options.activeProvider,
+    error: options.error,
+    interruptedReason: options.interruptedReason,
+  };
+}
+
+export function providerUnavailableError(
+  provider: VoiceProviderKind,
+  providers: VoiceSessionProviderAvailability,
+): VoiceAdapterError {
+  return {
+    code: `${provider}_unavailable`,
+    message:
+      providers[provider].unavailableReason ??
+      `${provider} provider is unavailable.`,
+    retryable: true,
+  };
+}
+
+export function canTransitionVoiceSession(
+  snapshot: VoiceSessionRuntimeSnapshot,
+  event: VoiceSessionRuntimeEvent,
+): boolean {
+  try {
+    transitionVoiceSession(snapshot, event);
+    return true;
+  } catch (error) {
+    if (error instanceof VoiceSessionTransitionError) {
+      return false;
+    }
+
+    throw error;
+  }
+}
+
+export function transitionVoiceSession(
+  snapshot: VoiceSessionRuntimeSnapshot,
+  event: VoiceSessionRuntimeEvent,
+): VoiceSessionRuntimeSnapshot {
+  const base = {
+    ...snapshot,
+    error: undefined,
+    interruptedReason: undefined,
+  };
+
+  if (event.type === "provider_unavailable") {
+    return {
+      ...base,
+      state: "unavailable",
+      activeProvider: event.provider,
+      error: {
+        code: `${event.provider}_unavailable`,
+        message: event.reason,
+        retryable: true,
+      },
+    };
+  }
+
+  if (event.type === "provider_failed") {
+    return {
+      ...base,
+      state: "error",
+      activeProvider: event.provider,
+      error: event.error,
+    };
+  }
+
+  if (event.type === "interrupt") {
+    if (snapshot.state === "idle" || snapshot.state === "muted") {
+      throw new VoiceSessionTransitionError(snapshot.state, event.type);
+    }
+
+    return {
+      ...base,
+      state: "interrupted",
+      activeProvider: snapshot.activeProvider,
+      interruptedReason: event.reason,
+    };
+  }
+
+  if (event.type === "set_muted") {
+    if (event.muted) {
+      if (snapshot.state === "muted") {
+        return snapshot;
+      }
+
+      return {
+        ...base,
+        state: "muted",
+        isMuted: true,
+        previousState: snapshot.state,
+      };
+    }
+
+    return {
+      ...base,
+      state:
+        snapshot.state === "muted"
+          ? snapshot.previousState ?? "idle"
+          : snapshot.state,
+      isMuted: false,
+      previousState: undefined,
+    };
+  }
+
+  if (event.type === "recover") {
+    if (
+      snapshot.state !== "interrupted" &&
+      snapshot.state !== "unavailable" &&
+      snapshot.state !== "error" &&
+      snapshot.state !== "muted"
+    ) {
+      throw new VoiceSessionTransitionError(snapshot.state, event.type);
+    }
+
+    return {
+      ...base,
+      state: "idle",
+      activeProvider: undefined,
+      previousState: undefined,
+      isMuted: snapshot.isMuted,
+    };
+  }
+
+  if (event.type === "complete") {
+    if (snapshot.state !== "speaking" && snapshot.state !== "thinking") {
+      throw new VoiceSessionTransitionError(snapshot.state, event.type);
+    }
+
+    return {
+      ...base,
+      state: "idle",
+      activeProvider: undefined,
+      previousState: undefined,
+    };
+  }
+
+  if (event.type === "start_listening") {
+    if (snapshot.state !== "idle") {
+      throw new VoiceSessionTransitionError(snapshot.state, event.type);
+    }
+
+    if (!snapshot.providers.speechToText.available) {
+      return {
+        ...base,
+        state: "unavailable",
+        activeProvider: "speechToText",
+        error: providerUnavailableError("speechToText", snapshot.providers),
+      };
+    }
+
+    return {
+      ...base,
+      state: "listening",
+      activeProvider: "speechToText",
+    };
+  }
+
+  if (event.type === "start_thinking") {
+    if (snapshot.state !== "listening") {
+      throw new VoiceSessionTransitionError(snapshot.state, event.type);
+    }
+
+    return {
+      ...base,
+      state: "thinking",
+      activeProvider: undefined,
+    };
+  }
+
+  if (event.type === "start_speaking") {
+    if (snapshot.state !== "thinking") {
+      throw new VoiceSessionTransitionError(snapshot.state, event.type);
+    }
+
+    if (!snapshot.providers.textToSpeech.available) {
+      return {
+        ...base,
+        state: "unavailable",
+        activeProvider: "textToSpeech",
+        error: providerUnavailableError("textToSpeech", snapshot.providers),
+      };
+    }
+
+    return {
+      ...base,
+      state: "speaking",
+      activeProvider: "textToSpeech",
+    };
+  }
+
+  throw new Error("Unhandled voice session event.");
+}
+
 type MockAdapterOptions = {
   providerId?: string;
   now?: () => string;

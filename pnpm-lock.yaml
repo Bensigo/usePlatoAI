@@ -23,6 +23,9 @@ importers:
       '@useplatoai/avatar':
         specifier: workspace:*
         version: link:../../packages/avatar
+      '@useplatoai/voice':
+        specifier: workspace:*
+        version: link:../../packages/voice
       react:
         specifier: ^19.2.6
         version: 19.2.6

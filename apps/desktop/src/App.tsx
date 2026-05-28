@@ -117,10 +117,13 @@ import {
   companionPromptForInputWithCorrections,
   companionPresenceForVoiceState,
   defaultVoiceInteractionSnapshot,
-  mockVoiceTranscript,
+  interruptVoiceSessionSnapshot,
   nextMockVoiceSnapshot,
   textFallbackResponseSnapshot,
   textFallbackThinkingSnapshot,
+  productionVoiceListeningSnapshot,
+  setVoiceInteractionMutedSnapshot,
+  voiceDevelopmentSnapshotForState,
   type VoiceInteractionSnapshot,
   type VoiceSessionState,
 } from "./voiceInteraction";
@@ -288,7 +291,7 @@ export function isActiveCorrectionPromptTransition({
 
   return source === "text"
     ? snapshot.submittedFallbackText === promptInput
-    : (snapshot.transcript || mockVoiceTranscript) === promptInput;
+    : snapshot.transcript === promptInput;
 }
 
 export function renderedPresenceStateFor({
@@ -1100,8 +1103,15 @@ export function VoiceInteractionPanel({
   onTextFallbackChange?: (value: string) => void;
   onSubmitTextFallback?: () => void;
 }) {
-  const isActive = voiceInteraction.sessionState !== "idle";
-  const isError = voiceInteraction.response.toLowerCase().includes("error");
+  const isActive =
+    voiceInteraction.sessionState === "listening" ||
+    voiceInteraction.sessionState === "thinking" ||
+    voiceInteraction.sessionState === "speaking";
+  const isError =
+    voiceInteraction.sessionState === "error" ||
+    voiceInteraction.sessionState === "unavailable";
+  const speechToTextProvider = voiceInteraction.runtime.providers.speechToText;
+  const textToSpeechProvider = voiceInteraction.runtime.providers.textToSpeech;
 
   function submitTextFallback(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -1114,14 +1124,18 @@ export function VoiceInteractionPanel({
         label="Voice surface states"
         states={[
           {
-            label: "Local voice",
-            value: "configured",
-            tone: "configured",
+            label: "Speech-to-text",
+            value: speechToTextProvider.available
+              ? speechToTextProvider.providerId ?? "available"
+              : "missing",
+            tone: speechToTextProvider.available ? "configured" : "missing",
           },
           {
-            label: "Cloud voice",
-            value: "missing",
-            tone: "missing",
+            label: "Text-to-speech",
+            value: textToSpeechProvider.available
+              ? textToSpeechProvider.providerId ?? "available"
+              : "missing",
+            tone: textToSpeechProvider.available ? "configured" : "missing",
           },
           {
             label: "Output",
@@ -2008,10 +2022,7 @@ export function App({
   const [voiceInteraction, setVoiceInteraction] =
     useState<VoiceInteractionSnapshot>(() =>
       initialVoiceSessionState
-        ? nextMockVoiceSnapshot(
-            defaultVoiceInteractionSnapshot,
-            initialVoiceSessionState,
-          )
+        ? voiceDevelopmentSnapshotForState(initialVoiceSessionState)
         : defaultVoiceInteractionSnapshot,
     );
   const [soulGuidance, setSoulGuidance] =
@@ -2168,7 +2179,7 @@ export function App({
       const promptInput =
         source === "text"
           ? (current.submittedFallbackText ?? current.transcript)
-          : current.transcript || mockVoiceTranscript;
+          : current.transcript;
 
       void companionPromptForInputWithCorrections(
         promptInput,
@@ -2206,12 +2217,7 @@ export function App({
   function startVoiceInteraction() {
     clearVoiceTimers();
     correctionPromptRequestId.current += 1;
-    setVoiceInteraction((current) =>
-      nextMockVoiceSnapshot(current, "listening", soulGuidance),
-    );
-    scheduleVoiceState(900, "thinking", "voice");
-    scheduleVoiceState(1800, "speaking", "voice");
-    scheduleVoiceState(3000, "idle", "voice");
+    setVoiceInteraction((current) => productionVoiceListeningSnapshot(current));
   }
 
   function acknowledgeAvatarClick() {
@@ -2317,12 +2323,7 @@ export function App({
   function stopVoiceInteraction() {
     clearVoiceTimers();
     correctionPromptRequestId.current += 1;
-    setVoiceInteraction((current) => ({
-      ...current,
-      sessionState: "idle",
-      response: "Voice session stopped.",
-      companionPrompt: null,
-    }));
+    setVoiceInteraction((current) => interruptVoiceSessionSnapshot(current));
   }
 
   function pauseCurrentTask() {
@@ -3205,7 +3206,9 @@ export function App({
             onStartVoiceInteraction={activateVoiceListening}
             onStopVoiceInteraction={stopVoiceInteraction}
             onMuteChange={(isMuted) =>
-              setVoiceInteraction((current) => ({ ...current, isMuted }))
+              setVoiceInteraction((current) =>
+                setVoiceInteractionMutedSnapshot(current, isMuted),
+              )
             }
             onTextFallbackChange={(fallbackText) =>
               setVoiceInteraction((current) => ({ ...current, fallbackText }))
@@ -3246,7 +3249,7 @@ export function App({
                   )
                 }
               >
-                Play mock voice
+                Play dev mock voice
               </button>
               <button
                 type="button"

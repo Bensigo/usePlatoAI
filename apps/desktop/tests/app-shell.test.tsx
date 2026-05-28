@@ -120,6 +120,9 @@ import {
   defaultVoiceInteractionSnapshot,
   nextMockVoiceSnapshot,
   presenceLabelForState,
+  productionVoiceListeningSnapshot,
+  setVoiceInteractionMutedSnapshot,
+  interruptVoiceSessionSnapshot,
   textFallbackResponseSnapshot,
   textFallbackThinkingSnapshot,
   voiceSessionStateFrom,
@@ -1144,9 +1147,8 @@ describe("desktop app shell", () => {
     );
 
     expect(markup).toContain("Voice surface states");
-    expect(markup).toContain("Local voice");
-    expect(markup).toContain("configured");
-    expect(markup).toContain("Cloud voice");
+    expect(markup).toContain("Speech-to-text");
+    expect(markup).toContain("Text-to-speech");
     expect(markup).toContain("missing");
     expect(markup).toContain("unavailable until enabled");
     expect(markup).toContain("Start listening");
@@ -1871,10 +1873,62 @@ describe("desktop app shell", () => {
     expect(presenceLabelForState("listening")).toBe("Listening");
     expect(presenceLabelForState("thinking")).toBe("Thinking");
     expect(presenceLabelForState("speaking")).toBe("Speaking");
+    expect(presenceLabelForState("muted")).toBe("Muted");
+    expect(presenceLabelForState("error")).toBe("Needs repair");
     expect(presenceLabelForState("idle")).toBe("Idle presence");
     expect(voiceSessionStateFrom("thinking")).toBe("thinking");
     expect(voiceSessionStateFrom("speaking")).toBe("speaking");
+    expect(voiceSessionStateFrom("interrupted")).toBe("interrupted");
+    expect(voiceSessionStateFrom("unavailable")).toBe("unavailable");
+    expect(voiceSessionStateFrom("error")).toBe("error");
+    expect(voiceSessionStateFrom("muted")).toBe("muted");
     expect(voiceSessionStateFrom("unknown")).toBeUndefined();
+  });
+
+  it("starts production voice through provider availability instead of mock transcript timers", () => {
+    const started = productionVoiceListeningSnapshot(
+      defaultVoiceInteractionSnapshot,
+    );
+
+    expect(started.sessionState).toBe("unavailable");
+    expect(started.runtime).toMatchObject({
+      state: "unavailable",
+      activeProvider: "speechToText",
+      error: {
+        code: "speechToText_unavailable",
+        message: "No speech-to-text provider is configured.",
+      },
+    });
+    expect(started.transcript).toBe("");
+    expect(started.response).toBe(
+      "Voice unavailable: No speech-to-text provider is configured.",
+    );
+    expect(started.response).not.toContain("mock");
+  });
+
+  it("represents production interruption, muted state, and idle recovery", () => {
+    const availableRuntime = {
+      ...defaultVoiceInteractionSnapshot.runtime,
+      providers: {
+        speechToText: { providerId: "prod-stt", available: true },
+        textToSpeech: { providerId: "prod-tts", available: true },
+      },
+    };
+    const listening = productionVoiceListeningSnapshot({
+      ...defaultVoiceInteractionSnapshot,
+      runtime: availableRuntime,
+    });
+    const muted = setVoiceInteractionMutedSnapshot(listening, true);
+    const unmuted = setVoiceInteractionMutedSnapshot(muted, false);
+    const interrupted = interruptVoiceSessionSnapshot(unmuted);
+    const restarted = productionVoiceListeningSnapshot(interrupted);
+
+    expect(listening.sessionState).toBe("listening");
+    expect(muted.sessionState).toBe("muted");
+    expect(muted.isMuted).toBe(true);
+    expect(unmuted.sessionState).toBe("listening");
+    expect(interrupted.sessionState).toBe("interrupted");
+    expect(restarted.sessionState).toBe("listening");
   });
 
   it("drives thinking and speaking avatar states from the voice loop", () => {

@@ -16,7 +16,7 @@ export const controlSurfaceEntries: {
     id: "voice",
     label: "Voice",
     description:
-      "Start a local mock voice interaction, mute output, and use text fallback without provider credentials.",
+      "Start a provider-backed voice session, mute output, and use text fallback when voice is unavailable.",
     state: "ready",
   },
   {
