@@ -117,6 +117,7 @@ import {
   companionPromptForInputWithCorrections,
   companionPresenceForVoiceState,
   defaultVoiceInteractionSnapshot,
+  idleVoiceInteractionSnapshot,
   interruptVoiceSessionSnapshot,
   nextMockVoiceSnapshot,
   textFallbackResponseSnapshot,
@@ -2159,7 +2160,9 @@ export function App({
 
         setVoiceInteraction((current) => {
           if (source === "text") {
-            return { ...current, sessionState, companionPrompt: null };
+            return sessionState === "idle"
+              ? idleVoiceInteractionSnapshot(current, "Voice session complete.")
+              : { ...current, sessionState, companionPrompt: null };
           }
 
           return nextMockVoiceSnapshot(current, sessionState, soulGuidance);
@@ -2323,7 +2326,12 @@ export function App({
   function stopVoiceInteraction() {
     clearVoiceTimers();
     correctionPromptRequestId.current += 1;
-    setVoiceInteraction((current) => interruptVoiceSessionSnapshot(current));
+    setVoiceInteraction((current) =>
+      idleVoiceInteractionSnapshot(
+        interruptVoiceSessionSnapshot(current),
+        "Voice session stopped.",
+      ),
+    );
   }
 
   function pauseCurrentTask() {
@@ -2354,12 +2362,9 @@ export function App({
     companionPresenceStateSource.setState(
       currentTaskPresenceStateForAction("cancel"),
     );
-    setVoiceInteraction((current) => ({
-      ...current,
-      sessionState: "idle",
-      response: "Cancelled the current task.",
-      companionPrompt: null,
-    }));
+    setVoiceInteraction((current) =>
+      idleVoiceInteractionSnapshot(current, "Cancelled the current task."),
+    );
   }
 
   function submitTextFallback() {
@@ -2463,15 +2468,14 @@ export function App({
         decision === "dismissed" ? "dismiss" : "reject",
       ),
     );
-    setVoiceInteraction((current) => ({
-      ...current,
-      sessionState: "idle",
-      response:
+    setVoiceInteraction((current) =>
+      idleVoiceInteractionSnapshot(
+        current,
         decision === "dismissed"
           ? "Dismissed. Current task stopped before the gated action."
           : "Rejected. Current task stopped.",
-      companionPrompt: null,
-    }));
+      ),
+    );
   }
 
   async function resolveSelectedApprovalTask(
@@ -2511,15 +2515,14 @@ export function App({
         decision === "dismissed" ? "dismiss" : "reject",
       ),
     );
-    setVoiceInteraction((current) => ({
-      ...current,
-      sessionState: "idle",
-      response:
+    setVoiceInteraction((current) =>
+      idleVoiceInteractionSnapshot(
+        current,
         decision === "dismissed"
           ? "Dismissed. Current task stopped before the gated action."
           : "Rejected. Current task stopped.",
-      companionPrompt: null,
-    }));
+      ),
+    );
   }
 
   function scheduleMockTaskSnapshot(task: LocalTaskRecord, delay: number) {
