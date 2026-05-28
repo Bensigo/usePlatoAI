@@ -1229,6 +1229,7 @@ describe("desktop app shell", () => {
     expect(source).toContain("isSessionActive");
     expect(source).toContain('stopActiveAdapterVoiceSession("user_stop")');
     expect(source).toContain('stopActiveAdapterVoiceSession("user_muted")');
+    expect(source).toContain('stopActiveAdapterVoiceSession("text_fallback")');
     expect(source).toContain("canStartVoiceInteractionWithAudio(nextSnapshot)");
     expect(source).not.toContain("onStartVoiceInteraction={startVoiceInteraction}");
     expect(source).not.toContain("startupSoundAttempted");

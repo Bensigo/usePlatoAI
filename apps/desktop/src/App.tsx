@@ -2486,6 +2486,7 @@ export function App({
     }
 
     clearVoiceTimers();
+    stopActiveAdapterVoiceSession("text_fallback");
     correctionPromptRequestId.current += 1;
     setVoiceInteraction((current) =>
       textFallbackThinkingSnapshot(current, fallbackText),
