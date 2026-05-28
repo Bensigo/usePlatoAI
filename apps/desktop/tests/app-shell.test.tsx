@@ -118,6 +118,7 @@ import {
   companionPromptForInputWithCorrections,
   companionPromptForInput,
   defaultVoiceInteractionSnapshot,
+  idleVoiceInteractionSnapshot,
   nextMockVoiceSnapshot,
   presenceLabelForState,
   productionVoiceListeningSnapshot,
@@ -1904,6 +1905,29 @@ describe("desktop app shell", () => {
       "Voice unavailable: No speech-to-text provider is configured.",
     );
     expect(started.response).not.toContain("mock");
+  });
+
+  it("keeps runtime idle after text fallback completion before voice starts again", () => {
+    const thinking = textFallbackThinkingSnapshot(
+      {
+        ...defaultVoiceInteractionSnapshot,
+        fallbackText: "Plan the next voice step",
+      },
+      "Plan the next voice step",
+    );
+    const speaking = textFallbackResponseSnapshot(thinking);
+    const completed = idleVoiceInteractionSnapshot(
+      speaking,
+      "Voice session complete.",
+    );
+    const restarted = productionVoiceListeningSnapshot(completed);
+
+    expect(completed.sessionState).toBe("idle");
+    expect(completed.runtime.state).toBe("idle");
+    expect(() => productionVoiceListeningSnapshot(completed)).not.toThrow();
+    expect(restarted.sessionState).toBe("unavailable");
+    expect(restarted.runtime.state).toBe("unavailable");
+    expect(restarted.runtime.activeProvider).toBe("speechToText");
   });
 
   it("represents production interruption, muted state, and idle recovery", () => {

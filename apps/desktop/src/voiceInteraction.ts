@@ -174,13 +174,40 @@ function voiceResponseForRuntime(runtime: VoiceSessionRuntimeSnapshot): string {
   }
 }
 
+export function idleVoiceInteractionSnapshot(
+  snapshot: VoiceInteractionSnapshot,
+  response: string,
+): VoiceInteractionSnapshot {
+  const runtime = createVoiceSessionRuntimeSnapshot({
+    ...snapshot.runtime,
+    state: "idle",
+    activeProvider: undefined,
+    previousState: undefined,
+    error: undefined,
+    interruptedReason: undefined,
+    isMuted: snapshot.isMuted,
+  });
+
+  return {
+    ...snapshot,
+    sessionState: "idle",
+    response,
+    companionPrompt: null,
+    runtime,
+  };
+}
+
 export function productionVoiceListeningSnapshot(
   snapshot: VoiceInteractionSnapshot,
 ): VoiceInteractionSnapshot {
+  const currentRuntime =
+    snapshot.sessionState === "idle" && snapshot.runtime.state !== "idle"
+      ? idleVoiceInteractionSnapshot(snapshot, snapshot.response).runtime
+      : snapshot.runtime;
   const runtime =
-    snapshot.runtime.state === "idle"
-      ? transitionVoiceSession(snapshot.runtime, { type: "start_listening" })
-      : transitionVoiceSession(snapshot.runtime, { type: "recover" });
+    currentRuntime.state === "idle"
+      ? transitionVoiceSession(currentRuntime, { type: "start_listening" })
+      : transitionVoiceSession(currentRuntime, { type: "recover" });
   const listeningRuntime =
     runtime.state === "idle"
       ? transitionVoiceSession(runtime, { type: "start_listening" })
