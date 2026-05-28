@@ -3,8 +3,12 @@ import { describe, expect, it } from "vitest";
 import {
   VoiceSessionTransitionError,
   canTransitionVoiceSession,
+  createMockSpeechToTextAdapter,
+  createMockTextToSpeechAdapter,
   createVoiceSessionRuntimeSnapshot,
+  runAdapterDrivenVoiceSession,
   transitionVoiceSession,
+  voiceSessionProviderAvailabilityForAdapters,
   type VoiceSessionProviderAvailability,
 } from "../src";
 
@@ -220,6 +224,85 @@ describe("voice session runtime", () => {
       activeProvider: undefined,
       isMuted: true,
       previousState: undefined,
+    });
+  });
+
+  it("runs adapter-driven voice sessions through transcript, speech, and completion", async () => {
+    const progressStates: string[] = [];
+    const result = await runAdapterDrivenVoiceSession({
+      adapters: {
+        speechToText: createMockSpeechToTextAdapter({
+          providerId: "prod-stt",
+          transcript: "ship the review fix",
+        }),
+        textToSpeech: createMockTextToSpeechAdapter({
+          providerId: "prod-tts",
+        }),
+      },
+      responseTextForTranscript: (transcript) => `Captured: ${transcript}`,
+      onProgress: ({ runtime }) => {
+        progressStates.push(runtime.state);
+      },
+    });
+
+    expect(progressStates).toEqual([
+      "listening",
+      "thinking",
+      "speaking",
+      "idle",
+    ]);
+    expect(result.runtime.state).toBe("idle");
+    expect(result.transcript).toBe("ship the review fix");
+    expect(result.responseText).toBe("Captured: ship the review fix");
+    expect(result.textToSpeechResult).toMatchObject({
+      providerId: "prod-tts",
+      status: "stopped",
+      text: "Captured: ship the review fix",
+    });
+  });
+
+  it("reports adapter failures through runtime events", async () => {
+    const progressStates: string[] = [];
+    const result = await runAdapterDrivenVoiceSession({
+      adapters: {
+        speechToText: createMockSpeechToTextAdapter({
+          providerId: "prod-stt",
+          failure: "Microphone failed.",
+        }),
+        textToSpeech: createMockTextToSpeechAdapter({
+          providerId: "prod-tts",
+        }),
+      },
+      onProgress: ({ runtime }) => {
+        progressStates.push(runtime.state);
+      },
+    });
+
+    expect(progressStates).toEqual(["listening", "error"]);
+    expect(result.runtime).toMatchObject({
+      state: "error",
+      activeProvider: "speechToText",
+      error: {
+        code: "mock_failure",
+        message: "Microphone failed.",
+      },
+    });
+  });
+
+  it("derives provider availability from installed adapters", () => {
+    expect(
+      voiceSessionProviderAvailabilityForAdapters({
+        speechToText: createMockSpeechToTextAdapter({ providerId: "prod-stt" }),
+      }),
+    ).toMatchObject({
+      speechToText: {
+        providerId: "prod-stt",
+        available: true,
+      },
+      textToSpeech: {
+        available: false,
+        unavailableReason: "No text-to-speech provider is configured.",
+      },
     });
   });
 });

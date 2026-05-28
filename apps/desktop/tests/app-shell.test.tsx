@@ -122,6 +122,7 @@ import {
   nextMockVoiceSnapshot,
   presenceLabelForState,
   productionVoiceListeningSnapshot,
+  productionVoiceProgressSnapshot,
   setVoiceInteractionMutedSnapshot,
   interruptVoiceSessionSnapshot,
   textFallbackResponseSnapshot,
@@ -1221,6 +1222,7 @@ describe("desktop app shell", () => {
 
     expect(source).toContain("function activateVoiceListening()");
     expect(source).toContain("onStartVoiceInteraction={activateVoiceListening}");
+    expect(source).toContain("runAdapterDrivenVoiceSession");
     expect(source).toContain("canStartVoiceInteractionWithAudio(nextSnapshot)");
     expect(source).not.toContain("onStartVoiceInteraction={startVoiceInteraction}");
     expect(source).not.toContain("startupSoundAttempted");
@@ -1928,6 +1930,64 @@ describe("desktop app shell", () => {
       "Voice unavailable: No speech-to-text provider is configured.",
     );
     expect(started.response).not.toContain("mock");
+  });
+
+  it("maps adapter-driven voice progress into visible session snapshots", () => {
+    const listening = productionVoiceProgressSnapshot(
+      defaultVoiceInteractionSnapshot,
+      {
+        runtime: {
+          ...defaultVoiceInteractionSnapshot.runtime,
+          state: "listening",
+          activeProvider: "speechToText",
+        },
+        transcript: "",
+        responseText: "",
+      },
+    );
+    const thinking = productionVoiceProgressSnapshot(listening, {
+      runtime: {
+        ...listening.runtime,
+        state: "thinking",
+        activeProvider: undefined,
+      },
+      transcript: "ship the review fix",
+      responseText: "",
+    });
+    const speaking = productionVoiceProgressSnapshot(thinking, {
+      runtime: {
+        ...thinking.runtime,
+        state: "speaking",
+        activeProvider: "textToSpeech",
+      },
+      transcript: "ship the review fix",
+      responseText: "Voice input captured: ship the review fix",
+    });
+    const completed = productionVoiceProgressSnapshot(speaking, {
+      runtime: {
+        ...speaking.runtime,
+        state: "idle",
+        activeProvider: undefined,
+      },
+      transcript: "ship the review fix",
+      responseText: "Voice input captured: ship the review fix",
+    });
+
+    expect(listening.sessionState).toBe("listening");
+    expect(thinking).toMatchObject({
+      sessionState: "thinking",
+      transcript: "ship the review fix",
+      response: "Processing speech input.",
+    });
+    expect(speaking).toMatchObject({
+      sessionState: "speaking",
+      response: "Voice input captured: ship the review fix",
+    });
+    expect(speaking.companionPrompt).toContain("ship the review fix");
+    expect(completed).toMatchObject({
+      sessionState: "idle",
+      response: "Voice session complete.",
+    });
   });
 
   it("keeps runtime idle after text fallback completion before voice starts again", () => {

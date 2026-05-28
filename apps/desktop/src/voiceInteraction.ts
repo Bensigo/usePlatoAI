@@ -11,6 +11,7 @@ import {
 import {
   createVoiceSessionRuntimeSnapshot,
   transitionVoiceSession,
+  type AdapterDrivenVoiceSessionProgress,
   type VoiceSessionRuntimeSnapshot,
   type VoiceSessionState as RuntimeVoiceSessionState,
 } from "@useplatoai/voice";
@@ -222,6 +223,33 @@ export function productionVoiceListeningSnapshot(
     response: voiceResponseForRuntime(listeningRuntime),
     companionPrompt: null,
     runtime: listeningRuntime,
+  };
+}
+
+export function productionVoiceProgressSnapshot(
+  snapshot: VoiceInteractionSnapshot,
+  progress: AdapterDrivenVoiceSessionProgress,
+  soulGuidance: SoulGuidance = fallbackSoulGuidance,
+): VoiceInteractionSnapshot {
+  const response =
+    progress.runtime.state === "speaking" && progress.responseText
+      ? progress.responseText
+      : progress.runtime.state === "idle" && progress.responseText
+        ? "Voice session complete."
+        : voiceResponseForRuntime(progress.runtime);
+
+  return {
+    ...snapshot,
+    activationSource: "voice",
+    sessionState: progress.runtime.state,
+    transcript: progress.transcript,
+    submittedFallbackText: null,
+    response,
+    companionPrompt:
+      progress.runtime.state === "speaking" && progress.transcript
+        ? companionPromptForInput(progress.transcript, soulGuidance)
+        : null,
+    runtime: progress.runtime,
   };
 }
 

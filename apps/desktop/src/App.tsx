@@ -18,6 +18,12 @@ import {
 } from "@tauri-apps/api/window";
 
 import {
+  runAdapterDrivenVoiceSession,
+  type VoiceSessionAdapters,
+  createVoiceSessionRuntimeSnapshot,
+  voiceSessionProviderAvailabilityForAdapters,
+} from "@useplatoai/voice";
+import {
   controlSurfaceEntries,
   isControlSurfaceId,
   type ControlSurfaceId,
@@ -120,6 +126,7 @@ import {
   idleVoiceInteractionSnapshot,
   interruptVoiceSessionSnapshot,
   nextMockVoiceSnapshot,
+  productionVoiceProgressSnapshot,
   textFallbackResponseSnapshot,
   textFallbackThinkingSnapshot,
   productionVoiceListeningSnapshot,
@@ -1943,6 +1950,7 @@ export function App({
   presenceStateSource,
   initialAudioActivationState,
   initialVoiceSessionState,
+  voiceAdapters,
 }: {
   initialSettings?: CompanionSettings;
   initialActiveEntry?: ControlSurfaceId;
@@ -1951,6 +1959,7 @@ export function App({
   initialControlsExpanded?: boolean;
   initialAudioActivationState?: AudioActivationState;
   initialVoiceSessionState?: VoiceSessionState;
+  voiceAdapters?: VoiceSessionAdapters;
   settingsStore?: SettingsStore;
   trustFoundationStore?: TrustFoundationStore;
   soulGuidanceStore?: SoulGuidanceStore;
@@ -1992,6 +2001,10 @@ export function App({
     () => presencePositionStore ?? createTauriPresencePositionStore(),
     [presencePositionStore],
   );
+  const productionVoiceAdapters = useMemo(
+    () => voiceAdapters ?? {},
+    [voiceAdapters],
+  );
   const presence = usePresenceState(companionPresenceStateSource);
   const [activeEntry, setActiveEntry] =
     useState<ControlSurfaceId>(initialActiveEntry);
@@ -2028,7 +2041,16 @@ export function App({
     useState<VoiceInteractionSnapshot>(() =>
       initialVoiceSessionState
         ? voiceDevelopmentSnapshotForState(initialVoiceSessionState)
-        : defaultVoiceInteractionSnapshot,
+        : {
+            ...defaultVoiceInteractionSnapshot,
+            runtime: createVoiceSessionRuntimeSnapshot({
+              ...defaultVoiceInteractionSnapshot.runtime,
+              providers:
+                voiceSessionProviderAvailabilityForAdapters(
+                  productionVoiceAdapters,
+                ),
+            }),
+          },
     );
   const [soulGuidance, setSoulGuidance] =
     useState<SoulGuidance>(fallbackSoulGuidance);
@@ -2223,8 +2245,29 @@ export function App({
 
   function startVoiceInteraction() {
     clearVoiceTimers();
-    correctionPromptRequestId.current += 1;
-    setVoiceInteraction((current) => productionVoiceListeningSnapshot(current));
+    const requestId = correctionPromptRequestId.current + 1;
+    correctionPromptRequestId.current = requestId;
+
+    void runAdapterDrivenVoiceSession({
+      adapters: productionVoiceAdapters,
+      responseTextForTranscript: (transcript) =>
+        transcript
+          ? `Voice input captured: ${transcript}`
+          : "Voice input captured, but no transcript text was returned.",
+      onProgress: (progress) => {
+        setVoiceInteraction((current) => {
+          if (requestId !== correctionPromptRequestId.current) {
+            return current;
+          }
+
+          return productionVoiceProgressSnapshot(
+            current,
+            progress,
+            soulGuidance,
+          );
+        });
+      },
+    });
   }
 
   function acknowledgeAvatarClick() {

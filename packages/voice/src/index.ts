@@ -94,6 +94,11 @@ export type WakeWordAdapter = {
   stop: (input?: VoiceStopInput) => Promise<VoiceAdapterResultBase>;
 };
 
+export type VoiceSessionAdapters = {
+  speechToText?: SpeechToTextAdapter;
+  textToSpeech?: TextToSpeechAdapter;
+};
+
 export type VoiceProviderKind = "speechToText" | "textToSpeech";
 
 export type VoiceProviderAvailability = {
@@ -158,6 +163,25 @@ const defaultUnavailableProviders: VoiceSessionProviderAvailability = {
     unavailableReason: "No text-to-speech provider is configured.",
   },
 };
+
+export function voiceSessionProviderAvailabilityForAdapters(
+  adapters: VoiceSessionAdapters,
+): VoiceSessionProviderAvailability {
+  return {
+    speechToText: adapters.speechToText
+      ? {
+          providerId: adapters.speechToText.providerId,
+          available: true,
+        }
+      : defaultUnavailableProviders.speechToText,
+    textToSpeech: adapters.textToSpeech
+      ? {
+          providerId: adapters.textToSpeech.providerId,
+          available: true,
+        }
+      : defaultUnavailableProviders.textToSpeech,
+  };
+}
 
 export function createVoiceSessionRuntimeSnapshot(
   options: Partial<VoiceSessionRuntimeSnapshot> = {},
@@ -376,6 +400,205 @@ export function transitionVoiceSession(
   }
 
   throw new Error("Unhandled voice session event.");
+}
+
+export type AdapterDrivenVoiceSessionProgress = {
+  runtime: VoiceSessionRuntimeSnapshot;
+  transcript: string;
+  responseText: string;
+};
+
+export type AdapterDrivenVoiceSessionResult =
+  AdapterDrivenVoiceSessionProgress & {
+    speechToTextResult?: SpeechToTextResult;
+    textToSpeechResult?: TextToSpeechResult;
+  };
+
+export type AdapterDrivenVoiceSessionInput = {
+  runtime?: VoiceSessionRuntimeSnapshot;
+  adapters: VoiceSessionAdapters;
+  audio?: Uint8Array;
+  context?: VoiceOperationContext;
+  responseTextForTranscript?: (transcript: string) => string;
+  onProgress?: (progress: AdapterDrivenVoiceSessionProgress) => void;
+};
+
+function defaultVoiceResponseTextForTranscript(transcript: string): string {
+  return transcript
+    ? `Voice input captured: ${transcript}`
+    : "Voice input captured, but no transcript text was returned.";
+}
+
+function failedVoiceAdapterEvent(
+  provider: VoiceProviderKind,
+  result: VoiceAdapterResultBase,
+): VoiceSessionRuntimeEvent {
+  return {
+    type: "provider_failed",
+    provider,
+    error: result.error ?? {
+      code: `${provider}_failed`,
+      message: `${provider} provider failed.`,
+      retryable: true,
+    },
+  };
+}
+
+function unknownSpeechToTextFailure(
+  provider: VoiceProviderKind,
+  error: unknown,
+  providerId: string,
+): SpeechToTextResult {
+  const message = error instanceof Error ? error.message : "Provider failed.";
+
+  return {
+    providerId,
+    status: "failed",
+    startedAt: new Date().toISOString(),
+    completedAt: new Date().toISOString(),
+    error: {
+      code: `${provider}_exception`,
+      message,
+      retryable: true,
+    },
+  };
+}
+
+function unknownTextToSpeechFailure(
+  provider: VoiceProviderKind,
+  error: unknown,
+  providerId: string,
+): TextToSpeechResult {
+  const message = error instanceof Error ? error.message : "Provider failed.";
+
+  return {
+    providerId,
+    status: "failed",
+    startedAt: new Date().toISOString(),
+    completedAt: new Date().toISOString(),
+    error: {
+      code: `${provider}_exception`,
+      message,
+      retryable: true,
+    },
+  };
+}
+
+export async function runAdapterDrivenVoiceSession({
+  runtime,
+  adapters,
+  audio = new Uint8Array(),
+  context,
+  responseTextForTranscript = defaultVoiceResponseTextForTranscript,
+  onProgress,
+}: AdapterDrivenVoiceSessionInput): Promise<AdapterDrivenVoiceSessionResult> {
+  let currentRuntime = createVoiceSessionRuntimeSnapshot({
+    ...(runtime ?? {}),
+    providers: voiceSessionProviderAvailabilityForAdapters(adapters),
+  });
+  let transcript = "";
+  let responseText = "";
+  const progress = (
+    nextRuntime: VoiceSessionRuntimeSnapshot,
+  ): VoiceSessionRuntimeSnapshot => {
+    currentRuntime = nextRuntime;
+    onProgress?.({
+      runtime: currentRuntime,
+      transcript,
+      responseText,
+    });
+
+    return currentRuntime;
+  };
+
+  progress(transitionVoiceSession(currentRuntime, { type: "start_listening" }));
+
+  if (currentRuntime.state !== "listening" || !adapters.speechToText) {
+    return {
+      runtime: currentRuntime,
+      transcript,
+      responseText,
+    };
+  }
+
+  const speechToTextResult = await adapters.speechToText
+    .transcribe({ audio }, context)
+    .catch((error) =>
+      unknownSpeechToTextFailure(
+        "speechToText",
+        error,
+        adapters.speechToText!.providerId,
+      ),
+    );
+
+  if (speechToTextResult.status === "failed" || speechToTextResult.error) {
+    progress(
+      transitionVoiceSession(
+        currentRuntime,
+        failedVoiceAdapterEvent("speechToText", speechToTextResult),
+      ),
+    );
+
+    return {
+      runtime: currentRuntime,
+      transcript,
+      responseText,
+      speechToTextResult,
+    };
+  }
+
+  transcript = speechToTextResult.transcript ?? "";
+  progress(transitionVoiceSession(currentRuntime, { type: "start_thinking" }));
+  responseText = responseTextForTranscript(transcript);
+  const speakingRuntime = progress(
+    transitionVoiceSession(currentRuntime, { type: "start_speaking" }),
+  );
+
+  if (speakingRuntime.state !== "speaking" || !adapters.textToSpeech) {
+    return {
+      runtime: currentRuntime,
+      transcript,
+      responseText,
+      speechToTextResult,
+    };
+  }
+
+  const textToSpeechResult = await adapters.textToSpeech
+    .speak({ text: responseText }, context)
+    .catch((error) =>
+      unknownTextToSpeechFailure(
+        "textToSpeech",
+        error,
+        adapters.textToSpeech!.providerId,
+      ),
+    );
+
+  if (textToSpeechResult.status === "failed" || textToSpeechResult.error) {
+    progress(
+      transitionVoiceSession(
+        currentRuntime,
+        failedVoiceAdapterEvent("textToSpeech", textToSpeechResult),
+      ),
+    );
+
+    return {
+      runtime: currentRuntime,
+      transcript,
+      responseText,
+      speechToTextResult,
+      textToSpeechResult,
+    };
+  }
+
+  progress(transitionVoiceSession(currentRuntime, { type: "complete" }));
+
+  return {
+    runtime: currentRuntime,
+    transcript,
+    responseText,
+    speechToTextResult,
+    textToSpeechResult,
+  };
 }
 
 type MockAdapterOptions = {
