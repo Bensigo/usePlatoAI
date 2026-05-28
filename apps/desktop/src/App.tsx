@@ -127,6 +127,7 @@ import {
   interruptVoiceSessionSnapshot,
   nextMockVoiceSnapshot,
   productionVoiceProgressSnapshot,
+  setCancelledVoiceInteractionMutedSnapshot,
   textFallbackResponseSnapshot,
   textFallbackThinkingSnapshot,
   productionVoiceListeningSnapshot,
@@ -2425,13 +2426,18 @@ export function App({
   }
 
   function setVoiceInteractionMuted(isMuted: boolean) {
+    const cancelledActiveAdapterSession =
+      isMuted && activeAdapterVoiceSession.current !== null;
+
     if (isMuted) {
       stopActiveAdapterVoiceSession("user_muted");
       correctionPromptRequestId.current += 1;
     }
 
     setVoiceInteraction((current) =>
-      setVoiceInteractionMutedSnapshot(current, isMuted),
+      cancelledActiveAdapterSession
+        ? setCancelledVoiceInteractionMutedSnapshot(current)
+        : setVoiceInteractionMutedSnapshot(current, isMuted),
     );
   }
 

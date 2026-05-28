@@ -123,6 +123,7 @@ import {
   presenceLabelForState,
   productionVoiceListeningSnapshot,
   productionVoiceProgressSnapshot,
+  setCancelledVoiceInteractionMutedSnapshot,
   setVoiceInteractionMutedSnapshot,
   interruptVoiceSessionSnapshot,
   textFallbackResponseSnapshot,
@@ -2041,6 +2042,40 @@ describe("desktop app shell", () => {
     expect(unmuted.sessionState).toBe("listening");
     expect(interrupted.sessionState).toBe("interrupted");
     expect(restarted.sessionState).toBe("listening");
+  });
+
+  it("does not restore cancelled adapter sessions after unmuting", () => {
+    const availableRuntime = {
+      ...defaultVoiceInteractionSnapshot.runtime,
+      providers: {
+        speechToText: { providerId: "prod-stt", available: true },
+        textToSpeech: { providerId: "prod-tts", available: true },
+      },
+    };
+    const listening = productionVoiceListeningSnapshot({
+      ...defaultVoiceInteractionSnapshot,
+      runtime: availableRuntime,
+    });
+    const muted = setCancelledVoiceInteractionMutedSnapshot(listening);
+    const unmuted = setVoiceInteractionMutedSnapshot(muted, false);
+
+    expect(muted).toMatchObject({
+      sessionState: "muted",
+      isMuted: true,
+      runtime: {
+        state: "muted",
+        previousState: "idle",
+      },
+    });
+    expect(unmuted).toMatchObject({
+      sessionState: "idle",
+      isMuted: false,
+      response: "Ready for voice or text.",
+      runtime: {
+        state: "idle",
+        previousState: undefined,
+      },
+    });
   });
 
   it("drives thinking and speaking avatar states from the voice loop", () => {
