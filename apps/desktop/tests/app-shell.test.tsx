@@ -1223,6 +1223,11 @@ describe("desktop app shell", () => {
     expect(source).toContain("function activateVoiceListening()");
     expect(source).toContain("onStartVoiceInteraction={activateVoiceListening}");
     expect(source).toContain("runAdapterDrivenVoiceSession");
+    expect(source).toContain('stopActiveAdapterVoiceSession("replacement_start")');
+    expect(source).toContain("context: { signal: controller.signal }");
+    expect(source).toContain("isSessionActive");
+    expect(source).toContain('stopActiveAdapterVoiceSession("user_stop")');
+    expect(source).toContain('stopActiveAdapterVoiceSession("user_muted")');
     expect(source).toContain("canStartVoiceInteractionWithAudio(nextSnapshot)");
     expect(source).not.toContain("onStartVoiceInteraction={startVoiceInteraction}");
     expect(source).not.toContain("startupSoundAttempted");

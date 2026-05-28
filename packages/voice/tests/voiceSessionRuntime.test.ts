@@ -9,6 +9,8 @@ import {
   runAdapterDrivenVoiceSession,
   transitionVoiceSession,
   voiceSessionProviderAvailabilityForAdapters,
+  type SpeechToTextAdapter,
+  type TextToSpeechAdapter,
   type VoiceSessionProviderAvailability,
 } from "../src";
 
@@ -287,6 +289,98 @@ describe("voice session runtime", () => {
         message: "Microphone failed.",
       },
     });
+  });
+
+  it("cancels before handing speech-to-text output to text-to-speech", async () => {
+    const progressStates: string[] = [];
+    let isActive = true;
+    let speakCalls = 0;
+    const speechToText: SpeechToTextAdapter = {
+      providerId: "prod-stt",
+      async transcribe() {
+        isActive = false;
+        return {
+          providerId: "prod-stt",
+          status: "stopped",
+          transcript: "do not speak this",
+          startedAt: "2026-01-01T00:00:00.000Z",
+          completedAt: "2026-01-01T00:00:00.000Z",
+        };
+      },
+      async stop() {
+        return {
+          providerId: "prod-stt",
+          status: "stopped",
+          startedAt: "2026-01-01T00:00:00.000Z",
+          completedAt: "2026-01-01T00:00:00.000Z",
+        };
+      },
+    };
+    const textToSpeech: TextToSpeechAdapter = {
+      providerId: "prod-tts",
+      async speak() {
+        speakCalls += 1;
+        return {
+          providerId: "prod-tts",
+          status: "stopped",
+          startedAt: "2026-01-01T00:00:00.000Z",
+          completedAt: "2026-01-01T00:00:00.000Z",
+        };
+      },
+      async stop() {
+        return {
+          providerId: "prod-tts",
+          status: "stopped",
+          startedAt: "2026-01-01T00:00:00.000Z",
+          completedAt: "2026-01-01T00:00:00.000Z",
+        };
+      },
+    };
+
+    const result = await runAdapterDrivenVoiceSession({
+      adapters: { speechToText, textToSpeech },
+      isSessionActive: () => isActive,
+      onProgress: ({ runtime }) => {
+        progressStates.push(runtime.state);
+      },
+    });
+
+    expect(progressStates).toEqual(["listening", "interrupted"]);
+    expect(result.runtime).toMatchObject({
+      state: "interrupted",
+      interruptedReason: "session_cancelled",
+    });
+    expect(result.transcript).toBe("do not speak this");
+    expect(speakCalls).toBe(0);
+  });
+
+  it("treats adapter abort results as interrupted sessions", async () => {
+    const progressStates: string[] = [];
+    const controller = new AbortController();
+
+    controller.abort();
+
+    const result = await runAdapterDrivenVoiceSession({
+      adapters: {
+        speechToText: createMockSpeechToTextAdapter({
+          providerId: "prod-stt",
+        }),
+        textToSpeech: createMockTextToSpeechAdapter({
+          providerId: "prod-tts",
+        }),
+      },
+      context: { signal: controller.signal },
+      onProgress: ({ runtime }) => {
+        progressStates.push(runtime.state);
+      },
+    });
+
+    expect(progressStates).toEqual(["listening", "interrupted"]);
+    expect(result.runtime).toMatchObject({
+      state: "interrupted",
+      interruptedReason: "session_cancelled",
+    });
+    expect(result.textToSpeechResult).toBeUndefined();
   });
 
   it("derives provider availability from installed adapters", () => {
