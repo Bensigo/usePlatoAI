@@ -1107,7 +1107,11 @@ export function VoiceInteractionPanel({
   const isActive =
     voiceInteraction.sessionState === "listening" ||
     voiceInteraction.sessionState === "thinking" ||
-    voiceInteraction.sessionState === "speaking";
+    voiceInteraction.sessionState === "speaking" ||
+    (voiceInteraction.sessionState === "muted" &&
+      (voiceInteraction.runtime.previousState === "listening" ||
+        voiceInteraction.runtime.previousState === "thinking" ||
+        voiceInteraction.runtime.previousState === "speaking"));
   const isError =
     voiceInteraction.sessionState === "error" ||
     voiceInteraction.sessionState === "unavailable";

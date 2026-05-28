@@ -183,4 +183,43 @@ describe("voice session runtime", () => {
       isMuted: false,
     });
   });
+
+  it("keeps muted active sessions interruptible and completable", () => {
+    const listening = transitionVoiceSession(
+      createVoiceSessionRuntimeSnapshot({ providers: availableProviders }),
+      { type: "start_listening" },
+    );
+    const mutedListening = transitionVoiceSession(listening, {
+      type: "set_muted",
+      muted: true,
+    });
+    const interrupted = transitionVoiceSession(mutedListening, {
+      type: "interrupt",
+      reason: "user_stop",
+    });
+
+    const thinking = transitionVoiceSession(listening, {
+      type: "start_thinking",
+    });
+    const mutedThinking = transitionVoiceSession(thinking, {
+      type: "set_muted",
+      muted: true,
+    });
+    const complete = transitionVoiceSession(mutedThinking, {
+      type: "complete",
+    });
+
+    expect(interrupted).toMatchObject({
+      state: "interrupted",
+      activeProvider: "speechToText",
+      interruptedReason: "user_stop",
+      isMuted: true,
+    });
+    expect(complete).toMatchObject({
+      state: "idle",
+      activeProvider: undefined,
+      isMuted: true,
+      previousState: undefined,
+    });
+  });
 });
