@@ -2080,8 +2080,14 @@ export function App({
   );
   const areNativeCursorEventsIgnored = useRef<boolean | null>(null);
   const correctionPromptRequestId = useRef(0);
+  const activeAdapterVoiceSession = useRef<{
+    requestId: number;
+    controller: AbortController;
+    adapters: VoiceSessionAdapters;
+  } | null>(null);
   const previousVoiceInteractionSessionState =
     useRef<VoiceSessionState>(voiceInteraction.sessionState);
+  const latestVoiceInteraction = useRef(voiceInteraction);
   const latestAgentResponseText = useRef(voiceInteraction.response);
   const isPresenceDraggable = presenceDragMode === "draggable";
 
@@ -2113,6 +2119,24 @@ export function App({
     }
 
     voiceTimers.current = [];
+  }
+
+  function stopActiveAdapterVoiceSession(reason: string) {
+    const activeSession = activeAdapterVoiceSession.current;
+
+    if (!activeSession) {
+      return;
+    }
+
+    activeSession.controller.abort();
+    activeAdapterVoiceSession.current = null;
+
+    void activeSession.adapters.speechToText
+      ?.stop({ reason })
+      .catch(() => undefined);
+    void activeSession.adapters.textToSpeech
+      ?.stop({ reason })
+      .catch(() => undefined);
   }
 
   function clearTaskTimers() {
@@ -2150,6 +2174,8 @@ export function App({
   }, [tasks]);
 
   useEffect(() => {
+    latestVoiceInteraction.current = voiceInteraction;
+
     if (voiceInteraction.sessionState === "speaking") {
       latestAgentResponseText.current = voiceInteraction.response;
     }
@@ -2245,11 +2271,23 @@ export function App({
 
   function startVoiceInteraction() {
     clearVoiceTimers();
+    stopActiveAdapterVoiceSession("replacement_start");
     const requestId = correctionPromptRequestId.current + 1;
     correctionPromptRequestId.current = requestId;
+    const controller = new AbortController();
+
+    activeAdapterVoiceSession.current = {
+      requestId,
+      controller,
+      adapters: productionVoiceAdapters,
+    };
 
     void runAdapterDrivenVoiceSession({
       adapters: productionVoiceAdapters,
+      context: { signal: controller.signal },
+      isSessionActive: () =>
+        activeAdapterVoiceSession.current?.requestId === requestId &&
+        !latestVoiceInteraction.current.isMuted,
       responseTextForTranscript: (transcript) =>
         transcript
           ? `Voice input captured: ${transcript}`
@@ -2267,6 +2305,10 @@ export function App({
           );
         });
       },
+    }).finally(() => {
+      if (activeAdapterVoiceSession.current?.requestId === requestId) {
+        activeAdapterVoiceSession.current = null;
+      }
     });
   }
 
@@ -2372,12 +2414,24 @@ export function App({
 
   function stopVoiceInteraction() {
     clearVoiceTimers();
+    stopActiveAdapterVoiceSession("user_stop");
     correctionPromptRequestId.current += 1;
     setVoiceInteraction((current) =>
       idleVoiceInteractionSnapshot(
         interruptVoiceSessionSnapshot(current),
         "Voice session stopped.",
       ),
+    );
+  }
+
+  function setVoiceInteractionMuted(isMuted: boolean) {
+    if (isMuted) {
+      stopActiveAdapterVoiceSession("user_muted");
+      correctionPromptRequestId.current += 1;
+    }
+
+    setVoiceInteraction((current) =>
+      setVoiceInteractionMutedSnapshot(current, isMuted),
     );
   }
 
@@ -3166,6 +3220,7 @@ export function App({
   useEffect(
     () => () => {
       clearVoiceTimers();
+      stopActiveAdapterVoiceSession("component_unmounted");
 
       if (avatarReactionTimer.current) {
         clearTimeout(avatarReactionTimer.current);
@@ -3255,11 +3310,7 @@ export function App({
             voiceInteraction={voiceInteraction}
             onStartVoiceInteraction={activateVoiceListening}
             onStopVoiceInteraction={stopVoiceInteraction}
-            onMuteChange={(isMuted) =>
-              setVoiceInteraction((current) =>
-                setVoiceInteractionMutedSnapshot(current, isMuted),
-              )
-            }
+            onMuteChange={setVoiceInteractionMuted}
             onTextFallbackChange={(fallbackText) =>
               setVoiceInteraction((current) => ({ ...current, fallbackText }))
             }

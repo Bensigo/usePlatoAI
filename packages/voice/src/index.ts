@@ -419,6 +419,7 @@ export type AdapterDrivenVoiceSessionInput = {
   adapters: VoiceSessionAdapters;
   audio?: Uint8Array;
   context?: VoiceOperationContext;
+  isSessionActive?: () => boolean;
   responseTextForTranscript?: (transcript: string) => string;
   onProgress?: (progress: AdapterDrivenVoiceSessionProgress) => void;
 };
@@ -442,6 +443,13 @@ function failedVoiceAdapterEvent(
       retryable: true,
     },
   };
+}
+
+function isAdapterAbortResult(result: VoiceAdapterResultBase): boolean {
+  return (
+    result.status === "stopped" &&
+    result.error?.code === "operation_aborted"
+  );
 }
 
 function unknownSpeechToTextFailure(
@@ -489,6 +497,7 @@ export async function runAdapterDrivenVoiceSession({
   adapters,
   audio = new Uint8Array(),
   context,
+  isSessionActive,
   responseTextForTranscript = defaultVoiceResponseTextForTranscript,
   onProgress,
 }: AdapterDrivenVoiceSessionInput): Promise<AdapterDrivenVoiceSessionResult> {
@@ -509,6 +518,22 @@ export async function runAdapterDrivenVoiceSession({
     });
 
     return currentRuntime;
+  };
+  const sessionStillActive = () =>
+    context?.signal?.aborted !== true && (isSessionActive?.() ?? true);
+  const interruptIfInactive = (): boolean => {
+    if (sessionStillActive()) {
+      return false;
+    }
+
+    progress(
+      transitionVoiceSession(currentRuntime, {
+        type: "interrupt",
+        reason: "session_cancelled",
+      }),
+    );
+
+    return true;
   };
 
   progress(transitionVoiceSession(currentRuntime, { type: "start_listening" }));
@@ -531,6 +556,22 @@ export async function runAdapterDrivenVoiceSession({
       ),
     );
 
+  if (isAdapterAbortResult(speechToTextResult)) {
+    progress(
+      transitionVoiceSession(currentRuntime, {
+        type: "interrupt",
+        reason: "session_cancelled",
+      }),
+    );
+
+    return {
+      runtime: currentRuntime,
+      transcript,
+      responseText,
+      speechToTextResult,
+    };
+  }
+
   if (speechToTextResult.status === "failed" || speechToTextResult.error) {
     progress(
       transitionVoiceSession(
@@ -548,8 +589,26 @@ export async function runAdapterDrivenVoiceSession({
   }
 
   transcript = speechToTextResult.transcript ?? "";
+  if (interruptIfInactive()) {
+    return {
+      runtime: currentRuntime,
+      transcript,
+      responseText,
+      speechToTextResult,
+    };
+  }
+
   progress(transitionVoiceSession(currentRuntime, { type: "start_thinking" }));
   responseText = responseTextForTranscript(transcript);
+  if (interruptIfInactive()) {
+    return {
+      runtime: currentRuntime,
+      transcript,
+      responseText,
+      speechToTextResult,
+    };
+  }
+
   const speakingRuntime = progress(
     transitionVoiceSession(currentRuntime, { type: "start_speaking" }),
   );
@@ -573,6 +632,23 @@ export async function runAdapterDrivenVoiceSession({
       ),
     );
 
+  if (isAdapterAbortResult(textToSpeechResult)) {
+    progress(
+      transitionVoiceSession(currentRuntime, {
+        type: "interrupt",
+        reason: "session_cancelled",
+      }),
+    );
+
+    return {
+      runtime: currentRuntime,
+      transcript,
+      responseText,
+      speechToTextResult,
+      textToSpeechResult,
+    };
+  }
+
   if (textToSpeechResult.status === "failed" || textToSpeechResult.error) {
     progress(
       transitionVoiceSession(
@@ -581,6 +657,16 @@ export async function runAdapterDrivenVoiceSession({
       ),
     );
 
+    return {
+      runtime: currentRuntime,
+      transcript,
+      responseText,
+      speechToTextResult,
+      textToSpeechResult,
+    };
+  }
+
+  if (interruptIfInactive()) {
     return {
       runtime: currentRuntime,
       transcript,
