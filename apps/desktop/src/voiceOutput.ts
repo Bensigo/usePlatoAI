@@ -11,7 +11,7 @@ export type VoiceOutputSession = {
   statusLabel: string;
 };
 
-export const mockVoiceResponse =
+export const sampleVoiceResponse =
   "I can keep the spoken response quiet and leave the text fallback visible.";
 
 export function createVoiceOutputSession(): VoiceOutputSession {
@@ -55,7 +55,7 @@ export function setVoiceOutputMuted(
   };
 }
 
-export function startMockSpeech(
+export function startVoiceOutputSpeech(
   session: VoiceOutputSession,
   text: string,
 ): VoiceOutputSession {
@@ -76,11 +76,11 @@ export function startMockSpeech(
     presenceState: "speaking",
     spokenText: text,
     textFallback: text,
-    statusLabel: "Speaking mocked voice output",
+    statusLabel: "Speaking voice output",
   };
 }
 
-export function stopMockSpeech(session: VoiceOutputSession): VoiceOutputSession {
+export function stopVoiceOutputSpeech(session: VoiceOutputSession): VoiceOutputSession {
   if (session.phase !== "speaking") {
     return {
       ...session,
