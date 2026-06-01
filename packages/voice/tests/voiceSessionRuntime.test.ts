@@ -116,6 +116,30 @@ describe("voice session runtime", () => {
     expect(adapters.calls).not.toContain("playback.play");
   });
 
+  it("allows a new session immediately after interrupt even if a provider ignores abort", async () => {
+    const adapters = createVoiceSessionTestAdapters({
+      captureDelayMs: 50,
+      captureIgnoresAbort: true,
+      capturedAudio: new Uint8Array([1]),
+    });
+    const runtime = createVoiceSessionRuntime({ adapters });
+
+    const staleRun = runtime.startVoice();
+    await adapters.waitForCall("microphone.capture");
+    await runtime.interrupt("user_interrupt");
+
+    const nextRun = runtime.startVoice();
+
+    await staleRun;
+    await nextRun;
+
+    expect(runtime.getSnapshot().state).toBe("idle");
+    expect(adapters.calls).toContain("microphone.stop:user_interrupt");
+    expect(
+      adapters.calls.filter((call) => call === "microphone.capture"),
+    ).toHaveLength(2);
+  });
+
   it("reports unavailable providers without reporting success", async () => {
     const adapters = createVoiceSessionTestAdapters({
       availability: {

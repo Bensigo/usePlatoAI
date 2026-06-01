@@ -16,6 +16,7 @@ type TestAdaptersOptions = {
   generatedResponse?: string;
   speechAudio?: Uint8Array;
   captureDelayMs?: number;
+  captureIgnoresAbort?: boolean;
   sttError?: string;
 };
 
@@ -97,7 +98,10 @@ export function createVoiceSessionTestAdapters(
   const microphone: VoiceMicrophoneInputAdapter = {
     async capture(context) {
       record("microphone.capture");
-      await waitForDelay(options.captureDelayMs ?? 0, context?.signal);
+      await waitForDelay(
+        options.captureDelayMs ?? 0,
+        options.captureIgnoresAbort ? undefined : context?.signal,
+      );
       return successful({
         audio: options.capturedAudio ?? new Uint8Array([1]),
       });

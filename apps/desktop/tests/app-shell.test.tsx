@@ -1145,9 +1145,10 @@ describe("desktop app shell", () => {
 
     expect(markup).toContain("Voice surface states");
     expect(markup).toContain("Local voice");
-    expect(markup).toContain("runtime");
+    expect(markup).toContain("runtime ready");
     expect(markup).toContain("Cloud voice");
-    expect(markup).toContain("provider checked");
+    expect(markup).toContain("provider not configured");
+    expect(markup).toContain("unavailable until provider configured");
     expect(markup).toContain("unavailable until enabled");
     expect(markup).toContain("Start listening");
     expect(markup).toContain("Mute voice output");

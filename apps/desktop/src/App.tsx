@@ -1117,18 +1117,20 @@ export function VoiceInteractionPanel({
         states={[
           {
             label: "Local voice",
-            value: isUnavailable ? "unavailable" : "runtime",
-            tone: isUnavailable ? "unavailable" : "configured",
+            value: "runtime ready",
+            tone: "configured",
           },
           {
             label: "Cloud voice",
-            value: isUnavailable ? "provider unavailable" : "provider checked",
-            tone: isUnavailable ? "unavailable" : "configured",
+            value: "provider not configured",
+            tone: "unavailable",
           },
           {
             label: "Output",
-            value: voiceInteraction.isMuted ? "muted" : "available",
-            tone: voiceInteraction.isMuted ? "muted" : "configured",
+            value: voiceInteraction.isMuted
+              ? "muted"
+              : "unavailable until provider configured",
+            tone: voiceInteraction.isMuted ? "muted" : "unavailable",
           },
           {
             label: "Session",

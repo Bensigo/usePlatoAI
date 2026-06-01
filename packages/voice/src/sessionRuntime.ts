@@ -203,8 +203,23 @@ export function createVoiceSessionRuntime({
     );
   }
 
-  async function checkAvailability(context: VoiceRuntimeOperationContext) {
+  function assertCurrentRun(
+    runId: number,
+    context: VoiceRuntimeOperationContext,
+  ) {
+    assertNotAborted(context);
+
+    if (activeRunId !== runId) {
+      throw new VoiceSessionInterruptedError();
+    }
+  }
+
+  async function checkAvailability(
+    runId: number,
+    context: VoiceRuntimeOperationContext,
+  ) {
     const availability = await adapters.availability.check(context);
+    assertCurrentRun(runId, context);
 
     if (availability.status === "available") {
       return true;
@@ -256,7 +271,10 @@ export function createVoiceSessionRuntime({
   }
 
   async function runWithController(
-    runner: (context: VoiceRuntimeOperationContext) => Promise<void>,
+    runner: (
+      context: VoiceRuntimeOperationContext,
+      runId: number,
+    ) => Promise<void>,
   ) {
     if (!canStartFromCurrentState()) {
       throw new Error(
@@ -273,15 +291,15 @@ export function createVoiceSessionRuntime({
     activeController = controller;
 
     try {
-      const isAvailable = await checkAvailability(context);
-      assertNotAborted(context);
+      const isAvailable = await checkAvailability(runId, context);
+      assertCurrentRun(runId, context);
 
       if (!isAvailable) {
         return getSnapshot();
       }
 
-      await runner(context);
-      assertNotAborted(context);
+      await runner(context, runId);
+      assertCurrentRun(runId, context);
     } catch (error) {
       if (isAbortError(error) || interruptedRunIds.has(runId)) {
         return getSnapshot();
@@ -304,7 +322,7 @@ export function createVoiceSessionRuntime({
   }
 
   async function startVoice() {
-    return runWithController(async (context) => {
+    return runWithController(async (context, runId) => {
       emit({
         state: "listening",
         activationSource: "voice",
@@ -315,7 +333,7 @@ export function createVoiceSessionRuntime({
 
       const captured = requireSuccess(await adapters.microphone.capture(context));
 
-      assertNotAborted(context);
+      assertCurrentRun(runId, context);
       emit({ state: "transcribing" });
 
       const transcribed = requireSuccess(
@@ -325,13 +343,13 @@ export function createVoiceSessionRuntime({
         ),
       );
 
-      assertNotAborted(context);
+      assertCurrentRun(runId, context);
       emit({
         state: "thinking",
         transcript: transcribed.transcript,
       });
 
-      await completeResponse(transcribed.transcript, "voice", context);
+      await completeResponse(transcribed.transcript, "voice", context, runId);
     });
   }
 
@@ -339,6 +357,7 @@ export function createVoiceSessionRuntime({
     transcript: string,
     activationSource: VoiceActivationSource,
     context: VoiceRuntimeOperationContext,
+    runId: number,
   ) {
     const response = requireSuccess(
       await adapters.responseGeneration.generate(
@@ -347,7 +366,7 @@ export function createVoiceSessionRuntime({
       ),
     );
 
-    assertNotAborted(context);
+    assertCurrentRun(runId, context);
     emit({
       responseText: response.text,
     });
@@ -361,12 +380,12 @@ export function createVoiceSessionRuntime({
       await adapters.textToSpeech.synthesize({ text: response.text }, context),
     );
 
-    assertNotAborted(context);
+    assertCurrentRun(runId, context);
     emit({ state: "speaking" });
 
     requireSuccess(await adapters.playback.play({ audio: speech.audio }, context));
 
-    assertNotAborted(context);
+    assertCurrentRun(runId, context);
     emit({ state: "idle" });
   }
 
@@ -385,7 +404,7 @@ export function createVoiceSessionRuntime({
       return getSnapshot();
     }
 
-    return runWithController(async (context) => {
+    return runWithController(async (context, runId) => {
       emit({
         state: "thinking",
         activationSource: "text",
@@ -394,7 +413,7 @@ export function createVoiceSessionRuntime({
         error: null,
       });
 
-      await completeResponse(trimmedText, "text", context);
+      await completeResponse(trimmedText, "text", context, runId);
     });
   }
 
@@ -405,6 +424,8 @@ export function createVoiceSessionRuntime({
 
     const runId = activeRunId;
     activeController.abort();
+    activeController = null;
+    activeRunId = runId + 1;
     await stopAdapters({ reason });
     markInterrupted(runId);
     return getSnapshot();
