@@ -2,6 +2,6 @@
   "schemaVersion": 1,
   "runner": {
     "name": "codex",
-    "command": "codex exec -"
+    "command": "codex exec --dangerously-bypass-approvals-and-sandbox -"
   }
 }
