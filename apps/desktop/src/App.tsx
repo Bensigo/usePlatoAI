@@ -3205,7 +3205,7 @@ export function App({
             </div>
             <p className="voice-fallback">
               {voiceInteraction.error ??
-                "Voice uses configured runtime providers only; text fallback remains available when providers are unavailable."}
+                "Voice and text responses use configured runtime providers; typed input remains visible when providers are unavailable."}
             </p>
             <div className="voice-controls">
               <button

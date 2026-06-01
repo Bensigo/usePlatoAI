@@ -156,12 +156,18 @@ export function voiceInteractionSnapshotFromRuntime(
   runtimeSnapshot: RuntimeVoiceSessionSnapshot,
   currentSnapshot: VoiceInteractionSnapshot = defaultVoiceInteractionSnapshot,
 ): VoiceInteractionSnapshot {
+  const submittedFallbackText =
+    runtimeSnapshot.activationSource === "voice"
+      ? null
+      : currentSnapshot.submittedFallbackText;
+
   return {
     ...currentSnapshot,
     sessionState: runtimeSnapshot.state,
     activationSource: runtimeSnapshot.activationSource,
     isMuted: runtimeSnapshot.isMuted,
     transcript: runtimeSnapshot.transcript,
+    submittedFallbackText,
     response:
       runtimeSnapshot.error?.message ||
       runtimeSnapshot.responseText ||

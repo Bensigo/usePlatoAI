@@ -122,6 +122,7 @@ import {
   presenceLabelForState,
   textFallbackResponseSnapshot,
   textFallbackThinkingSnapshot,
+  voiceInteractionSnapshotFromRuntime,
   voiceSessionStateFrom,
 } from "../src/voiceInteraction";
 import {
@@ -1158,6 +1159,9 @@ describe("desktop app shell", () => {
     expect(markup).toContain("Error");
     expect(markup).toContain("Text fallback");
     expect(markup).toContain("Ready for voice or text.");
+    expect(markup).toContain(
+      "Voice and text responses use configured runtime providers",
+    );
     expect(markup).not.toContain("OpenAI credential");
   });
 
@@ -1984,6 +1988,31 @@ describe("desktop app shell", () => {
     expect(textSpeaking.response).not.toContain("Next draft");
     expect(textSpeaking.companionPrompt).toContain("Submitted request");
     expect(textSpeaking.companionPrompt).not.toContain("Next draft");
+  });
+
+  it("clears stale submitted text fallback when voice runtime snapshots arrive", () => {
+    const previousTextFallback = textFallbackThinkingSnapshot(
+      defaultVoiceInteractionSnapshot,
+      "Previous typed request",
+    );
+    const nextVoiceSnapshot = voiceInteractionSnapshotFromRuntime(
+      {
+        state: "listening",
+        activationSource: "voice",
+        isMuted: false,
+        transcript: "",
+        responseText: "",
+        error: null,
+        avatarState: "listening",
+      },
+      previousTextFallback,
+    );
+
+    expect(previousTextFallback.submittedFallbackText).toBe(
+      "Previous typed request",
+    );
+    expect(nextVoiceSnapshot.activationSource).toBe("voice");
+    expect(nextVoiceSnapshot.submittedFallbackText).toBeNull();
   });
 
   it("clears stale companion prompts outside active response snapshots", () => {
