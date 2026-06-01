@@ -160,6 +160,30 @@ export function voiceInteractionSnapshotFromRuntime(
     runtimeSnapshot.activationSource === "voice"
       ? null
       : currentSnapshot.submittedFallbackText;
+  const fallbackResponse = (() => {
+    if (runtimeSnapshot.activationSource === "voice") {
+      switch (runtimeSnapshot.state) {
+        case "listening":
+          return "Waiting for speech.";
+        case "transcribing":
+          return "Transcribing voice input.";
+        case "thinking":
+          return "Thinking through the voice request.";
+        case "interrupted":
+          return "Voice operation was interrupted.";
+        case "idle":
+          return "Ready for voice or text.";
+        default:
+          return currentSnapshot.response;
+      }
+    }
+
+    if (runtimeSnapshot.state === "thinking") {
+      return "Reading text fallback.";
+    }
+
+    return currentSnapshot.response;
+  })();
 
   return {
     ...currentSnapshot,
@@ -171,7 +195,7 @@ export function voiceInteractionSnapshotFromRuntime(
     response:
       runtimeSnapshot.error?.message ||
       runtimeSnapshot.responseText ||
-      currentSnapshot.response,
+      fallbackResponse,
     companionPrompt: null,
     error: runtimeSnapshot.error?.message ?? null,
   };

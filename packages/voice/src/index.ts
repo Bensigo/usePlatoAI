@@ -1,6 +1,7 @@
 export type {
   VoiceAudioPlaybackAdapter,
   VoiceMicrophoneInputAdapter,
+  VoiceProviderAvailabilityInput,
   VoiceProviderAvailabilityAdapter,
   VoiceProviderAvailabilityResult,
   VoiceResponseGenerationAdapter,

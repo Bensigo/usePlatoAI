@@ -12,6 +12,11 @@ export type VoiceRuntimeAdapterError = {
   retryable: boolean;
 };
 
+export type VoiceProviderAvailabilityInput = {
+  activationSource: "voice" | "text";
+  outputMode: "audible" | "muted";
+};
+
 export type VoiceProviderAvailabilityResult =
   | {
       status: "available";
@@ -30,6 +35,7 @@ export type VoiceProviderAvailabilityResult =
 
 export type VoiceProviderAvailabilityAdapter = {
   check: (
+    input: VoiceProviderAvailabilityInput,
     context?: VoiceRuntimeOperationContext,
   ) => Promise<VoiceProviderAvailabilityResult>;
 };

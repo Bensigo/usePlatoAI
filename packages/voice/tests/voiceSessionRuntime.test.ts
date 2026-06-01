@@ -41,7 +41,7 @@ describe("voice session runtime", () => {
       isMuted: false,
     });
     expect(adapters.calls).toEqual([
-      "availability.check",
+      "availability.check:voice:audible",
       "microphone.capture",
       "stt.transcribe",
       "response.generate",
@@ -161,7 +161,7 @@ describe("voice session runtime", () => {
         retryable: true,
       },
     });
-    expect(adapters.calls).toEqual(["availability.check"]);
+    expect(adapters.calls).toEqual(["availability.check:voice:audible"]);
   });
 
   it("reports provider errors without playback or success", async () => {
@@ -203,7 +203,7 @@ describe("voice session runtime", () => {
       responseText: "Text fallback only.",
     });
     expect(adapters.calls).toEqual([
-      "availability.check",
+      "availability.check:voice:muted",
       "microphone.capture",
       "stt.transcribe",
       "response.generate",
@@ -227,7 +227,7 @@ describe("voice session runtime", () => {
     expect(runtime.getSnapshot()).not.toHaveProperty("history");
     expect(runtime.getSnapshot()).not.toHaveProperty("rawAudio");
     expect(adapters.calls).toEqual([
-      "availability.check",
+      "availability.check:text:audible",
       "response.generate",
       "tts.synthesize",
       "playback.play",

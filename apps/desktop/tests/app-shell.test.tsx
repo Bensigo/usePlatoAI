@@ -1992,7 +1992,10 @@ describe("desktop app shell", () => {
 
   it("clears stale submitted text fallback when voice runtime snapshots arrive", () => {
     const previousTextFallback = textFallbackThinkingSnapshot(
-      defaultVoiceInteractionSnapshot,
+      {
+        ...defaultVoiceInteractionSnapshot,
+        response: "Previous provider response.",
+      },
       "Previous typed request",
     );
     const nextVoiceSnapshot = voiceInteractionSnapshotFromRuntime(
@@ -2013,6 +2016,7 @@ describe("desktop app shell", () => {
     );
     expect(nextVoiceSnapshot.activationSource).toBe("voice");
     expect(nextVoiceSnapshot.submittedFallbackText).toBeNull();
+    expect(nextVoiceSnapshot.response).toBe("Waiting for speech.");
   });
 
   it("clears stale companion prompts outside active response snapshots", () => {

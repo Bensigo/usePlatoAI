@@ -165,8 +165,10 @@ export function createVoiceSessionTestAdapters(
 
   return {
     availability: {
-      async check() {
-        record("availability.check");
+      async check(input) {
+        record(
+          `availability.check:${input.activationSource}:${input.outputMode}`,
+        );
         return options.availability ?? defaultAvailability;
       },
     },

@@ -1,4 +1,5 @@
 import type {
+  VoiceProviderAvailabilityInput,
   VoiceRuntimeAdapterError,
   VoiceRuntimeAdapterFailure,
   VoiceRuntimeAdapterResult,
@@ -135,7 +136,8 @@ function failureFromAdapter(
   return {
     ...result.error,
     code:
-      result.error.code === "provider_error"
+      result.error.code === "provider_error" ||
+      result.error.code === "provider_unavailable"
         ? result.error.code
         : "provider_error",
   };
@@ -217,8 +219,9 @@ export function createVoiceSessionRuntime({
   async function checkAvailability(
     runId: number,
     context: VoiceRuntimeOperationContext,
+    input: VoiceProviderAvailabilityInput,
   ) {
-    const availability = await adapters.availability.check(context);
+    const availability = await adapters.availability.check(input, context);
     assertCurrentRun(runId, context);
 
     if (availability.status === "available") {
@@ -271,6 +274,7 @@ export function createVoiceSessionRuntime({
   }
 
   async function runWithController(
+    activationSource: VoiceActivationSource,
     runner: (
       context: VoiceRuntimeOperationContext,
       runId: number,
@@ -291,7 +295,10 @@ export function createVoiceSessionRuntime({
     activeController = controller;
 
     try {
-      const isAvailable = await checkAvailability(runId, context);
+      const isAvailable = await checkAvailability(runId, context, {
+        activationSource,
+        outputMode: snapshot.isMuted ? "muted" : "audible",
+      });
       assertCurrentRun(runId, context);
 
       if (!isAvailable) {
@@ -322,7 +329,7 @@ export function createVoiceSessionRuntime({
   }
 
   async function startVoice() {
-    return runWithController(async (context, runId) => {
+    return runWithController("voice", async (context, runId) => {
       emit({
         state: "listening",
         activationSource: "voice",
@@ -404,7 +411,7 @@ export function createVoiceSessionRuntime({
       return getSnapshot();
     }
 
-    return runWithController(async (context, runId) => {
+    return runWithController("text", async (context, runId) => {
       emit({
         state: "thinking",
         activationSource: "text",
