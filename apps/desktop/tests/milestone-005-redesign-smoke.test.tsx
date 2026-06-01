@@ -89,7 +89,8 @@ describe("Milestone 005 redesign smoke coverage", () => {
         "Voice surface states",
         "Start listening",
         "Text fallback",
-        "Desktop audio",
+        "Microphone",
+        "asks on start",
       ],
       settings: [
         "Saved companion settings",

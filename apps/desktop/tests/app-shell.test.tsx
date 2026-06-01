@@ -115,6 +115,7 @@ import {
 } from "../src/soulGuidance";
 import {
   companionPresenceForVoiceState,
+  createDesktopVoiceSessionAdapters,
   companionPromptForInputWithCorrections,
   companionPromptForInput,
   defaultVoiceInteractionSnapshot,
@@ -125,6 +126,10 @@ import {
   voiceInteractionSnapshotFromRuntime,
   voiceSessionStateFrom,
 } from "../src/voiceInteraction";
+import {
+  isVoiceListeningHotkey,
+  voiceListeningHotkeyLabel,
+} from "../src/voiceHotkey";
 import {
   componentStateRules,
   experienceTokenCss,
@@ -1150,7 +1155,8 @@ describe("desktop app shell", () => {
     expect(markup).toContain("Cloud voice");
     expect(markup).toContain("provider not configured");
     expect(markup).toContain("unavailable until provider configured");
-    expect(markup).toContain("unavailable until enabled");
+    expect(markup).toContain("Microphone");
+    expect(markup).toContain("asks on start");
     expect(markup).toContain("Start listening");
     expect(markup).toContain("Mute voice output");
     expect(markup).toContain("Muted");
@@ -1226,6 +1232,95 @@ describe("desktop app shell", () => {
     expect(source).toContain("canStartVoiceInteractionWithAudio(nextSnapshot)");
     expect(source).not.toContain("onStartVoiceInteraction={startVoiceInteraction}");
     expect(source).not.toContain("startupSoundAttempted");
+  });
+
+  it("routes the configured voice hotkey through the same audio activation path", async () => {
+    const source = readFileSync(resolve(process.cwd(), "src/App.tsx"), "utf8");
+
+    expect(voiceListeningHotkeyLabel).toBe("Shift+Command+Space");
+    expect(
+      isVoiceListeningHotkey({
+        altKey: false,
+        code: "Space",
+        ctrlKey: false,
+        key: " ",
+        metaKey: true,
+        repeat: false,
+        shiftKey: true,
+      }),
+    ).toBe(true);
+    expect(
+      isVoiceListeningHotkey({
+        altKey: false,
+        code: "Space",
+        ctrlKey: false,
+        key: " ",
+        metaKey: true,
+        repeat: true,
+        shiftKey: true,
+      }),
+    ).toBe(false);
+    expect(source).toContain("isVoiceListeningHotkey(event)");
+    expect(source).toContain("activateVoiceListening();");
+    expect(source).toContain("setActiveEntry(\"voice\")");
+  });
+
+  it("configures macOS microphone permission copy for real capture", () => {
+    const infoPlistPath = resolve(process.cwd(), "src-tauri/Info.plist");
+    const infoPlist = readFileSync(infoPlistPath, "utf8");
+
+    expect(existsSync(infoPlistPath)).toBe(true);
+    expect(infoPlist).toContain("NSMicrophoneUsageDescription");
+    expect(infoPlist).toContain(
+      "Plato uses the microphone only after you explicitly start a voice session.",
+    );
+  });
+
+  it("keeps desktop voice available for real microphone capture while downstream providers stay unavailable", async () => {
+    class FakeMediaRecorder {
+      state: RecordingState = "inactive";
+      ondataavailable: ((event: BlobEvent) => void) | null = null;
+      onerror: ((event: ErrorEvent) => void) | null = null;
+      onstop: (() => void) | null = null;
+
+      start() {
+        this.state = "recording";
+      }
+
+      stop() {
+        this.state = "inactive";
+        this.onstop?.();
+      }
+    }
+
+    const adapters = createDesktopVoiceSessionAdapters({
+      mediaDevices: {
+        getUserMedia: vi.fn().mockResolvedValue({
+          getTracks: () => [{ stop: vi.fn() }],
+        } as unknown as MediaStream),
+      },
+      MediaRecorderConstructor: FakeMediaRecorder,
+    });
+
+    await expect(
+      adapters.availability.check({
+        activationSource: "voice",
+        outputMode: "audible",
+      }),
+    ).resolves.toEqual({
+      status: "available",
+      providerId: "desktop-microphone",
+    });
+    await expect(
+      adapters.speechToText.transcribe({ audio: new Uint8Array([1]) }),
+    ).resolves.toMatchObject({
+      status: "failed",
+      error: {
+        code: "provider_unavailable",
+        message:
+          "Voice transcription provider is not configured. Captured microphone audio cannot be transcribed yet.",
+      },
+    });
   });
 
   it("can render initial audio state for visual smoke captures", () => {
