@@ -1,0 +1,267 @@
+{
+  "schemaVersion": 1,
+  "agentrailVersion": "0.1.0",
+  "installedAt": "2026-05-28T05:07:55.944Z",
+  "updatedAt": "2026-06-01T10:12:18.118Z",
+  "legacyAdopted": true,
+  "managedFiles": [
+    {
+      "path": ".claude/agents/github-pr-reviewer.md",
+      "source": "templates/.claude/agents/github-pr-reviewer.md",
+      "contentHash": "sha256:e2f0aca1fbc5650f2e9825e7ae8026c2254774f1bb33f2d4421cdca33ecf2920",
+      "installStatus": "installed"
+    },
+    {
+      "path": ".codex/agents/github-pr-reviewer.md",
+      "source": "templates/.codex/agents/github-pr-reviewer.md",
+      "contentHash": "sha256:11e99a3c328a106cfff28502338b0784408f684f2b70b39339cff94551a23e27",
+      "installStatus": "installed"
+    },
+    {
+      "path": "AGENTS.md",
+      "source": "templates/AGENTS.md",
+      "contentHash": "sha256:0d120f668181e6b885c6c9c9963d08a83aafbd9333f7953041b59f28c521ca9b",
+      "installStatus": "preserved"
+    },
+    {
+      "path": "CONTEXT.md",
+      "source": "templates/CONTEXT.md",
+      "contentHash": "sha256:c9625840a6c9d6eb4d99b2576afff45a02d3f79420f0ac638743dac78b8dfd5c",
+      "installStatus": "preserved"
+    },
+    {
+      "path": "TASTE.md",
+      "source": "templates/TASTE.md",
+      "contentHash": "sha256:4c79ac8de7f14e4568695f4f14a30be56ed3cfb96b0698e818f67c8bb6b2a61b",
+      "installStatus": "installed"
+    },
+    {
+      "path": "docs/agents/agentrail-state.md",
+      "source": "templates/docs/agents/agentrail-state.md",
+      "contentHash": "sha256:a33c8733d815c947c06452afae54ca5f81e000f14ee52335adf30edc0b031257",
+      "installStatus": "updated"
+    },
+    {
+      "path": "docs/agents/github-pr-reviewer.md",
+      "source": "templates/docs/agents/github-pr-reviewer.md",
+      "contentHash": "sha256:5db646b5463fc7d2d16da72c2887968b88eb20e836f94268f65ad56ee499bea5",
+      "installStatus": "installed"
+    },
+    {
+      "path": "docs/agents/issue-tracker.md",
+      "source": "templates/docs/agents/issue-tracker.md",
+      "contentHash": "sha256:e0773ef0a67d765903c36c701499da25b167d441f021dcfacbc88e0f427f6c52",
+      "installStatus": "preserved"
+    },
+    {
+      "path": "docs/agents/milestones.md",
+      "source": "templates/docs/agents/milestones.md",
+      "contentHash": "sha256:480a1ea3b8d25b433baf00e1a1505040f2ccf6fa55231c0d8d4cbc7463d63856",
+      "installStatus": "preserved"
+    },
+    {
+      "path": "docs/agents/pr-review.md",
+      "source": "templates/docs/agents/pr-review.md",
+      "contentHash": "sha256:4617069d8723a3ef99b775ba0f478dc5e289152deed0f22cfa849e91adf39681",
+      "installStatus": "updated"
+    },
+    {
+      "path": "docs/agents/ralph-loop.md",
+      "source": "templates/docs/agents/ralph-loop.md",
+      "contentHash": "sha256:ae085165c1b0b63808bd5db7a7dfce43d77700821099f97dd83312636319a638",
+      "installStatus": "preserved"
+    },
+    {
+      "path": "docs/agents/skill-registry.json",
+      "source": "templates/docs/agents/skill-registry.json",
+      "contentHash": "sha256:ebbb5e0ef88a6988994dad2602056bcc3487d39c4eb301f796ecb624fddd20d7",
+      "installStatus": "installed"
+    },
+    {
+      "path": "docs/agents/triage-labels.md",
+      "source": "templates/docs/agents/triage-labels.md",
+      "contentHash": "sha256:14a3ca4e8186790a5f8302e46f9189f56ca277de5cc429c22bb61807503714a2",
+      "installStatus": "preserved"
+    },
+    {
+      "path": "docs/agents/visual-evidence.md",
+      "source": "templates/docs/agents/visual-evidence.md",
+      "contentHash": "sha256:8da08e1c600b5e0f83e3afb758241f965265a54025e086794cf2e4f86640ba5c",
+      "installStatus": "installed"
+    },
+    {
+      "path": "docs/memory/README.md",
+      "source": "templates/docs/memory/README.md",
+      "contentHash": "sha256:93dad0d07025376ffdd8206cf551c378f50093df1c88345b28c3a7248be8ff1f",
+      "installStatus": "updated"
+    },
+    {
+      "path": "docs/memory/decisions.md",
+      "source": "templates/docs/memory/decisions.md",
+      "contentHash": "sha256:f4f467b9dae1f539b2d8a05db528165b673f0b80499f9dfd04bf43c129f08da6",
+      "installStatus": "installed"
+    },
+    {
+      "path": "docs/memory/failure-patterns.md",
+      "source": "templates/docs/memory/failure-patterns.md",
+      "contentHash": "sha256:be586a90822bc58b4ef53e7efda954432123b991a4a00b9d9242ae14bdb03ae9",
+      "installStatus": "installed"
+    },
+    {
+      "path": "docs/memory/lessons.md",
+      "source": "templates/docs/memory/lessons.md",
+      "contentHash": "sha256:c5ec756ff12bd8746b81b6ca0f5b58a779a2a86b6961a748ca24432731837352",
+      "installStatus": "installed"
+    },
+    {
+      "path": "docs/memory/project-preferences.md",
+      "source": "templates/docs/memory/project-preferences.md",
+      "contentHash": "sha256:25829e2c6a2bdaf6cdf711077a3e69121175c64273777417aa24ac04b1d4c04c",
+      "installStatus": "installed"
+    },
+    {
+      "path": "docs/milestones/.gitkeep",
+      "source": "templates/docs/milestones/.gitkeep",
+      "contentHash": "sha256:01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+      "installStatus": "legacy-adopted"
+    },
+    {
+      "path": "docs/prd/.gitkeep",
+      "source": "templates/docs/prd/.gitkeep",
+      "contentHash": "sha256:01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+      "installStatus": "legacy-adopted"
+    },
+    {
+      "path": "skills/backend-api/SKILL.md",
+      "source": "skills/backend-api/SKILL.md",
+      "contentHash": "sha256:a8663ed2ef217e5978eddc43944bce1b8f791e69c5bb3961ba3a4d19ebc9926d",
+      "installStatus": "installed"
+    },
+    {
+      "path": "skills/bensigo-ai-workflow/SKILL.md",
+      "source": "skills/bensigo-ai-workflow/SKILL.md",
+      "contentHash": "sha256:b2df45a074d7e65b27787c55ce50e62c481f89ed2ef5d67298699b1c5a0a81ee",
+      "installStatus": "installed"
+    },
+    {
+      "path": "skills/desktop-tauri/SKILL.md",
+      "source": "skills/desktop-tauri/SKILL.md",
+      "contentHash": "sha256:19d033b046769ed402c030e56b038f7ba0c5080d6a927efec8793590fd64c50d",
+      "installStatus": "installed"
+    },
+    {
+      "path": "skills/devops-deploy/SKILL.md",
+      "source": "skills/devops-deploy/SKILL.md",
+      "contentHash": "sha256:b4ad34beb2f9137f204014f71e51fdaefda190a09aad781e979877fe9d00b588",
+      "installStatus": "installed"
+    },
+    {
+      "path": "skills/docs-current/SKILL.md",
+      "source": "skills/docs-current/SKILL.md",
+      "contentHash": "sha256:c7a1c9193ce57fa8209f077e5c3296e3470b695c6725b48a098faef05f681c93",
+      "installStatus": "installed"
+    },
+    {
+      "path": "skills/frontend-web/SKILL.md",
+      "source": "skills/frontend-web/SKILL.md",
+      "contentHash": "sha256:29d357291747a21a3e7afb8ac741e4c4d087622ee77e171b5cd22958630750e5",
+      "installStatus": "installed"
+    },
+    {
+      "path": "skills/grill-with-docs/ADR-FORMAT.md",
+      "source": "skills/grill-with-docs/ADR-FORMAT.md",
+      "contentHash": "sha256:f1f36cd3f8d3b6474ddd5855da4e233bfc4ae1a1c5024909ccf11871819a41b2",
+      "installStatus": "installed"
+    },
+    {
+      "path": "skills/grill-with-docs/CONTEXT-FORMAT.md",
+      "source": "skills/grill-with-docs/CONTEXT-FORMAT.md",
+      "contentHash": "sha256:8f6baaa3b1c91644bd7c600196b1aee781d5f525c7c345db8cdfbfb368329a05",
+      "installStatus": "installed"
+    },
+    {
+      "path": "skills/grill-with-docs/SKILL.md",
+      "source": "skills/grill-with-docs/SKILL.md",
+      "contentHash": "sha256:95f0594e89868a0feadf45aa87402dcd02e0caeb9d888f4d129f4656b20999cf",
+      "installStatus": "installed"
+    },
+    {
+      "path": "skills/tdd/SKILL.md",
+      "source": "skills/tdd/SKILL.md",
+      "contentHash": "sha256:af059705061156fd4845ddbb736fe92b564118ac5f03551e09ef9e8f6d970638",
+      "installStatus": "installed"
+    },
+    {
+      "path": "skills/tdd/deep-modules.md",
+      "source": "skills/tdd/deep-modules.md",
+      "contentHash": "sha256:f2123700bf953db1740625686c75bdd145efd486357c47c6818c869fee657a32",
+      "installStatus": "installed"
+    },
+    {
+      "path": "skills/tdd/interface-design.md",
+      "source": "skills/tdd/interface-design.md",
+      "contentHash": "sha256:764c5ff0e3fa6b4ab7095eb65ccc7201e090baf19fa16051dfdb72c06d27417d",
+      "installStatus": "installed"
+    },
+    {
+      "path": "skills/tdd/mocking.md",
+      "source": "skills/tdd/mocking.md",
+      "contentHash": "sha256:3ceb807fdf4a47d6a93d4d9a891e5ba6d362a6247bd08adc451feebfc17361ef",
+      "installStatus": "installed"
+    },
+    {
+      "path": "skills/tdd/refactoring.md",
+      "source": "skills/tdd/refactoring.md",
+      "contentHash": "sha256:54fced22dd1911b7094c3fe7979b7c1a40d40be307482c4adf7dc0588f27d6cc",
+      "installStatus": "installed"
+    },
+    {
+      "path": "skills/tdd/tests.md",
+      "source": "skills/tdd/tests.md",
+      "contentHash": "sha256:e12182f5c4c6a844b7c6ab4b8d2623b642aaaae5460fe58ed087efd4f3d5fb8a",
+      "installStatus": "installed"
+    },
+    {
+      "path": "skills/to-issues/SKILL.md",
+      "source": "skills/to-issues/SKILL.md",
+      "contentHash": "sha256:715bab7bcd838cf90ff38a9c14f278eb95d7e3249d6c9c791322c62ae5ae22e3",
+      "installStatus": "updated"
+    },
+    {
+      "path": "skills/to-milestones/SKILL.md",
+      "source": "skills/to-milestones/SKILL.md",
+      "contentHash": "sha256:3d7b9c39e76414037a3aaa8142f882df4fa6bc24b6d2ca8b10c0576868b680a7",
+      "installStatus": "updated"
+    },
+    {
+      "path": "skills/to-milestones/agents/openai.yaml",
+      "source": "skills/to-milestones/agents/openai.yaml",
+      "contentHash": "sha256:7123b6a7a6dcfcd93d027b963b076a601bc5e68f032ebc07fb45896a77cc7b33",
+      "installStatus": "installed"
+    },
+    {
+      "path": "skills/to-prd/SKILL.md",
+      "source": "skills/to-prd/SKILL.md",
+      "contentHash": "sha256:b60e3805e361e4eabc6f3df48d305299e0fde64cb24b6e95443c01de907a2e7d",
+      "installStatus": "installed"
+    },
+    {
+      "path": "scripts/agentrail",
+      "source": "scripts/agentrail",
+      "contentHash": "sha256:7e345ee51ede5fd359722938b98fe5fa5b87c51e07a4f51509696c2bbeeda5e6",
+      "installStatus": "added"
+    }
+  ],
+  "workflow": {
+    "phase": "idle",
+    "activePhase": null,
+    "activeIssue": null,
+    "activePullRequest": null,
+    "activePrd": null,
+    "activeMilestone": null,
+    "activeRun": null,
+    "completedRuns": [],
+    "lastCompletedStep": null,
+    "nextSuggestedAction": "Pick a ready-for-agent issue or create a PRD/milestone before starting implementation."
+  }
+}

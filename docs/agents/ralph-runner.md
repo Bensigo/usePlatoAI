@@ -1,89 +1,53 @@
 # Ralph Runner
 
-Use `scripts/ralph-loop` to list ready implementation issues or run them through the Ralph loop.
+Use `agentrail run` or `agentrail run issue <number>` to run implementation issues through the Ralph loop.
 
-This repo keeps a Matt Pocock-style `ralph/` folder:
-
-- `ralph/prompt.md` owns the durable agent instructions.
-- `ralph/once.sh` runs one Ralph iteration.
-- `ralph/afk.sh` runs repeated one-issue iterations until the limit is reached or no ready work remains.
-
-The `ralph/` scripts delegate to `scripts/ralph-loop`, which handles this repo's GitHub Issues queue.
+Ralph is AgentRail's internal one-issue executor. Installed projects should call the AgentRail CLI, not the raw workflow scripts, unless a maintainer is debugging AgentRail itself.
 
 ## Commands
-
-List ready issues:
-
-```bash
-scripts/ralph-loop list
-```
 
 Run one explicit issue:
 
 ```bash
-scripts/ralph-loop run --issue 7
-```
-
-or:
-
-```bash
-ralph/once.sh --issue 7
+agentrail run issue 7
 ```
 
 Run the next ready issue:
 
 ```bash
-scripts/ralph-loop run
+agentrail run
 ```
 
-Run several ready issues sequentially:
+Run the unattended queue/worktree loop:
 
 ```bash
-scripts/ralph-loop run --limit 3
+agentrail afk --concurrency 2
 ```
 
-or:
-
-```bash
-ralph/afk.sh 3
-```
-
-Run implementation plus review in parallel workers:
-
-```bash
-scripts/afk-workflow run --concurrency 2
-```
-
-Use this when the operator wants the full loop, including PR review and review-fix issue creation.
+Use AFK when the operator wants the full loop, including PR review and review-fix issue creation.
 
 ## Queue
 
-The default queue is open GitHub issues labeled `ready-for-agent`.
+The default AgentRail run queue is open GitHub issues labeled `afk` and `ready-for-agent`, excluding `afk-in-progress`.
 
 This is intentional. Running every open issue is too loose because some issues may be blocked, vague, or meant for humans.
 
 ## Engines
 
-The default engine is Codex:
+The default runner is configured in `.agentrail/config.json`. To override the agent for one run:
 
 ```bash
-scripts/ralph-loop run --engine codex --issue 7
+agentrail run issue 7 --agent codex
 ```
 
-For Claude, provide the command that should receive the Ralph prompt on stdin:
+For a custom command, provide the command that should receive the generated prompt:
 
 ```bash
-RALPH_CLAUDE_CMD="claude --print" scripts/ralph-loop run --engine claude --issue 7
+agentrail run issue 7 --command "codex exec -"
 ```
 
 ## Behavior
 
-Before each issue, the runner:
-
-1. Fetches the base branch.
-2. Switches to the base branch.
-3. Pulls with `--ff-only`.
-4. Requires a clean working tree.
-5. Starts one Ralph loop iteration for one issue.
+Before each issue, AgentRail reads `.agentrail/state.json`, writes durable run metadata under `.agentrail/runs/`, invokes the configured runner, and keeps enough state to resume or diagnose interrupted work.
 
 Each agent run is responsible for creating a branch, implementing the issue, verifying, committing, pushing, and opening or updating a pull request.

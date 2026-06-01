@@ -1,25 +1,25 @@
 # AFK Workflow
 
-Use `scripts/afk-workflow` when the operator wants Ralph to keep moving through GitHub issues with isolated workers and automated PR review.
+Use `agentrail afk` when the operator wants AgentRail to keep moving through GitHub issues with isolated workers and automated PR review.
 
 ## Command
 
 Run the default workflow:
 
 ```bash
-scripts/afk-workflow run
+agentrail afk
 ```
 
 This starts up to two workers per wave:
 
 ```bash
-scripts/afk-workflow run --concurrency 2
+agentrail afk --concurrency 2
 ```
 
 Dry-run the queue selection:
 
 ```bash
-scripts/afk-workflow run --dry-run
+agentrail afk --dry-run
 ```
 
 ## Behavior
@@ -29,9 +29,9 @@ The workflow:
 1. Picks open issues labeled `afk` plus `review-fix` or `ready-for-agent` that do not already have an open PR.
 2. Claims each issue with `afk-in-progress`.
 3. Creates one isolated git worktree per worker.
-4. Runs `scripts/ralph-loop run --issue <number>` in that worktree.
+4. Runs `agentrail run issue <number>` in that worktree.
 5. Finds the open PR created for the issue.
-6. Runs `scripts/review-pr --pr <number>` in a fresh review context.
+6. Runs the AgentRail-managed PR review flow in a fresh review context.
 7. Converts review findings into `review-fix` issues when the review output includes machine-readable issue drafts.
 8. Removes queue labels from the source issue and marks it `pr-reviewed`.
 9. Repeats until no queued issues remain or `--max-waves` is reached.

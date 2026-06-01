@@ -1,0 +1,7 @@
+{
+  "schemaVersion": 1,
+  "runner": {
+    "name": "codex",
+    "command": "codex exec -"
+  }
+}

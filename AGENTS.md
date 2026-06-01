@@ -81,10 +81,10 @@ This is a single-context repo with `CONTEXT.md` at the root and architecture doc
 
 Implementation issues are executed through a Ralph loop: a command-driven fresh-context loop that picks one ready GitHub issue, implements it, verifies it, opens or updates a PR, records verification, and exits. See `docs/agents/ralph-loop.md`.
 
-Use `scripts/ralph-loop`, `ralph/once.sh`, or `ralph/afk.sh` to list ready issues or run one or more Ralph iterations. See `docs/agents/ralph-runner.md`.
+Use `agentrail run issue <number>` for a known issue, or `agentrail run` to let AgentRail pick the next eligible queued issue. See `docs/agents/ralph-runner.md`.
 
-Use `scripts/afk-workflow` to run the full two-worker AFK loop: issue claim, Ralph implementation, PR review, review-fix issue creation, and repeat. AFK workflow only picks issues explicitly labeled `afk`. See `docs/agents/afk-workflow.md`.
+Use `agentrail afk` to run the full unattended queue/worktree loop: issue claim, Ralph implementation, PR review, review-fix issue creation, and repeat. AFK workflow only picks issues explicitly labeled `afk`. See `docs/agents/afk-workflow.md`.
 
 ### PR review
 
-Pull request review should run in its own fresh Codex context window. Use `scripts/review-pr` or `review/pr.sh`. See `docs/agents/pr-review-runner.md`.
+Pull request review should run in its own fresh Codex context window. Use `agentrail prompt review <number>` for review prompt generation, or the AgentRail-managed review internals only when debugging AgentRail itself. See `docs/agents/pr-review-runner.md`.
