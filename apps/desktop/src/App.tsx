@@ -120,7 +120,7 @@ import {
   type VoiceSessionState,
 } from "./voiceInteraction";
 import {
-  isVoiceListeningHotkey,
+  createVoiceListeningHotkeyDetector,
   voiceListeningHotkeyLabel,
 } from "./voiceHotkey";
 import {
@@ -2014,6 +2014,9 @@ export function App({
       adapters: createDesktopVoiceSessionAdapters(),
     }),
   );
+  const voiceListeningHotkeyDetector = useRef(
+    createVoiceListeningHotkeyDetector(),
+  );
   const [audioActivation, setAudioActivation] = useState(() =>
     initialAudioActivationState
       ? audioActivationSnapshotForState(initialAudioActivationState)
@@ -2295,7 +2298,7 @@ export function App({
 
   useEffect(() => {
     function handleVoiceHotkey(event: KeyboardEvent) {
-      if (!isVoiceListeningHotkey(event)) {
+      if (!voiceListeningHotkeyDetector.current(event)) {
         return;
       }
 
@@ -2305,8 +2308,8 @@ export function App({
       activateVoiceListening();
     }
 
-    window.addEventListener("keydown", handleVoiceHotkey);
-    return () => window.removeEventListener("keydown", handleVoiceHotkey);
+    window.addEventListener("keyup", handleVoiceHotkey);
+    return () => window.removeEventListener("keyup", handleVoiceHotkey);
   });
 
   function pauseCurrentTask() {

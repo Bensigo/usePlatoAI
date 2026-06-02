@@ -1,17 +1,49 @@
-export const voiceListeningHotkeyLabel = "Shift+Command+Space";
+export const voiceListeningHotkeyLabel = "Double-tap Option";
 
 export type VoiceListeningHotkeyEvent = Pick<
   KeyboardEvent,
-  "altKey" | "code" | "ctrlKey" | "key" | "metaKey" | "repeat" | "shiftKey"
+  | "code"
+  | "ctrlKey"
+  | "key"
+  | "metaKey"
+  | "repeat"
+  | "shiftKey"
+  | "timeStamp"
+  | "type"
 >;
 
-export function isVoiceListeningHotkey(event: VoiceListeningHotkeyEvent) {
+const doubleTapOptionWindowMs = 450;
+
+function isOptionKeyTap(event: VoiceListeningHotkeyEvent) {
   return (
+    event.type === "keyup" &&
     !event.repeat &&
-    event.shiftKey &&
-    event.metaKey &&
     !event.ctrlKey &&
-    !event.altKey &&
-    (event.code === "Space" || event.key === " ")
+    !event.metaKey &&
+    !event.shiftKey &&
+    (event.code === "AltLeft" ||
+      event.code === "AltRight" ||
+      event.key === "Alt" ||
+      event.key === "Option")
   );
+}
+
+export function createVoiceListeningHotkeyDetector(
+  doubleTapWindowMs = doubleTapOptionWindowMs,
+) {
+  let lastOptionTapAt: number | null = null;
+
+  return function isVoiceListeningHotkey(event: VoiceListeningHotkeyEvent) {
+    if (!isOptionKeyTap(event)) {
+      return false;
+    }
+
+    const isDoubleTap =
+      lastOptionTapAt !== null &&
+      event.timeStamp - lastOptionTapAt <= doubleTapWindowMs;
+
+    lastOptionTapAt = isDoubleTap ? null : event.timeStamp;
+
+    return isDoubleTap;
+  };
 }

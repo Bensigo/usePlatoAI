@@ -127,7 +127,7 @@ import {
   voiceSessionStateFrom,
 } from "../src/voiceInteraction";
 import {
-  isVoiceListeningHotkey,
+  createVoiceListeningHotkeyDetector,
   voiceListeningHotkeyLabel,
 } from "../src/voiceHotkey";
 import {
@@ -1236,33 +1236,75 @@ describe("desktop app shell", () => {
 
   it("routes the configured voice hotkey through the same audio activation path", async () => {
     const source = readFileSync(resolve(process.cwd(), "src/App.tsx"), "utf8");
+    const isVoiceListeningHotkey = createVoiceListeningHotkeyDetector();
 
-    expect(voiceListeningHotkeyLabel).toBe("Shift+Command+Space");
+    expect(voiceListeningHotkeyLabel).toBe("Double-tap Option");
     expect(
       isVoiceListeningHotkey({
-        altKey: false,
-        code: "Space",
+        code: "AltLeft",
         ctrlKey: false,
-        key: " ",
-        metaKey: true,
+        key: "Alt",
+        metaKey: false,
         repeat: false,
-        shiftKey: true,
-      }),
-    ).toBe(true);
-    expect(
-      isVoiceListeningHotkey({
-        altKey: false,
-        code: "Space",
-        ctrlKey: false,
-        key: " ",
-        metaKey: true,
-        repeat: true,
-        shiftKey: true,
+        shiftKey: false,
+        timeStamp: 100,
+        type: "keyup",
       }),
     ).toBe(false);
-    expect(source).toContain("isVoiceListeningHotkey(event)");
+    expect(
+      isVoiceListeningHotkey({
+        code: "AltLeft",
+        ctrlKey: false,
+        key: "Alt",
+        metaKey: false,
+        repeat: false,
+        shiftKey: false,
+        timeStamp: 340,
+        type: "keyup",
+      }),
+    ).toBe(true);
+
+    const expiredDetector = createVoiceListeningHotkeyDetector();
+    expect(
+      expiredDetector({
+        code: "AltRight",
+        ctrlKey: false,
+        key: "Alt",
+        metaKey: false,
+        repeat: false,
+        shiftKey: false,
+        timeStamp: 100,
+        type: "keyup",
+      }),
+    ).toBe(false);
+    expect(
+      expiredDetector({
+        code: "AltRight",
+        ctrlKey: false,
+        key: "Alt",
+        metaKey: false,
+        repeat: false,
+        shiftKey: false,
+        timeStamp: 700,
+        type: "keyup",
+      }),
+    ).toBe(false);
+    expect(
+      createVoiceListeningHotkeyDetector()({
+        code: "AltLeft",
+        ctrlKey: false,
+        key: "Alt",
+        metaKey: true,
+        repeat: false,
+        shiftKey: false,
+        timeStamp: 100,
+        type: "keyup",
+      }),
+    ).toBe(false);
+    expect(source).toContain("voiceListeningHotkeyDetector.current(event)");
     expect(source).toContain("activateVoiceListening();");
     expect(source).toContain("setActiveEntry(\"voice\")");
+    expect(source).toContain("window.addEventListener(\"keyup\"");
   });
 
   it("configures macOS microphone permission copy for real capture", () => {
