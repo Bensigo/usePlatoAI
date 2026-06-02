@@ -338,7 +338,14 @@ export function createDesktopVoiceSessionAdapters(
   return {
     ...createUnavailableDesktopVoiceAdapters(providerUnavailableMessage),
     availability: {
-      async check() {
+      async check(input) {
+        if (input.activationSource === "text") {
+          return {
+            status: "available",
+            providerId: "desktop-text-fallback",
+          };
+        }
+
         if (!isDesktopMicrophoneCaptureAvailable(microphoneDependencies)) {
           return {
             status: "unavailable",

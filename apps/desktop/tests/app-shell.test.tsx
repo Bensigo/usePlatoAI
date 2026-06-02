@@ -1383,6 +1383,15 @@ describe("desktop app shell", () => {
     const adapters = createDesktopVoiceSessionAdapters();
 
     await expect(
+      adapters.availability.check({
+        activationSource: "text",
+        outputMode: "audible",
+      }),
+    ).resolves.toEqual({
+      status: "available",
+      providerId: "desktop-text-fallback",
+    });
+    await expect(
       adapters.responseGeneration.generate({
         transcript: "Check Apple speech.",
         activationSource: "text",
