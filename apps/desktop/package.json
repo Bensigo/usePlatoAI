@@ -11,9 +11,9 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@useplatoai/voice": "workspace:*",
-    "@useplatoai/avatar": "workspace:*",
     "@tauri-apps/api": "^2.11.0",
+    "@useplatoai/avatar": "workspace:*",
+    "@useplatoai/voice": "workspace:*",
     "react": "^19.2.6",
     "react-dom": "^19.2.6"
   },

@@ -1,3 +1,9 @@
+import {
+  isTextToSpeechProviderId,
+  resolveTextToSpeechProvider,
+  type TextToSpeechProviderId,
+} from "@useplatoai/voice";
+
 export type LaunchBehavior = "launch-at-login" | "manual-only";
 export type MemoryMode = "enabled" | "paused";
 export type ExecutionAuthority = "ask-first" | "trusted-local";
@@ -23,6 +29,7 @@ export type CompanionSettings = {
   memoryMode: MemoryMode;
   executionAuthority: ExecutionAuthority;
   providerPlaceholder: ProviderPlaceholder;
+  ttsProvider: TextToSpeechProviderId;
   onboardingComplete: boolean;
 };
 
@@ -57,6 +64,7 @@ export const defaultCompanionSettings: CompanionSettings = {
   memoryMode: "enabled",
   executionAuthority: "ask-first",
   providerPlaceholder: "configure-later",
+  ttsProvider: "apple-local-tts",
   onboardingComplete: false,
 };
 
@@ -74,9 +82,17 @@ export const defaultExecutionAuthorityPolicy: ExecutionAuthorityPolicy = {
 export function normalizeCompanionSettings(
   settings: Partial<CompanionSettings> | null | undefined,
 ): CompanionSettings {
+  const preferredProvider = isTextToSpeechProviderId(settings?.ttsProvider)
+    ? settings.ttsProvider
+    : defaultCompanionSettings.ttsProvider;
+
   return {
     ...defaultCompanionSettings,
     ...settings,
+    ttsProvider: resolveTextToSpeechProvider({
+      preferredProviderId: preferredProvider,
+      paidTtsOptIn: false,
+    }).providerId,
   };
 }
 
@@ -180,5 +196,14 @@ export function providerPlaceholderLabel(value: ProviderPlaceholder) {
       return "Local model later";
     case "configure-later":
       return "Configure later";
+  }
+}
+
+export function ttsProviderLabel(value: TextToSpeechProviderId) {
+  switch (value) {
+    case "apple-local-tts":
+      return "Apple local voices";
+    case "openai-tts":
+      return "OpenAI TTS";
   }
 }
