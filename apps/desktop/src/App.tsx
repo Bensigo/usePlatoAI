@@ -107,7 +107,7 @@ import {
 } from "./audioActivation";
 import { createVoiceSessionRuntime } from "@useplatoai/voice";
 import {
-  createUnavailableDesktopVoiceAdapters,
+  createDesktopVoiceSessionAdapters,
   companionPromptForInputWithCorrections,
   companionPresenceForVoiceState,
   defaultVoiceInteractionSnapshot,
@@ -119,6 +119,10 @@ import {
   type VoiceInteractionSnapshot,
   type VoiceSessionState,
 } from "./voiceInteraction";
+import {
+  createVoiceListeningHotkeyDetector,
+  voiceListeningHotkeyLabel,
+} from "./voiceHotkey";
 import {
   millisecondsUntilNextStartupIdleWave,
   nextStartupIdleWaveIntervalMs,
@@ -1146,9 +1150,9 @@ export function VoiceInteractionPanel({
                     : "empty",
           },
           {
-            label: "Desktop audio",
-            value: "unavailable until enabled",
-            tone: "unavailable",
+            label: "Microphone",
+            value: "asks on start",
+            tone: "configured",
           },
         ]}
       />
@@ -2007,8 +2011,11 @@ export function App({
   );
   const voiceRuntimeRef = useRef(
     createVoiceSessionRuntime({
-      adapters: createUnavailableDesktopVoiceAdapters(),
+      adapters: createDesktopVoiceSessionAdapters(),
     }),
+  );
+  const voiceListeningHotkeyDetector = useRef(
+    createVoiceListeningHotkeyDetector(),
   );
   const [audioActivation, setAudioActivation] = useState(() =>
     initialAudioActivationState
@@ -2288,6 +2295,22 @@ export function App({
       companionPrompt: null,
     }));
   }
+
+  useEffect(() => {
+    function handleVoiceHotkey(event: KeyboardEvent) {
+      if (!voiceListeningHotkeyDetector.current(event)) {
+        return;
+      }
+
+      event.preventDefault();
+      setActiveEntry("voice");
+      setAreControlsExpanded(true);
+      activateVoiceListening();
+    }
+
+    window.addEventListener("keyup", handleVoiceHotkey);
+    return () => window.removeEventListener("keyup", handleVoiceHotkey);
+  });
 
   function pauseCurrentTask() {
     companionPresenceStateSource.setState(
@@ -3230,6 +3253,7 @@ export function App({
               </button>
               <button
                 type="button"
+                aria-label={`Start voice with ${voiceListeningHotkeyLabel}`}
                 disabled={
                   voiceInteraction.sessionState === "listening" ||
                   voiceInteraction.sessionState === "transcribing" ||
