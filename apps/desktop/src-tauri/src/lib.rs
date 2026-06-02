@@ -919,21 +919,89 @@ mod tests {
     }
 
     #[test]
-    fn apple_tts_runtime_can_stop_active_local_speech_process() {
+    fn apple_tts_runtime_waits_for_local_speech_process_completion() {
         let runtime =
-            apple_tts::AppleTtsRuntime::with_command_path(std::path::PathBuf::from("/bin/sleep"));
+            apple_tts::AppleTtsRuntime::with_command_path(std::path::PathBuf::from("/bin/echo"));
 
         let result = runtime
             .speak(apple_tts::AppleTtsSpeakRequest {
-                text: "5".to_string(),
+                text: "done".to_string(),
                 voice_id: None,
             })
-            .expect("start test speech process");
+            .expect("run test speech process");
 
-        assert_eq!(result.status, "speaking");
+        assert_eq!(result.status, "completed");
+        assert_eq!(result.text, Some("done".to_string()));
+    }
+
+    #[test]
+    fn apple_tts_runtime_can_stop_active_local_speech_process() {
+        use std::{sync::Arc, thread, time::Duration};
+
+        let runtime =
+            Arc::new(apple_tts::AppleTtsRuntime::with_command_path(std::path::PathBuf::from(
+                "/bin/sleep",
+            )));
+        let speaking_runtime = Arc::clone(&runtime);
+
+        let speaking = thread::spawn(move || {
+            speaking_runtime
+                .speak(apple_tts::AppleTtsSpeakRequest {
+                    text: "5".to_string(),
+                    voice_id: None,
+                })
+                .expect("start test speech process")
+        });
+
+        thread::sleep(Duration::from_millis(75));
 
         let stopped = runtime.stop().expect("stop test speech process");
 
         assert_eq!(stopped.status, "stopped");
+        assert_eq!(
+            speaking
+                .join()
+                .expect("speech thread should complete after stop")
+                .status,
+            "stopped"
+        );
+    }
+
+    #[test]
+    fn apple_tts_runtime_replaces_active_local_speech_process() {
+        use std::{sync::Arc, thread, time::Duration};
+
+        let runtime =
+            Arc::new(apple_tts::AppleTtsRuntime::with_command_path(std::path::PathBuf::from(
+                "/bin/sleep",
+            )));
+        let speaking_runtime = Arc::clone(&runtime);
+
+        let speaking = thread::spawn(move || {
+            speaking_runtime
+                .speak(apple_tts::AppleTtsSpeakRequest {
+                    text: "5".to_string(),
+                    voice_id: None,
+                })
+                .expect("start first test speech process")
+        });
+
+        thread::sleep(Duration::from_millis(75));
+
+        let replacement = runtime
+            .speak(apple_tts::AppleTtsSpeakRequest {
+                text: "0".to_string(),
+                voice_id: None,
+            })
+            .expect("replace test speech process");
+
+        assert_eq!(replacement.status, "completed");
+        assert_eq!(
+            speaking
+                .join()
+                .expect("first speech thread should complete after replacement")
+                .status,
+            "stopped"
+        );
     }
 }

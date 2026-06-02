@@ -17,6 +17,9 @@ type TestAdaptersOptions = {
   speechAudio?: Uint8Array;
   captureDelayMs?: number;
   captureIgnoresAbort?: boolean;
+  textToSpeechDelayMs?: number;
+  playbackDelayMs?: number;
+  playbackIgnoresAbort?: boolean;
   sttError?: string;
 };
 
@@ -141,8 +144,9 @@ export function createVoiceSessionTestAdapters(
   };
 
   const textToSpeech: VoiceTextToSpeechAdapter = {
-    async synthesize() {
+    async synthesize(_input, context) {
       record("tts.synthesize");
+      await waitForDelay(options.textToSpeechDelayMs ?? 0, context?.signal);
       return successful({
         audio: options.speechAudio ?? new Uint8Array([2]),
       });
@@ -153,9 +157,13 @@ export function createVoiceSessionTestAdapters(
   };
 
   const playback: VoiceAudioPlaybackAdapter = {
-    async play(input) {
+    async play(input, context) {
       record("playback.play");
       lastPlaybackAudio = input.audio;
+      await waitForDelay(
+        options.playbackDelayMs ?? 0,
+        options.playbackIgnoresAbort ? undefined : context?.signal,
+      );
       return successful({});
     },
     async stop(input) {

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { createAppleLocalVoiceRuntimeAdapters } from "../src/appleLocalTts";
 
@@ -49,7 +49,7 @@ describe("Apple local TTS desktop runtime adapters", () => {
         calls.push({ command, args });
         return {
           providerId: "apple-local-tts",
-          status: "speaking",
+          status: "completed",
           text: "I am on it.",
         };
       },
@@ -69,6 +69,64 @@ describe("Apple local TTS desktop runtime adapters", () => {
         args: { request: { text: "I am on it.", voiceId: undefined } },
       },
     ]);
+  });
+
+  it("stops active Apple local TTS playback when the runtime aborts", async () => {
+    vi.useFakeTimers();
+    const controller = new AbortController();
+    const calls: Array<{ command: string; args?: unknown }> = [];
+    const adapters = createAppleLocalVoiceRuntimeAdapters({
+      invoke: async (command, args) => {
+        calls.push({ command, args });
+
+        if (command === "apple_tts_speak") {
+          return new Promise((resolve) => {
+            setTimeout(
+              () =>
+                resolve({
+                  providerId: "apple-local-tts",
+                  status: "completed",
+                  text: "Keep speaking.",
+                }),
+              500,
+            );
+          });
+        }
+
+        return {
+          providerId: "apple-local-tts",
+          status: "stopped",
+        };
+      },
+    });
+
+    try {
+      const playback = adapters.playback.play(
+        {
+          audio: new TextEncoder().encode("Keep speaking."),
+        },
+        { signal: controller.signal },
+      );
+
+      controller.abort();
+      await vi.advanceTimersByTimeAsync(0);
+
+      await expect(playback).resolves.toEqual({
+        providerId: "apple-local-tts",
+        status: "failed",
+        error: {
+          code: "operation_aborted",
+          message: "Voice operation was interrupted.",
+          retryable: true,
+        },
+      });
+      expect(calls.map((call) => call.command)).toEqual([
+        "apple_tts_speak",
+        "apple_tts_stop",
+      ]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("stops Apple local TTS through the same runtime stop path", async () => {

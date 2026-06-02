@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   createVoiceSessionRuntime,
@@ -17,7 +17,10 @@ describe("voice session runtime", () => {
       generatedResponse: "I will map the release path.",
       speechAudio: new Uint8Array([8, 9, 10]),
     });
-    const runtime = createVoiceSessionRuntime({ adapters });
+    const runtime = createVoiceSessionRuntime({
+      adapters,
+      interruptedRecoveryMs: 1,
+    });
 
     runtime.subscribe((snapshot) => {
       if (events.at(-1) !== snapshot.state) {
@@ -112,8 +115,55 @@ describe("voice session runtime", () => {
     expect(events).toContain("interrupted");
     expect(runtime.getSnapshot().state).toBe("idle");
     expect(adapters.calls).toContain("microphone.stop:user_interrupt");
+    expect(adapters.calls).toContain("stt.stop:user_interrupt");
+    expect(adapters.calls).toContain("response.stop:user_interrupt");
+    expect(adapters.calls).toContain("tts.stop:user_interrupt");
+    expect(adapters.calls).toContain("playback.stop:user_interrupt");
     expect(adapters.calls).not.toContain("stt.transcribe");
     expect(adapters.calls).not.toContain("playback.play");
+  });
+
+  it("hard-interrupts active playback and cancels provider work before idle recovery", async () => {
+    vi.useFakeTimers();
+    const events: VoiceSessionState[] = [];
+    const adapters = createVoiceSessionTestAdapters({
+      transcript: "Speak this.",
+      generatedResponse: "Interruptible speech.",
+      speechAudio: new Uint8Array([8, 9]),
+      playbackDelayMs: 500,
+    });
+    const runtime = createVoiceSessionRuntime({
+      adapters,
+      interruptedRecoveryMs: 25,
+    });
+    runtime.subscribe((snapshot) => {
+      if (events.at(-1) !== snapshot.state) {
+        events.push(snapshot.state);
+      }
+    });
+
+    try {
+      const activeRun = runtime.startVoice();
+      await adapters.waitForCall("playback.play");
+
+      expect(runtime.getSnapshot().state).toBe("speaking");
+
+      const interrupted = runtime.interrupt("user_interrupt");
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(runtime.getSnapshot().state).toBe("interrupted");
+      expect(adapters.calls).toContain("tts.stop:user_interrupt");
+      expect(adapters.calls).toContain("playback.stop:user_interrupt");
+
+      await vi.advanceTimersByTimeAsync(25);
+      await interrupted;
+      await activeRun;
+
+      expect(events).toContain("interrupted");
+      expect(runtime.getSnapshot().state).toBe("idle");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("allows a new session immediately after interrupt even if a provider ignores abort", async () => {

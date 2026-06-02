@@ -217,6 +217,53 @@ function unavailableResult<TPayload extends object = object>(
   };
 }
 
+function operationAbortedResult<TPayload extends object = object>(
+  providerId: string,
+): VoiceRuntimeAdapterResult<TPayload> {
+  return {
+    status: "failed",
+    providerId,
+    error: voiceRuntimeError(
+      "operation_aborted",
+      "Voice operation was interrupted.",
+      true,
+    ),
+  };
+}
+
+function isAborted(context?: { signal?: AbortSignal }) {
+  return context?.signal?.aborted === true;
+}
+
+export function createDesktopTextFallbackResponseAdapter(): VoiceResponseGenerationAdapter {
+  const providerId = "desktop-text-fallback";
+
+  return {
+    async generate(input, context) {
+      if (isAborted(context)) {
+        return operationAbortedResult<{ text: string }>(providerId);
+      }
+
+      const transcript = input.transcript.trim();
+
+      if (!transcript) {
+        return unavailableResult<{ text: string }>(
+          "Text fallback cannot be empty.",
+        );
+      }
+
+      return {
+        status: "success",
+        providerId,
+        text: `I heard: ${transcript}`,
+      };
+    },
+    async stop() {
+      return;
+    },
+  };
+}
+
 export function createUnavailableDesktopVoiceAdapters(
   message = "Voice providers are not configured. Configure STT, response generation, and TTS before starting a voice session.",
 ): VoiceSessionAdapters {
@@ -291,7 +338,14 @@ export function createDesktopVoiceSessionAdapters(
   return {
     ...createUnavailableDesktopVoiceAdapters(providerUnavailableMessage),
     availability: {
-      async check() {
+      async check(input) {
+        if (input.activationSource === "text") {
+          return {
+            status: "available",
+            providerId: "desktop-text-fallback",
+          };
+        }
+
         if (!isDesktopMicrophoneCaptureAvailable(microphoneDependencies)) {
           return {
             status: "unavailable",
@@ -307,6 +361,7 @@ export function createDesktopVoiceSessionAdapters(
       },
     },
     microphone: createDesktopMicrophoneInputAdapter(microphoneDependencies),
+    responseGeneration: createDesktopTextFallbackResponseAdapter(),
     textToSpeech: appleLocalVoice.textToSpeech,
     playback: appleLocalVoice.playback,
   };

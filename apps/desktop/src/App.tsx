@@ -159,6 +159,13 @@ function isTauriRuntime() {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 }
 
+const activeVoiceInteractionStates = new Set<VoiceSessionState>([
+  "listening",
+  "transcribing",
+  "thinking",
+  "speaking",
+]);
+
 type AvatarEyeTrackingDesktopPoint = {
   x: number;
   y: number;
@@ -1129,11 +1136,9 @@ export function VoiceInteractionPanel({
   onTextFallbackChange?: (value: string) => void;
   onSubmitTextFallback?: () => void;
 }) {
-  const isRunning =
-    voiceInteraction.sessionState === "listening" ||
-    voiceInteraction.sessionState === "transcribing" ||
-    voiceInteraction.sessionState === "thinking" ||
-    voiceInteraction.sessionState === "speaking";
+  const isRunning = activeVoiceInteractionStates.has(
+    voiceInteraction.sessionState,
+  );
   const isError = voiceInteraction.sessionState === "error";
   const isUnavailable = voiceInteraction.sessionState === "unavailable";
   const ttsProvider = settings?.ttsProvider ?? "apple-local-tts";
@@ -2471,12 +2476,6 @@ export function App({
     clearVoiceTimers();
     correctionPromptRequestId.current += 1;
     void voiceRuntimeRef.current.interrupt("user_interrupt");
-    setVoiceInteraction((current) => ({
-      ...current,
-      sessionState: "idle",
-      response: "Voice session stopped.",
-      companionPrompt: null,
-    }));
   }
 
   useEffect(() => {
@@ -2549,8 +2548,13 @@ export function App({
       fallbackText,
       submittedFallbackText: fallbackText,
     }));
-    void voiceRuntimeRef.current
-      .submitTextFallback(fallbackText)
+    void (async () => {
+      if (activeVoiceInteractionStates.has(voiceInteraction.sessionState)) {
+        await voiceRuntimeRef.current.interrupt("text_fallback");
+      }
+
+      return voiceRuntimeRef.current.submitTextFallback(fallbackText);
+    })()
       .catch((error: unknown) => {
         setVoiceInteraction((current) => ({
           ...current,
@@ -3437,24 +3441,18 @@ export function App({
               <button
                 type="button"
                 aria-label={`Start voice with ${voiceListeningHotkeyLabel}`}
-                disabled={
-                  voiceInteraction.sessionState === "listening" ||
-                  voiceInteraction.sessionState === "transcribing" ||
-                  voiceInteraction.sessionState === "thinking" ||
-                  voiceInteraction.sessionState === "speaking"
-                }
+                disabled={activeVoiceInteractionStates.has(
+                  voiceInteraction.sessionState,
+                )}
                 onClick={activateVoiceListening}
               >
                 Start voice
               </button>
               <button
                 type="button"
-                disabled={
-                  voiceInteraction.sessionState !== "listening" &&
-                  voiceInteraction.sessionState !== "transcribing" &&
-                  voiceInteraction.sessionState !== "thinking" &&
-                  voiceInteraction.sessionState !== "speaking"
-                }
+                disabled={!activeVoiceInteractionStates.has(
+                  voiceInteraction.sessionState,
+                )}
                 onClick={stopVoiceInteraction}
               >
                 Interrupt
