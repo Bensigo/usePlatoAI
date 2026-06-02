@@ -637,6 +637,22 @@ function SurfaceStateStrip({
   );
 }
 
+function surfaceToneForProviderAvailability(
+  availability: string,
+): SurfaceStateTone {
+  if (availability === "logged-in") {
+    return "configured";
+  }
+  if (availability === "login-failed") {
+    return "error";
+  }
+  if (availability === "missing-runtime") {
+    return "unavailable";
+  }
+
+  return "missing";
+}
+
 export function SettingsPanel({ settings }: { settings: CompanionSettings }) {
   return (
     <div className="settings-panel">
@@ -1554,6 +1570,51 @@ export function TrustFoundationSettings({
     }
   }
 
+  async function startChatGptOAuthLogin() {
+    setIsSaving(true);
+    try {
+      setSnapshot(await durableTrustFoundationStore.startChatGptOAuthLogin("browser"));
+      setMessage("ChatGPT OAuth connected through Codex app-server");
+    } catch (error) {
+      try {
+        setSnapshot(await durableTrustFoundationStore.read());
+      } catch {
+        // Keep the existing snapshot if the recovery read also fails.
+      }
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Unable to start ChatGPT OAuth login",
+      );
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  async function clearChatGptOAuthLogin() {
+    setIsSaving(true);
+    try {
+      setSnapshot(await durableTrustFoundationStore.clearChatGptOAuthLogin());
+      setMessage("ChatGPT OAuth metadata cleared");
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Unable to clear ChatGPT OAuth metadata",
+      );
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  const chatGptOAuth = snapshot.providerCredential.chatgptOauth;
+  const activeAuthLabel =
+    snapshot.providerCredential.activeAuthMode === "chatgpt_oauth"
+      ? "ChatGPT OAuth"
+      : snapshot.providerCredential.activeAuthMode === "openai_api_key"
+        ? "OpenAI API key"
+        : "Not configured";
+
   return (
     <div className="trust-settings">
       <SettingsSummary settings={settings} />
@@ -1562,31 +1623,26 @@ export function TrustFoundationSettings({
         label="Provider and trust surface states"
         states={[
           {
-            label: "Credential",
-            value: snapshot.providerCredential.hasSecret
+            label: "API key",
+            value: snapshot.providerCredential.apiKeyConfigured
               ? "configured"
               : "missing",
-            tone: snapshot.providerCredential.hasSecret
+            tone: snapshot.providerCredential.apiKeyConfigured
               ? "configured"
               : "missing",
           },
           {
-            label: "Provider",
-            value:
-              snapshot.providerCredential.authStatus === "configured"
-                ? "configured"
-                : snapshot.providerCredential.authStatus,
+            label: "Codex auth",
+            value: chatGptOAuth.availability,
+            tone: surfaceToneForProviderAvailability(chatGptOAuth.availability),
+          },
+          {
+            label: "Active",
+            value: activeAuthLabel,
             tone:
               snapshot.providerCredential.authStatus === "configured"
                 ? "configured"
-                : snapshot.providerCredential.authStatus === "error"
-                  ? "error"
-                  : "missing",
-          },
-          {
-            label: "Network",
-            value: "offline-safe",
-            tone: "offline",
+                : "missing",
           },
           {
             label: "Authority",
@@ -1632,19 +1688,37 @@ export function TrustFoundationSettings({
       </section>
 
       <section className="trust-section" aria-labelledby="credential-title">
-        <h3 id="credential-title">Provider credential</h3>
+        <h3 id="credential-title">Provider auth</h3>
         <dl className="compact-facts">
           <div>
             <dt>Provider</dt>
             <dd>{snapshot.providerCredential.displayName}</dd>
           </div>
           <div>
-            <dt>Presence</dt>
-            <dd>{snapshot.providerCredential.hasSecret ? "Saved" : "Missing"}</dd>
+            <dt>Active path</dt>
+            <dd>{activeAuthLabel}</dd>
           </div>
           <div>
-            <dt>Status</dt>
+            <dt>Overall</dt>
             <dd>{snapshot.providerCredential.authStatus}</dd>
+          </div>
+        </dl>
+      </section>
+
+      <section className="trust-section" aria-labelledby="api-key-title">
+        <h3 id="api-key-title">OpenAI API key</h3>
+        <p className="trust-copy">
+          API-key billing uses the OpenAI API and stores the key in the OS-backed
+          provider secret store.
+        </p>
+        <dl className="compact-facts">
+          <div>
+            <dt>Secret</dt>
+            <dd>{snapshot.providerCredential.apiKeyConfigured ? "Saved" : "Missing"}</dd>
+          </div>
+          <div>
+            <dt>Mode</dt>
+            <dd>openai_api_key</dd>
           </div>
         </dl>
         <form className="credential-form" onSubmit={saveCredential}>
@@ -1662,6 +1736,47 @@ export function TrustFoundationSettings({
             Remove
           </button>
         </form>
+      </section>
+
+      <section className="trust-section" aria-labelledby="chatgpt-oauth-title">
+        <h3 id="chatgpt-oauth-title">ChatGPT OAuth through Codex</h3>
+        <p className="trust-copy">
+          ChatGPT OAuth uses Codex app-server for Codex/Agent Engine execution.
+          It is not a replacement for paid OpenAI audio API endpoints.
+        </p>
+        <dl className="compact-facts">
+          <div>
+            <dt>Mode</dt>
+            <dd>chatgpt_oauth</dd>
+          </div>
+          <div>
+            <dt>Status</dt>
+            <dd>{chatGptOAuth.availability}</dd>
+          </div>
+          <div>
+            <dt>Account</dt>
+            <dd>{chatGptOAuth.email ?? chatGptOAuth.accountId ?? "Not logged in"}</dd>
+          </div>
+          <div>
+            <dt>Plan</dt>
+            <dd>{chatGptOAuth.planType ?? "Unknown"}</dd>
+          </div>
+          <div>
+            <dt>Token source</dt>
+            <dd>{chatGptOAuth.tokenSource ?? "Codex app-server"}</dd>
+          </div>
+        </dl>
+        {chatGptOAuth.lastError ? (
+          <p className="trust-error">{chatGptOAuth.lastError}</p>
+        ) : null}
+        <div className="oauth-actions">
+          <button type="button" disabled={isSaving} onClick={startChatGptOAuthLogin}>
+            Start browser login
+          </button>
+          <button type="button" disabled={isSaving} onClick={clearChatGptOAuthLogin}>
+            Clear OAuth
+          </button>
+        </div>
       </section>
 
       <section className="trust-section" aria-labelledby="authority-title">

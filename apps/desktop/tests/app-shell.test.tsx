@@ -2433,13 +2433,20 @@ describe("desktop app shell", () => {
     }
 
     expect(markup).toContain("Provider and trust surface states");
-    expect(markup).toContain("Credential");
+    expect(markup).toContain("API key");
     expect(markup).toContain("missing");
-    expect(markup).toContain("offline-safe");
+    expect(markup).toContain("Codex auth");
+    expect(markup).toContain("not-logged-in");
+    expect(markup).toContain("OpenAI API key");
+    expect(markup).toContain("openai_api_key");
+    expect(markup).toContain("ChatGPT OAuth through Codex");
+    expect(markup).toContain("Codex app-server");
+    expect(markup).toContain("chatgpt_oauth");
+    expect(markup).toContain("paid OpenAI audio API endpoints");
     expect(markup).toContain("Authority");
     expect(markup).toContain("Memory status");
     expect(markup).toContain("local-storage-boundary");
-    expect(markup).toContain("Provider credential");
+    expect(markup).toContain("Provider auth");
     expect(markup).toContain("OpenAI");
     expect(markup).toContain("Execution authority");
     expect(markup).toContain("Ask first");
