@@ -27,6 +27,7 @@ import {
   isDesktopMicrophoneCaptureAvailable,
   type DesktopMicrophoneCaptureDependencies,
 } from "./desktopMicrophone";
+import { createAppleLocalVoiceRuntimeAdapters } from "./appleLocalTts";
 
 export type VoiceSessionState = VoiceRuntimeSessionState;
 
@@ -281,6 +282,7 @@ export function createUnavailableDesktopVoiceAdapters(
 export function createDesktopVoiceSessionAdapters(
   microphoneDependencies: DesktopMicrophoneCaptureDependencies = {},
 ): VoiceSessionAdapters {
+  const appleLocalVoice = createAppleLocalVoiceRuntimeAdapters();
   const microphoneUnavailableMessage =
     "Desktop microphone capture is unavailable in this runtime.";
   const providerUnavailableMessage =
@@ -305,6 +307,8 @@ export function createDesktopVoiceSessionAdapters(
       },
     },
     microphone: createDesktopMicrophoneInputAdapter(microphoneDependencies),
+    textToSpeech: appleLocalVoice.textToSpeech,
+    playback: appleLocalVoice.playback,
   };
 }
 

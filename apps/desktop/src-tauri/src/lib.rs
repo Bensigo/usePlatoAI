@@ -4,6 +4,7 @@ use tauri::{AppHandle, Manager};
 
 use crate::codex_app_server_auth::CodexAppServerAuthClient;
 
+mod apple_tts;
 mod codex_app_server_auth;
 mod local_data;
 mod presence_window;
@@ -27,7 +28,13 @@ pub struct CompanionSettings {
     memory_mode: String,
     execution_authority: String,
     provider_placeholder: String,
+    #[serde(default = "default_tts_provider")]
+    tts_provider: String,
     onboarding_complete: bool,
+}
+
+fn default_tts_provider() -> String {
+    apple_tts::APPLE_LOCAL_TTS_PROVIDER_ID.to_string()
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
@@ -429,6 +436,28 @@ fn clear_chatgpt_oauth_login(app: AppHandle) -> Result<TrustFoundationSnapshot, 
     build_trust_foundation_snapshot(&local_data, provider_secret_store()?, legacy_settings_path)
 }
 
+#[tauri::command]
+fn apple_tts_availability(
+    runtime: tauri::State<'_, apple_tts::AppleTtsRuntime>,
+) -> apple_tts::AppleTtsAvailability {
+    runtime.availability()
+}
+
+#[tauri::command]
+fn apple_tts_speak(
+    runtime: tauri::State<'_, apple_tts::AppleTtsRuntime>,
+    request: apple_tts::AppleTtsSpeakRequest,
+) -> Result<apple_tts::AppleTtsCommandResult, String> {
+    runtime.speak(request)
+}
+
+#[tauri::command]
+fn apple_tts_stop(
+    runtime: tauri::State<'_, apple_tts::AppleTtsRuntime>,
+) -> Result<apple_tts::AppleTtsCommandResult, String> {
+    runtime.stop()
+}
+
 fn current_unix_timestamp_string() -> String {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -490,6 +519,7 @@ fn metadata_string(metadata: Option<&serde_json::Value>, key: &str) -> Option<St
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .manage(apple_tts::AppleTtsRuntime::default())
         .invoke_handler(tauri::generate_handler![
             read_companion_settings,
             save_companion_settings,
@@ -515,7 +545,10 @@ pub fn run() {
             has_provider_credential,
             remove_provider_credential,
             start_chatgpt_oauth_login,
-            clear_chatgpt_oauth_login
+            clear_chatgpt_oauth_login,
+            apple_tts_availability,
+            apple_tts_speak,
+            apple_tts_stop
         ])
         .setup(|app| {
             use tauri::{
@@ -871,5 +904,36 @@ mod tests {
 
         assert!(snapshot.provider_credential.has_secret);
         assert_eq!(snapshot.provider_credential.auth_status, "configured");
+    }
+
+    #[test]
+    fn apple_tts_runtime_reports_missing_say_command_as_unavailable() {
+        let runtime = apple_tts::AppleTtsRuntime::with_command_path(std::path::PathBuf::from(
+            "/missing/useplatoai/say",
+        ));
+
+        let availability = runtime.availability();
+
+        assert_eq!(availability.provider_id, "apple-local-tts");
+        assert_eq!(availability.state, "unavailable");
+    }
+
+    #[test]
+    fn apple_tts_runtime_can_stop_active_local_speech_process() {
+        let runtime =
+            apple_tts::AppleTtsRuntime::with_command_path(std::path::PathBuf::from("/bin/sleep"));
+
+        let result = runtime
+            .speak(apple_tts::AppleTtsSpeakRequest {
+                text: "5".to_string(),
+                voice_id: None,
+            })
+            .expect("start test speech process");
+
+        assert_eq!(result.status, "speaking");
+
+        let stopped = runtime.stop().expect("stop test speech process");
+
+        assert_eq!(stopped.status, "stopped");
     }
 }

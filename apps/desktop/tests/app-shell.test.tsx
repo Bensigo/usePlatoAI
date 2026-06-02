@@ -94,6 +94,8 @@ import {
   defaultCompanionSettings,
   defaultExecutionAuthorityPolicy,
   decisionForActionImpact,
+  normalizeCompanionSettings,
+  ttsProviderLabel,
 } from "../src/settings";
 import {
   createMemoryTaskStore,
@@ -1151,10 +1153,10 @@ describe("desktop app shell", () => {
 
     expect(markup).toContain("Voice surface states");
     expect(markup).toContain("Local voice");
-    expect(markup).toContain("runtime ready");
+    expect(markup).toContain("Supported");
     expect(markup).toContain("Cloud voice");
-    expect(markup).toContain("provider not configured");
-    expect(markup).toContain("unavailable until provider configured");
+    expect(markup).toContain("paid remote");
+    expect(markup).toContain("Apple local");
     expect(markup).toContain("Microphone");
     expect(markup).toContain("asks on start");
     expect(markup).toContain("Start listening");
@@ -1169,6 +1171,18 @@ describe("desktop app shell", () => {
       "Voice and text responses use configured runtime providers",
     );
     expect(markup).not.toContain("OpenAI credential");
+  });
+
+  it("renders Apple local TTS as the selected no-paid voice output provider", () => {
+    const markup = renderToStaticMarkup(
+      <App initialSettings={completedSettings} initialControlsExpanded />,
+    );
+
+    expect(markup).toContain("Apple local voices");
+    expect(markup).toContain("Free local macOS speech");
+    expect(markup).toContain("OpenAI TTS");
+    expect(markup).toContain("Paid remote API audio");
+    expect(markup).toContain("No OpenAI TTS billing");
   });
 
   it("renders audio activation states as explicit UI states", () => {
@@ -1363,6 +1377,17 @@ describe("desktop app shell", () => {
           "Voice transcription provider is not configured. Captured microphone audio cannot be transcribed yet.",
       },
     });
+  });
+
+  it("wires Apple local TTS into the production desktop voice runtime output adapters", () => {
+    const source = readFileSync(
+      resolve(process.cwd(), "src/voiceInteraction.ts"),
+      "utf8",
+    );
+
+    expect(source).toContain("createAppleLocalVoiceRuntimeAdapters()");
+    expect(source).toContain("textToSpeech: appleLocalVoice.textToSpeech");
+    expect(source).toContain("playback: appleLocalVoice.playback");
   });
 
   it("can render initial audio state for visual smoke captures", () => {
@@ -2567,12 +2592,26 @@ describe("desktop app shell", () => {
       memoryMode: "paused" as const,
       executionAuthority: "ask-first" as const,
       providerPlaceholder: "local-model" as const,
+      ttsProvider: "apple-local-tts" as const,
       onboardingComplete: true,
     };
 
     await settingsStore.save(localSettings);
 
     await expect(settingsStore.read()).resolves.toEqual(localSettings);
+  });
+
+  it("defaults saved settings to Apple local TTS when no paid TTS opt-in exists", () => {
+    expect(normalizeCompanionSettings(null).ttsProvider).toBe(
+      "apple-local-tts",
+    );
+    expect(
+      normalizeCompanionSettings({
+        providerPlaceholder: "openai-api-key",
+        ttsProvider: "openai-tts",
+      }).ttsProvider,
+    ).toBe("apple-local-tts");
+    expect(ttsProviderLabel("apple-local-tts")).toBe("Apple local voices");
   });
 
   it("exposes execution authority decisions outside React state", () => {

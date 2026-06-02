@@ -1376,6 +1376,7 @@ fn default_companion_settings() -> CompanionSettings {
         memory_mode: "enabled".to_string(),
         execution_authority: execution_authority_mode_key(DEFAULT_EXECUTION_AUTHORITY).to_string(),
         provider_placeholder: "configure-later".to_string(),
+        tts_provider: crate::apple_tts::APPLE_LOCAL_TTS_PROVIDER_ID.to_string(),
         onboarding_complete: false,
     }
 }
@@ -1421,6 +1422,9 @@ fn settings_audit_metadata(
     }
     if baseline.provider_placeholder != next_settings.provider_placeholder {
         changed_fields.push("providerPlaceholder");
+    }
+    if baseline.tts_provider != next_settings.tts_provider {
+        changed_fields.push("ttsProvider");
     }
     if baseline.onboarding_complete != next_settings.onboarding_complete {
         changed_fields.push("onboardingComplete");
@@ -2193,6 +2197,7 @@ mod tests {
             memory_mode: "enabled".to_string(),
             execution_authority: "ask-first".to_string(),
             provider_placeholder: "openai-api-key".to_string(),
+            tts_provider: crate::apple_tts::APPLE_LOCAL_TTS_PROVIDER_ID.to_string(),
             onboarding_complete: true,
         }
     }

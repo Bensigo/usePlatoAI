@@ -64,9 +64,18 @@ import {
   type PresenceHitTestRect,
 } from "./presenceHitTest";
 import {
+  appleLocalTextToSpeechProvider,
+  openAiTextToSpeechProvider,
+  textToSpeechProviderLabelForAvailability,
+  type TextToSpeechProviderAvailabilityState,
+  type TextToSpeechProviderId,
+  type TextToSpeechProviderDescriptor,
+} from "@useplatoai/voice";
+import {
   createTauriSettingsStore,
   defaultCompanionSettings,
   providerPlaceholderLabel,
+  ttsProviderLabel,
   type CompanionSettings,
   type ExecutionAuthority,
   type LaunchBehavior,
@@ -561,6 +570,7 @@ export function ControlSurfacePanel({
       {activeEntry === "voice" && voiceInteraction ? (
         <VoiceInteractionPanel
           voiceInteraction={voiceInteraction}
+          settings={settings}
           onStartVoiceInteraction={onStartVoiceInteraction}
           onStopVoiceInteraction={onStopVoiceInteraction}
           onMuteChange={onMuteChange}
@@ -1104,6 +1114,7 @@ export function MemoryBrowserPanel({
 
 export function VoiceInteractionPanel({
   voiceInteraction,
+  settings,
   onStartVoiceInteraction,
   onStopVoiceInteraction,
   onMuteChange,
@@ -1111,6 +1122,7 @@ export function VoiceInteractionPanel({
   onSubmitTextFallback,
 }: {
   voiceInteraction: VoiceInteractionSnapshot;
+  settings?: CompanionSettings;
   onStartVoiceInteraction?: () => void;
   onStopVoiceInteraction?: () => void;
   onMuteChange?: (isMuted: boolean) => void;
@@ -1124,6 +1136,8 @@ export function VoiceInteractionPanel({
     voiceInteraction.sessionState === "speaking";
   const isError = voiceInteraction.sessionState === "error";
   const isUnavailable = voiceInteraction.sessionState === "unavailable";
+  const ttsProvider = settings?.ttsProvider ?? "apple-local-tts";
+  const appleAvailability: TextToSpeechProviderAvailabilityState = "supported";
 
   function submitTextFallback(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -1137,20 +1151,18 @@ export function VoiceInteractionPanel({
         states={[
           {
             label: "Local voice",
-            value: "runtime ready",
+            value: textToSpeechProviderLabelForAvailability(appleAvailability),
             tone: "configured",
           },
           {
             label: "Cloud voice",
-            value: "provider not configured",
-            tone: "unavailable",
+            value: "paid remote",
+            tone: "missing",
           },
           {
             label: "Output",
-            value: voiceInteraction.isMuted
-              ? "muted"
-              : "unavailable until provider configured",
-            tone: voiceInteraction.isMuted ? "muted" : "unavailable",
+            value: voiceInteraction.isMuted ? "muted" : "Apple local",
+            tone: voiceInteraction.isMuted ? "muted" : "configured",
           },
           {
             label: "Session",
@@ -1185,7 +1197,13 @@ export function VoiceInteractionPanel({
           <dt>Output</dt>
           <dd>{voiceInteraction.isMuted ? "Muted" : "Audible"}</dd>
         </div>
+        <div>
+          <dt>TTS provider</dt>
+          <dd>{ttsProviderLabel(ttsProvider)}</dd>
+        </div>
       </dl>
+
+      <TtsProviderSummary selectedProviderId={ttsProvider} />
 
       <div className="voice-actions" role="group" aria-label="Voice controls">
         <button
@@ -1239,6 +1257,55 @@ export function VoiceInteractionPanel({
         {voiceInteraction.response}
       </p>
     </div>
+  );
+}
+
+function TtsProviderSummary({
+  selectedProviderId,
+}: {
+  selectedProviderId: TextToSpeechProviderId;
+}) {
+  return (
+    <section className="tts-provider-summary" aria-label="TTS provider options">
+      <TtsProviderOption
+        provider={appleLocalTextToSpeechProvider}
+        selectedProviderId={selectedProviderId}
+        detail="Free local macOS speech. Stays on this Mac. No OpenAI TTS billing."
+      />
+      <TtsProviderOption
+        provider={openAiTextToSpeechProvider}
+        selectedProviderId={selectedProviderId}
+        detail="Paid remote API audio. Requires explicit paid TTS opt-in."
+      />
+    </section>
+  );
+}
+
+function TtsProviderOption({
+  provider,
+  selectedProviderId,
+  detail,
+}: {
+  provider: TextToSpeechProviderDescriptor;
+  selectedProviderId: TextToSpeechProviderId;
+  detail: string;
+}) {
+  const isSelected = selectedProviderId === provider.providerId;
+
+  return (
+    <label className="tts-provider-option">
+      <input
+        type="radio"
+        name="ttsProvider"
+        value={provider.providerId}
+        checked={isSelected}
+        readOnly
+      />
+      <span>
+        <strong>{provider.displayName}</strong>
+        <small>{detail}</small>
+      </span>
+    </label>
   );
 }
 
@@ -1913,6 +1980,7 @@ export function FirstRunOnboarding({
       providerPlaceholder: formData.get(
         "providerPlaceholder",
       ) as ProviderPlaceholder,
+      ttsProvider: defaultCompanionSettings.ttsProvider,
       onboardingComplete: true,
     };
 

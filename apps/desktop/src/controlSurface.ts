@@ -16,7 +16,7 @@ export const controlSurfaceEntries: {
     id: "voice",
     label: "Voice",
     description:
-      "Start an explicit voice session, inspect provider availability, mute output, and use text fallback.",
+      "Start voice interaction, use Apple local speech output, mute output, and keep text fallback available.",
     state: "ready",
   },
   {
