@@ -121,10 +121,11 @@ import {
   companionPromptForInputWithCorrections,
   companionPromptForInput,
   defaultVoiceInteractionSnapshot,
-  previewVoiceInteractionSnapshot,
+  nearAvatarVoiceTextForSnapshot,
   presenceLabelForState,
   textFallbackResponseSnapshot,
   textFallbackThinkingSnapshot,
+  voiceInteractionSnapshotForRuntimeState,
   voiceInteractionSnapshotFromRuntime,
   voiceSessionStateFrom,
 } from "../src/voiceInteraction";
@@ -2124,35 +2125,101 @@ describe("desktop app shell", () => {
 
     expect(thinkingMarkup).toContain('data-presence-state="thinking"');
     expect(thinkingMarkup).toContain('data-presence-bubble-state="thinking"');
+    expect(thinkingMarkup).toContain("Thinking through the voice request.");
     expect(thinkingMarkup).toContain("presence-thinking-indicator");
     expect(thinkingMarkup).toContain("presence-avatar-stack");
     expect(thinkingMarkup.indexOf("presence-listening-bubble")).toBeLessThan(
       thinkingMarkup.indexOf("live2d-avatar-surface"),
     );
     expect(thinkingMarkup).not.toContain("presence-sound-wave");
+    expect(thinkingMarkup).not.toContain("Test voice input");
+    expect(thinkingMarkup).not.toContain("Voice runtime test response");
     expect(speakingMarkup).toContain('data-presence-state="speaking"');
     expect(speakingMarkup).toContain('data-presence-bubble-state="speaking"');
+    expect(speakingMarkup).toContain("Speaking through Apple local TTS.");
     expect(speakingMarkup).toContain("presence-sound-wave");
     expect(speakingMarkup).toContain("presence-avatar-stack");
     expect(speakingMarkup.indexOf("presence-listening-bubble")).toBeLessThan(
       speakingMarkup.indexOf("live2d-avatar-surface"),
     );
+    expect(speakingMarkup).not.toContain("Test voice input");
+    expect(speakingMarkup).not.toContain("Voice runtime test response");
+  });
+
+  it("renders muted, interrupted, unavailable, and error voice runtime states near the avatar", () => {
+    const cases = [
+      {
+        sessionState: "muted",
+        presenceState: "muted",
+        detail: "Voice output is muted. Showing text fallback.",
+      },
+      {
+        sessionState: "interrupted",
+        presenceState: "idle",
+        detail: "Voice operation was interrupted.",
+      },
+      {
+        sessionState: "unavailable",
+        presenceState: "error",
+        detail: "Desktop microphone capture is unavailable in this runtime.",
+      },
+      {
+        sessionState: "error",
+        presenceState: "error",
+        detail: "Desktop voice path failed before response output.",
+      },
+    ] as const;
+
+    for (const { sessionState, presenceState, detail } of cases) {
+      const markup = renderToStaticMarkup(
+        <App
+          initialSettings={completedSettings}
+          initialAudioActivationState="active"
+          initialVoiceSessionState={sessionState}
+        />,
+      );
+
+      expect(markup).toContain(`data-presence-state="${presenceState}"`);
+      expect(markup).toContain(`data-presence-bubble-state="${presenceState}"`);
+      expect(markup).toContain(detail);
+      expect(markup).not.toContain("Voice runtime test response");
+    }
   });
 
   it("progresses controlled voice and text fallback snapshots", () => {
-    const listening = previewVoiceInteractionSnapshot(
-      defaultVoiceInteractionSnapshot,
-      "listening",
+    const listening = voiceInteractionSnapshotForRuntimeState("listening");
+    const thinking = voiceInteractionSnapshotFromRuntime(
+      {
+        state: "thinking",
+        activationSource: "voice",
+        isMuted: false,
+        transcript: "Plan the release.",
+        responseText: "",
+        error: null,
+        avatarState: "thinking",
+      },
+      listening,
     );
-    const thinking = previewVoiceInteractionSnapshot(listening, "thinking");
-    const speaking = previewVoiceInteractionSnapshot(thinking, "speaking");
+    const speaking = voiceInteractionSnapshotFromRuntime(
+      {
+        state: "speaking",
+        activationSource: "voice",
+        isMuted: false,
+        transcript: "Plan the release.",
+        responseText: "I will map the release path.",
+        error: null,
+        avatarState: "speaking",
+      },
+      thinking,
+    );
     const textThinking = textFallbackThinkingSnapshot(speaking, "Fallback now");
     const textSpeaking = textFallbackResponseSnapshot(textThinking);
 
     expect(listening.sessionState).toBe("listening");
     expect(thinking.sessionState).toBe("thinking");
     expect(speaking.sessionState).toBe("speaking");
-    expect(speaking.companionPrompt).toContain("Trusted policy layer:");
+    expect(speaking.response).toBe("I will map the release path.");
+    expect(speaking.companionPrompt).toBeNull();
     expect(textThinking.companionPrompt).toBeNull();
     expect(textThinking.activationSource).toBe("text");
     expect(textThinking.sessionState).toBe("thinking");
@@ -2205,7 +2272,9 @@ describe("desktop app shell", () => {
     );
     expect(nextVoiceSnapshot.activationSource).toBe("voice");
     expect(nextVoiceSnapshot.submittedFallbackText).toBeNull();
-    expect(nextVoiceSnapshot.response).toBe("Waiting for speech.");
+    expect(nextVoiceSnapshot.response).toBe(
+      "Listening through desktop microphone.",
+    );
   });
 
   it("clears stale companion prompts outside active response snapshots", () => {
@@ -2216,9 +2285,15 @@ describe("desktop app shell", () => {
 
     expect(activeResponse.companionPrompt).toContain("Previous request");
 
-    const listening = previewVoiceInteractionSnapshot(activeResponse, "listening");
-    const thinking = previewVoiceInteractionSnapshot(activeResponse, "thinking");
-    const idle = previewVoiceInteractionSnapshot(activeResponse, "idle");
+    const listening = voiceInteractionSnapshotForRuntimeState(
+      "listening",
+      activeResponse,
+    );
+    const thinking = voiceInteractionSnapshotForRuntimeState(
+      "thinking",
+      activeResponse,
+    );
+    const idle = voiceInteractionSnapshotForRuntimeState("idle", activeResponse);
     const textThinking = textFallbackThinkingSnapshot(
       activeResponse,
       "Next request",
@@ -2228,6 +2303,103 @@ describe("desktop app shell", () => {
     expect(thinking.companionPrompt).toBeNull();
     expect(idle.companionPrompt).toBeNull();
     expect(textThinking.companionPrompt).toBeNull();
+  });
+
+  it("maps runtime voice states to near-avatar ephemeral text", () => {
+    const snapshots = [
+      [
+        "idle",
+        voiceInteractionSnapshotForRuntimeState("idle"),
+        null,
+      ],
+      [
+        "listening",
+        voiceInteractionSnapshotForRuntimeState("listening"),
+        "Listening through desktop microphone.",
+      ],
+      [
+        "transcribing",
+        voiceInteractionSnapshotForRuntimeState("transcribing"),
+        "Transcribing desktop microphone audio.",
+      ],
+      [
+        "thinking",
+        voiceInteractionSnapshotFromRuntime({
+          state: "thinking",
+          activationSource: "voice",
+          isMuted: false,
+          transcript: "Review the plan.",
+          responseText: "",
+          error: null,
+          avatarState: "thinking",
+        }),
+        "Review the plan.",
+      ],
+      [
+        "speaking",
+        voiceInteractionSnapshotFromRuntime({
+          state: "speaking",
+          activationSource: "voice",
+          isMuted: false,
+          transcript: "Review the plan.",
+          responseText: "The plan needs one sharper risk.",
+          error: null,
+          avatarState: "speaking",
+        }),
+        "The plan needs one sharper risk.",
+      ],
+      [
+        "muted",
+        voiceInteractionSnapshotFromRuntime({
+          state: "muted",
+          activationSource: "voice",
+          isMuted: true,
+          transcript: "Keep this quiet.",
+          responseText: "Voice output is muted. Showing text fallback.",
+          error: null,
+          avatarState: "muted",
+        }),
+        "Voice output is muted. Showing text fallback.",
+      ],
+      [
+        "interrupted",
+        voiceInteractionSnapshotForRuntimeState("interrupted"),
+        "Voice operation was interrupted.",
+      ],
+      [
+        "unavailable",
+        voiceInteractionSnapshotForRuntimeState("unavailable"),
+        "Desktop microphone capture is unavailable in this runtime.",
+      ],
+      [
+        "error",
+        voiceInteractionSnapshotForRuntimeState("error"),
+        "Desktop voice path failed before response output.",
+      ],
+    ] as const;
+
+    for (const [state, snapshot, expectedText] of snapshots) {
+      expect(nearAvatarVoiceTextForSnapshot(snapshot), state).toBe(expectedText);
+    }
+  });
+
+  it("keeps voice transcript and response display out of durable memory writes", () => {
+    const source = readFileSync(resolve(process.cwd(), "src/voiceInteraction.ts"), "utf8");
+
+    expect(source).not.toContain("remember(");
+    expect(source).not.toContain("rememberExtractedMemory");
+    expect(source).not.toContain("createTauriMemoryStore");
+    expect(
+      voiceInteractionSnapshotFromRuntime({
+        state: "speaking",
+        activationSource: "voice",
+        isMuted: false,
+        transcript: "Ephemeral voice request.",
+        responseText: "Ephemeral voice response.",
+        error: null,
+        avatarState: "speaking",
+      }),
+    ).not.toHaveProperty("history");
   });
 
   it("builds runtime companion prompts from local soul guidance", () => {
