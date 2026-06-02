@@ -27,6 +27,7 @@ import {
   isDesktopMicrophoneCaptureAvailable,
   type DesktopMicrophoneCaptureDependencies,
 } from "./desktopMicrophone";
+import { createOpenAiVoiceSessionAdapters } from "./openAiVoice";
 
 export type VoiceSessionState = VoiceRuntimeSessionState;
 
@@ -283,29 +284,15 @@ export function createDesktopVoiceSessionAdapters(
 ): VoiceSessionAdapters {
   const microphoneUnavailableMessage =
     "Desktop microphone capture is unavailable in this runtime.";
-  const providerUnavailableMessage =
-    "Voice transcription provider is not configured. Captured microphone audio cannot be transcribed yet.";
 
-  return {
-    ...createUnavailableDesktopVoiceAdapters(providerUnavailableMessage),
-    availability: {
-      async check() {
-        if (!isDesktopMicrophoneCaptureAvailable(microphoneDependencies)) {
-          return {
-            status: "unavailable",
-            providerId: "desktop-microphone",
-            reason: microphoneUnavailableMessage,
-          };
-        }
+  if (!isDesktopMicrophoneCaptureAvailable(microphoneDependencies)) {
+    return {
+      ...createUnavailableDesktopVoiceAdapters(microphoneUnavailableMessage),
+      microphone: createDesktopMicrophoneInputAdapter(microphoneDependencies),
+    };
+  }
 
-        return {
-          status: "available",
-          providerId: "desktop-microphone",
-        };
-      },
-    },
-    microphone: createDesktopMicrophoneInputAdapter(microphoneDependencies),
-  };
+  return createOpenAiVoiceSessionAdapters(microphoneDependencies);
 }
 
 export function previewVoiceInteractionSnapshot(

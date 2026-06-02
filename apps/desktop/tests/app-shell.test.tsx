@@ -1318,7 +1318,7 @@ describe("desktop app shell", () => {
     );
   });
 
-  it("keeps desktop voice available for real microphone capture while downstream providers stay unavailable", async () => {
+  it("keeps desktop voice unavailable when OpenAI voice cannot run in the current runtime", async () => {
     class FakeMediaRecorder {
       state: RecordingState = "inactive";
       ondataavailable: ((event: BlobEvent) => void) | null = null;
@@ -1350,18 +1350,9 @@ describe("desktop app shell", () => {
         outputMode: "audible",
       }),
     ).resolves.toEqual({
-      status: "available",
-      providerId: "desktop-microphone",
-    });
-    await expect(
-      adapters.speechToText.transcribe({ audio: new Uint8Array([1]) }),
-    ).resolves.toMatchObject({
-      status: "failed",
-      error: {
-        code: "provider_unavailable",
-        message:
-          "Voice transcription provider is not configured. Captured microphone audio cannot be transcribed yet.",
-      },
+      status: "unavailable",
+      providerId: "openai",
+      reason: "OpenAI voice requires the Tauri runtime.",
     });
   });
 

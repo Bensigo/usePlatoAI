@@ -6,6 +6,7 @@ import {
   type ExecutionAuthority,
   type ExecutionAuthorityPolicy,
 } from "./settings";
+import { openAiVoiceCredentialMetadata } from "./openAiVoice";
 
 export type LocalDataCategoryStatus = {
   categoryId: string;
@@ -181,7 +182,10 @@ export function createTauriTrustFoundationStore(): TrustFoundationStore {
           providerKind: "model-provider",
           displayName: "OpenAI",
           credential,
-          metadata: { engine: "codex" },
+          metadata: {
+            engine: "codex",
+            ...openAiVoiceCredentialMetadata(),
+          },
         },
       });
       return invoke<TrustFoundationSnapshot>("read_trust_foundation_snapshot");

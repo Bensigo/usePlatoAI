@@ -3,6 +3,7 @@ use std::path::Path;
 use tauri::{AppHandle, Manager};
 
 mod local_data;
+mod openai_voice;
 mod presence_window;
 mod provider_credentials;
 mod secret_store;
@@ -287,12 +288,17 @@ where
 #[tauri::command]
 fn save_provider_credential(
     app: AppHandle,
-    credential: provider_credentials::ProviderCredentialInput,
+    mut credential: provider_credentials::ProviderCredentialInput,
 ) -> Result<local_data::ProviderMetadata, String> {
     let local_data = local_data_service(&app)?;
     let secret_store = provider_secret_store()?;
     let credential_service =
         provider_credentials::ProviderCredentialService::new(&local_data, secret_store);
+
+    if credential.provider_id == "openai" {
+        credential.metadata =
+            openai_voice::metadata_with_default_voice_config(&credential.metadata);
+    }
 
     credential_service.save_provider_credential(credential)
 }
@@ -318,6 +324,77 @@ fn remove_provider_credential(
         provider_credentials::ProviderCredentialService::new(&local_data, secret_store);
 
     credential_service.remove_provider_credential(&provider_id)
+}
+
+#[tauri::command]
+fn openai_voice_availability(
+    app: AppHandle,
+) -> Result<openai_voice::OpenAiVoiceAvailability, String> {
+    let local_data = local_data_service(&app)?;
+    let secret_store = provider_secret_store()?;
+    let service = openai_voice::OpenAiVoiceService::new(
+        &local_data,
+        secret_store,
+        openai_voice::ReqwestOpenAiVoiceClient::default(),
+    );
+
+    service.availability()
+}
+
+#[tauri::command]
+fn openai_voice_transcribe(
+    app: AppHandle,
+    audio: Vec<u8>,
+    mime_type: String,
+) -> Result<openai_voice::OpenAiTranscriptionCommandResult, String> {
+    let local_data = local_data_service(&app)?;
+    let secret_store = provider_secret_store()?;
+    let service = openai_voice::OpenAiVoiceService::new(
+        &local_data,
+        secret_store,
+        openai_voice::ReqwestOpenAiVoiceClient::default(),
+    );
+
+    Ok(openai_voice::transcription_command_result(
+        service.transcribe(audio, &mime_type),
+    ))
+}
+
+#[tauri::command]
+fn openai_voice_generate_response(
+    app: AppHandle,
+    transcript: String,
+    activation_source: String,
+) -> Result<openai_voice::OpenAiResponseCommandResult, String> {
+    let local_data = local_data_service(&app)?;
+    let secret_store = provider_secret_store()?;
+    let service = openai_voice::OpenAiVoiceService::new(
+        &local_data,
+        secret_store,
+        openai_voice::ReqwestOpenAiVoiceClient::default(),
+    );
+
+    Ok(openai_voice::response_command_result(
+        service.generate_response(&transcript, &activation_source),
+    ))
+}
+
+#[tauri::command]
+fn openai_voice_synthesize(
+    app: AppHandle,
+    text: String,
+) -> Result<openai_voice::OpenAiSpeechCommandResult, String> {
+    let local_data = local_data_service(&app)?;
+    let secret_store = provider_secret_store()?;
+    let service = openai_voice::OpenAiVoiceService::new(
+        &local_data,
+        secret_store,
+        openai_voice::ReqwestOpenAiVoiceClient::default(),
+    );
+
+    Ok(openai_voice::speech_command_result(
+        service.synthesize(&text),
+    ))
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -346,7 +423,11 @@ pub fn run() {
             read_trust_foundation_snapshot,
             save_provider_credential,
             has_provider_credential,
-            remove_provider_credential
+            remove_provider_credential,
+            openai_voice_availability,
+            openai_voice_transcribe,
+            openai_voice_generate_response,
+            openai_voice_synthesize
         ])
         .setup(|app| {
             use tauri::{
@@ -415,6 +496,113 @@ mod tests {
             std::process::id(),
             std::thread::current().name().unwrap_or("test")
         ))
+    }
+
+    #[test]
+    fn openai_voice_defaults_use_api_key_paid_remote_non_realtime_config() {
+        let config = openai_voice::OpenAiVoiceConfig::default();
+
+        assert_eq!(config.auth_type, "api-key");
+        assert_eq!(config.api_use, "paid-remote");
+        assert_eq!(config.stt_model, "gpt-4o-mini-transcribe");
+        assert_eq!(config.response_model, "gpt-4o-mini");
+        assert_eq!(config.tts_model, "gpt-4o-mini-tts");
+        assert_eq!(config.tts_voice, "coral");
+        assert_eq!(config.tts_format, "mp3");
+        assert!(!serde_json::to_string(&config)
+            .expect("serialize config")
+            .to_lowercase()
+            .contains("realtime"));
+    }
+
+    #[test]
+    fn openai_voice_service_uses_configured_secret_for_stt_response_and_tts() {
+        let local_data = local_data::LocalDataService::in_memory().expect("create local data");
+        let secret_store = MemoryProviderSecretStore::default();
+        secret_store
+            .save_provider_credential("openai", "sk-test-provider-secret")
+            .expect("seed provider credential");
+        local_data
+            .upsert_provider_metadata(&local_data::ProviderMetadata {
+                provider_id: "openai".to_string(),
+                provider_kind: "model-provider".to_string(),
+                display_name: "OpenAI".to_string(),
+                auth_status: "configured".to_string(),
+                secret_ref: Some(provider_secret_ref("openai")),
+                metadata: json!({
+                    "authType": "api-key",
+                    "apiUse": "paid-remote",
+                    "voice": {
+                        "sttModel": "gpt-4o-mini-transcribe",
+                        "responseModel": "gpt-4o-mini",
+                        "ttsModel": "gpt-4o-mini-tts",
+                        "ttsVoice": "coral",
+                        "ttsFormat": "mp3"
+                    }
+                }),
+            })
+            .expect("save provider metadata");
+        let client = openai_voice::test_support::FakeOpenAiVoiceClient::new()
+            .with_transcription("Schedule the release.")
+            .with_response_text("I will map the release path.")
+            .with_speech_audio(vec![1, 2, 3, 4]);
+        let service =
+            openai_voice::OpenAiVoiceService::new(&local_data, secret_store, client.clone());
+
+        assert_eq!(
+            service
+                .transcribe(vec![8, 9, 10], "audio/webm")
+                .expect("transcribe")
+                .transcript,
+            "Schedule the release."
+        );
+        assert_eq!(
+            service
+                .generate_response("Schedule the release.", "voice")
+                .expect("generate response")
+                .text,
+            "I will map the release path."
+        );
+        assert_eq!(
+            service
+                .synthesize("I will map the release path.")
+                .expect("synthesize")
+                .audio,
+            vec![1, 2, 3, 4]
+        );
+        assert!(client
+            .authorization_headers()
+            .iter()
+            .all(|header| header == "Bearer sk-test-provider-secret"));
+        assert_eq!(
+            client.paths(),
+            vec![
+                "/v1/audio/transcriptions",
+                "/v1/responses",
+                "/v1/audio/speech"
+            ]
+        );
+        assert!(client
+            .paths()
+            .iter()
+            .all(|path| !path.to_lowercase().contains("realtime")));
+    }
+
+    #[test]
+    fn openai_voice_service_reports_missing_credentials_as_unavailable() {
+        let local_data = local_data::LocalDataService::in_memory().expect("create local data");
+        let secret_store = MemoryProviderSecretStore::default();
+        let client = openai_voice::test_support::FakeOpenAiVoiceClient::new();
+        let service =
+            openai_voice::OpenAiVoiceService::new(&local_data, secret_store, client.clone());
+
+        let availability = service.availability().expect("check availability");
+        assert_eq!(availability.status, "unavailable");
+        assert_eq!(
+            availability.reason.as_deref(),
+            Some("OpenAI API key is not configured.")
+        );
+        assert!(client.paths().is_empty());
     }
 
     #[test]
