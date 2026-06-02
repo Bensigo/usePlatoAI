@@ -71,10 +71,6 @@ export const defaultVoiceInteractionSnapshot: VoiceInteractionSnapshot = {
   error: null,
 };
 
-export const sampleVoiceTranscript = "Test voice input: help me plan the next step.";
-export const sampleVoiceResponse =
-  "Voice runtime test response.";
-
 export function companionPromptForInput(
   userInput: string,
   soulGuidance: SoulGuidance = fallbackSoulGuidance,
@@ -170,17 +166,25 @@ export function voiceInteractionSnapshotFromRuntime(
     if (runtimeSnapshot.activationSource === "voice") {
       switch (runtimeSnapshot.state) {
         case "listening":
-          return "Waiting for speech.";
+          return "Listening through desktop microphone.";
         case "transcribing":
-          return "Transcribing voice input.";
+          return "Transcribing desktop microphone audio.";
         case "thinking":
           return "Thinking through the voice request.";
+        case "speaking":
+          return runtimeSnapshot.isMuted
+            ? "Voice output is muted. Showing text fallback."
+            : "Speaking through Apple local TTS.";
         case "interrupted":
           return "Voice operation was interrupted.";
+        case "muted":
+          return "Voice output is muted. Showing text fallback.";
+        case "unavailable":
+          return "Desktop voice path is unavailable.";
+        case "error":
+          return "Desktop voice path failed.";
         case "idle":
           return "Ready for voice or text.";
-        default:
-          return currentSnapshot.response;
       }
     }
 
@@ -205,6 +209,76 @@ export function voiceInteractionSnapshotFromRuntime(
     companionPrompt: null,
     error: runtimeSnapshot.error?.message ?? null,
   };
+}
+
+export function voiceInteractionSnapshotForRuntimeState(
+  sessionState: VoiceSessionState,
+  currentSnapshot: VoiceInteractionSnapshot = defaultVoiceInteractionSnapshot,
+): VoiceInteractionSnapshot {
+  return voiceInteractionSnapshotFromRuntime(
+    {
+      state: sessionState,
+      activationSource: "voice",
+      isMuted: sessionState === "muted",
+      transcript: "",
+      responseText: "",
+      error:
+        sessionState === "error"
+          ? voiceRuntimeError(
+              "provider_error",
+              "Desktop voice path failed before response output.",
+              false,
+            )
+          : sessionState === "unavailable"
+            ? voiceRuntimeError(
+                "provider_unavailable",
+                "Desktop microphone capture is unavailable in this runtime.",
+                true,
+              )
+            : sessionState === "interrupted"
+              ? voiceRuntimeError(
+                  "operation_aborted",
+                  "Voice operation was interrupted.",
+                  true,
+                )
+              : null,
+      avatarState: companionPresenceForVoiceState(sessionState),
+    },
+    currentSnapshot,
+  );
+}
+
+export function nearAvatarVoiceTextForSnapshot(
+  snapshot: VoiceInteractionSnapshot,
+): string | null {
+  if (snapshot.error) {
+    return snapshot.error;
+  }
+
+  switch (snapshot.sessionState) {
+    case "listening":
+      return snapshot.transcript || "Listening through desktop microphone.";
+    case "transcribing":
+      return snapshot.transcript
+        ? `Transcribing: ${snapshot.transcript}`
+        : "Transcribing desktop microphone audio.";
+    case "thinking":
+      return snapshot.transcript || "Thinking through the voice request.";
+    case "speaking":
+      return snapshot.isMuted
+        ? snapshot.response || "Voice output is muted. Showing text fallback."
+        : snapshot.response || "Speaking through Apple local TTS.";
+    case "muted":
+      return snapshot.response || "Voice output is muted. Showing text fallback.";
+    case "interrupted":
+      return "Voice operation was interrupted.";
+    case "unavailable":
+      return "Desktop voice path is unavailable.";
+    case "error":
+      return "Desktop voice path failed.";
+    case "idle":
+      return null;
+  }
 }
 
 function unavailableResult<TPayload extends object = object>(
@@ -364,55 +438,6 @@ export function createDesktopVoiceSessionAdapters(
     responseGeneration: createDesktopTextFallbackResponseAdapter(),
     textToSpeech: appleLocalVoice.textToSpeech,
     playback: appleLocalVoice.playback,
-  };
-}
-
-export function previewVoiceInteractionSnapshot(
-  snapshot: VoiceInteractionSnapshot,
-  sessionState: VoiceSessionState,
-  soulGuidance: SoulGuidance = fallbackSoulGuidance,
-): VoiceInteractionSnapshot {
-  if (sessionState === "listening") {
-    return {
-      ...snapshot,
-      activationSource: "voice",
-      sessionState,
-      transcript: "Listening through the voice runtime...",
-      response: "Waiting for speech.",
-      submittedFallbackText: null,
-      companionPrompt: null,
-    };
-  }
-
-  if (sessionState === "thinking") {
-    return {
-      ...snapshot,
-      sessionState,
-      transcript: sampleVoiceTranscript,
-      response: "Thinking through the voice request.",
-      companionPrompt: null,
-    };
-  }
-
-  if (sessionState === "speaking") {
-    const companionPrompt = companionPromptForInput(
-      snapshot.transcript || sampleVoiceTranscript,
-      soulGuidance,
-    );
-
-    return {
-      ...snapshot,
-      sessionState,
-      response: snapshot.isMuted ? "Muted response ready." : sampleVoiceResponse,
-      companionPrompt,
-    };
-  }
-
-  return {
-    ...snapshot,
-    sessionState,
-    response: "Voice session complete.",
-    companionPrompt: null,
   };
 }
 

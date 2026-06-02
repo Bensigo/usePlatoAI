@@ -120,10 +120,10 @@ import {
   companionPromptForInputWithCorrections,
   companionPresenceForVoiceState,
   defaultVoiceInteractionSnapshot,
-  sampleVoiceTranscript,
-  previewVoiceInteractionSnapshot,
+  nearAvatarVoiceTextForSnapshot,
   textFallbackResponseSnapshot,
   textFallbackThinkingSnapshot,
+  voiceInteractionSnapshotForRuntimeState,
   voiceInteractionSnapshotFromRuntime,
   type VoiceInteractionSnapshot,
   type VoiceSessionState,
@@ -305,7 +305,7 @@ export function isActiveCorrectionPromptTransition({
 
   return source === "text"
     ? snapshot.submittedFallbackText === promptInput
-    : (snapshot.transcript || sampleVoiceTranscript) === promptInput;
+    : snapshot.transcript === promptInput;
 }
 
 export function renderedPresenceStateFor({
@@ -1466,11 +1466,13 @@ export function CenteredChatPanel({
 export function PresenceListeningBubble({
   state,
   label: overrideLabel,
+  detail,
   ariaLabel,
   onOpenControls,
 }: {
   state: AvatarPresenceState;
   label?: string;
+  detail?: string | null;
   ariaLabel?: string;
   onOpenControls?: () => void;
 }) {
@@ -1488,6 +1490,7 @@ export function PresenceListeningBubble({
       aria-label={ariaLabel ?? `Open voice controls: ${label}`}
     >
       <span className="presence-bubble-label">{label}</span>
+      {detail ? <span className="presence-bubble-detail">{detail}</span> : null}
       {hasSoundWave ? (
         <span className="presence-sound-wave" aria-hidden="true">
           <span />
@@ -2219,10 +2222,7 @@ export function App({
   const [voiceInteraction, setVoiceInteraction] =
     useState<VoiceInteractionSnapshot>(() =>
       initialVoiceSessionState
-        ? previewVoiceInteractionSnapshot(
-            defaultVoiceInteractionSnapshot,
-            initialVoiceSessionState,
-          )
+        ? voiceInteractionSnapshotForRuntimeState(initialVoiceSessionState)
         : defaultVoiceInteractionSnapshot,
     );
   const [soulGuidance, setSoulGuidance] =
@@ -2835,6 +2835,7 @@ export function App({
   });
   const avatarPresenceState = avatarPresenceStateFor(renderedPresenceState);
   const avatarSurfaceHook = getLive2DAvatarSurfaceHook(avatarPresenceState);
+  const nearAvatarVoiceText = nearAvatarVoiceTextForSnapshot(voiceInteraction);
   const startupAvatarCompanionState =
     startupCompanionStateForPresenceState(startupPresenceState);
   const activeAvatarCompanionState =
@@ -3548,6 +3549,11 @@ export function App({
                     isCurrentTaskControlState(taskAwarePresence.state)
                       ? taskAwarePresence.label
                       : undefined
+                  }
+                  detail={
+                    isCurrentTaskControlState(taskAwarePresence.state)
+                      ? null
+                      : nearAvatarVoiceText
                   }
                   ariaLabel={
                     isCurrentTaskControlState(taskAwarePresence.state)

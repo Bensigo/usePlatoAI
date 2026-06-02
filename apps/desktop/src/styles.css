@@ -746,12 +746,13 @@ button {
   top: 0;
   z-index: 3;
   min-width: 128px;
-  max-width: 172px;
+  max-width: 228px;
   min-height: 38px;
-  display: inline-flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   justify-content: center;
-  gap: var(--plato-space-sm);
+  gap: 2px var(--plato-space-sm);
   margin: 0;
   padding: 8px 12px;
   border: 1px solid rgb(255 255 255 / 62%);
@@ -781,6 +782,18 @@ button {
   font-size: var(--plato-font-control);
   font-weight: 800;
   line-height: 1.1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.presence-bubble-detail {
+  grid-column: 1 / -1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--plato-color-text-muted);
+  font-size: 0.68rem;
+  font-weight: 700;
+  line-height: 1.2;
   text-overflow: ellipsis;
   white-space: nowrap;
 }

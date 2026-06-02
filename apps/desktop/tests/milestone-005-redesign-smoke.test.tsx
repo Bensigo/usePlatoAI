@@ -24,7 +24,7 @@ import {
 import type { LocalMemoryRecord } from "../src/memory";
 import {
   defaultVoiceInteractionSnapshot,
-  previewVoiceInteractionSnapshot,
+  voiceInteractionSnapshotForRuntimeState,
 } from "../src/voiceInteraction";
 
 const completedSettings: CompanionSettings = {
@@ -197,9 +197,9 @@ describe("Milestone 005 redesign smoke coverage", () => {
 
   it("renders voice thinking and speaking states for repeatable visual captures", () => {
     for (const sessionState of ["thinking", "speaking"] as const) {
-      const voiceSnapshot = previewVoiceInteractionSnapshot(
-        previewVoiceInteractionSnapshot(defaultVoiceInteractionSnapshot, "listening"),
+      const voiceSnapshot = voiceInteractionSnapshotForRuntimeState(
         sessionState,
+        defaultVoiceInteractionSnapshot,
       );
 
       expect(voiceSnapshot.sessionState).toBe(sessionState);
