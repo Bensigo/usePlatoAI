@@ -18,7 +18,7 @@ export type AppleLocalTtsAvailability = {
 
 type AppleLocalTtsCommandResult = {
   providerId: "apple-local-tts";
-  status: "speaking" | "stopped" | "failed";
+  status: "speaking" | "completed" | "stopped" | "failed";
   text?: string;
   error?: VoiceRuntimeAdapterError;
 };
@@ -85,6 +85,22 @@ function resultFromNative(
 
 function isAborted(context?: VoiceRuntimeOperationContext) {
   return context?.signal?.aborted === true;
+}
+
+function abortPromise(context?: VoiceRuntimeOperationContext) {
+  if (!context?.signal) {
+    return null;
+  }
+
+  if (context.signal.aborted) {
+    return Promise.resolve("aborted" as const);
+  }
+
+  return new Promise<"aborted">((resolve) => {
+    context.signal?.addEventListener("abort", () => resolve("aborted"), {
+      once: true,
+    });
+  });
 }
 
 export function createAppleLocalVoiceRuntimeAdapters(
@@ -188,12 +204,25 @@ export function createAppleLocalVoiceRuntimeAdapters(
         }
 
         try {
-          const native = (await invoke("apple_tts_speak", {
+          const speakRequest = invoke("apple_tts_speak", {
             request: {
               text,
               voiceId: undefined,
             },
-          })) as AppleLocalTtsCommandResult;
+          }) as Promise<AppleLocalTtsCommandResult>;
+          const abort = abortPromise(context);
+          const native = await (abort
+            ? Promise.race([speakRequest, abort])
+            : speakRequest);
+
+          if (native === "aborted") {
+            await invoke("apple_tts_stop");
+            return failedResult(
+              "operation_aborted",
+              "Voice operation was interrupted.",
+              true,
+            );
+          }
 
           return resultFromNative(native);
         } catch (error) {

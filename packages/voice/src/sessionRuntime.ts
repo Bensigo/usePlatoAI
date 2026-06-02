@@ -46,6 +46,7 @@ export type VoiceSessionRuntime = {
 
 export type CreateVoiceSessionRuntimeInput = {
   adapters: VoiceSessionAdapters;
+  interruptedRecoveryMs?: number;
 };
 
 type MutableVoiceSessionSnapshot = Omit<VoiceSessionSnapshot, "avatarState">;
@@ -166,6 +167,7 @@ export function voiceSessionStateFrom(
 
 export function createVoiceSessionRuntime({
   adapters,
+  interruptedRecoveryMs = 120,
 }: CreateVoiceSessionRuntimeInput): VoiceSessionRuntime {
   let snapshot = defaultSnapshot;
   let activeController: AbortController | null = null;
@@ -257,8 +259,10 @@ export function createVoiceSessionRuntime({
     ]);
   }
 
-  function markInterrupted(runId: number) {
+  async function markInterrupted(runId: number) {
     interruptedRunIds.add(runId);
+    const recoveryRunId = activeRunId;
+
     emit({
       state: "interrupted",
       error: voiceRuntimeError(
@@ -267,6 +271,17 @@ export function createVoiceSessionRuntime({
         true,
       ),
     });
+
+    if (interruptedRecoveryMs > 0) {
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, interruptedRecoveryMs);
+      });
+    }
+
+    if (activeRunId !== recoveryRunId || snapshot.state !== "interrupted") {
+      return;
+    }
+
     emit({
       state: snapshot.isMuted ? "muted" : "idle",
       error: null,
@@ -434,7 +449,7 @@ export function createVoiceSessionRuntime({
     activeController = null;
     activeRunId = runId + 1;
     await stopAdapters({ reason });
-    markInterrupted(runId);
+    await markInterrupted(runId);
     return getSnapshot();
   }
 

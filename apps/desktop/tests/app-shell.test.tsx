@@ -1332,7 +1332,7 @@ describe("desktop app shell", () => {
     );
   });
 
-  it("keeps desktop voice available for real microphone capture while downstream providers stay unavailable", async () => {
+  it("keeps desktop voice available for real microphone capture while STT stays unavailable", async () => {
     class FakeMediaRecorder {
       state: RecordingState = "inactive";
       ondataavailable: ((event: BlobEvent) => void) | null = null;
@@ -1379,6 +1379,21 @@ describe("desktop app shell", () => {
     });
   });
 
+  it("uses local text fallback response generation to drive Apple TTS without paid providers", async () => {
+    const adapters = createDesktopVoiceSessionAdapters();
+
+    await expect(
+      adapters.responseGeneration.generate({
+        transcript: "Check Apple speech.",
+        activationSource: "text",
+      }),
+    ).resolves.toEqual({
+      status: "success",
+      providerId: "desktop-text-fallback",
+      text: "I heard: Check Apple speech.",
+    });
+  });
+
   it("wires Apple local TTS into the production desktop voice runtime output adapters", () => {
     const source = readFileSync(
       resolve(process.cwd(), "src/voiceInteraction.ts"),
@@ -1386,6 +1401,9 @@ describe("desktop app shell", () => {
     );
 
     expect(source).toContain("createAppleLocalVoiceRuntimeAdapters()");
+    expect(source).toContain(
+      "responseGeneration: createDesktopTextFallbackResponseAdapter()",
+    );
     expect(source).toContain("textToSpeech: appleLocalVoice.textToSpeech");
     expect(source).toContain("playback: appleLocalVoice.playback");
   });

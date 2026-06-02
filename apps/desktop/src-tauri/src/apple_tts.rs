@@ -4,10 +4,13 @@ use std::{
     path::PathBuf,
     process::{Child, Command},
     sync::Mutex,
+    thread,
+    time::Duration,
 };
 
 pub const APPLE_LOCAL_TTS_PROVIDER_ID: &str = "apple-local-tts";
 const DEFAULT_SAY_COMMAND_PATH: &str = "/usr/bin/say";
+const SPEECH_PROCESS_POLL_INTERVAL: Duration = Duration::from_millis(25);
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -43,7 +46,13 @@ pub struct AppleTtsCommandResult {
 
 pub struct AppleTtsRuntime {
     command_path: PathBuf,
-    active_child: Mutex<Option<Child>>,
+    active_child: Mutex<Option<ActiveAppleTtsChild>>,
+    next_generation: Mutex<u64>,
+}
+
+struct ActiveAppleTtsChild {
+    generation: u64,
+    child: Child,
 }
 
 impl Default for AppleTtsRuntime {
@@ -57,6 +66,7 @@ impl AppleTtsRuntime {
         Self {
             command_path,
             active_child: Mutex::new(None),
+            next_generation: Mutex::new(0),
         }
     }
 
@@ -118,18 +128,15 @@ impl AppleTtsRuntime {
                 self.command_path.display()
             )
         })?;
+        let generation = self.next_child_generation()?;
 
         *self
             .active_child
             .lock()
-            .map_err(|error| format!("apple tts lock poisoned: {error}"))? = Some(child);
+            .map_err(|error| format!("apple tts lock poisoned: {error}"))? =
+            Some(ActiveAppleTtsChild { generation, child });
 
-        Ok(AppleTtsCommandResult {
-            provider_id: APPLE_LOCAL_TTS_PROVIDER_ID.to_string(),
-            status: "speaking".to_string(),
-            text: Some(text.to_string()),
-            error: None,
-        })
+        self.wait_for_active_child_completion(text.to_string(), generation)
     }
 
     pub fn stop(&self) -> Result<AppleTtsCommandResult, String> {
@@ -149,17 +156,77 @@ impl AppleTtsRuntime {
             .lock()
             .map_err(|error| format!("apple tts lock poisoned: {error}"))?;
 
-        let Some(mut child) = active_child.take() else {
+        let Some(mut active) = active_child.take() else {
             return Ok(());
         };
 
-        match child.try_wait().map_err(|error| error.to_string())? {
+        match active.child.try_wait().map_err(|error| error.to_string())? {
             Some(_) => Ok(()),
             None => {
-                child.kill().map_err(|error| error.to_string())?;
-                let _ = child.wait();
+                active.child.kill().map_err(|error| error.to_string())?;
+                let _ = active.child.wait();
                 Ok(())
             }
+        }
+    }
+
+    fn next_child_generation(&self) -> Result<u64, String> {
+        let mut generation = self
+            .next_generation
+            .lock()
+            .map_err(|error| format!("apple tts generation lock poisoned: {error}"))?;
+
+        *generation = generation.saturating_add(1);
+        Ok(*generation)
+    }
+
+    fn wait_for_active_child_completion(
+        &self,
+        text: String,
+        generation: u64,
+    ) -> Result<AppleTtsCommandResult, String> {
+        loop {
+            {
+                let mut active_child = self
+                    .active_child
+                    .lock()
+                    .map_err(|error| format!("apple tts lock poisoned: {error}"))?;
+
+                let Some(active) = active_child.as_mut() else {
+                    return Ok(AppleTtsCommandResult {
+                        provider_id: APPLE_LOCAL_TTS_PROVIDER_ID.to_string(),
+                        status: "stopped".to_string(),
+                        text: None,
+                        error: None,
+                    });
+                };
+
+                if active.generation != generation {
+                    return Ok(AppleTtsCommandResult {
+                        provider_id: APPLE_LOCAL_TTS_PROVIDER_ID.to_string(),
+                        status: "stopped".to_string(),
+                        text: None,
+                        error: None,
+                    });
+                }
+
+                if active
+                    .child
+                    .try_wait()
+                    .map_err(|error| error.to_string())?
+                    .is_some()
+                {
+                    let _ = active_child.take();
+                    return Ok(AppleTtsCommandResult {
+                        provider_id: APPLE_LOCAL_TTS_PROVIDER_ID.to_string(),
+                        status: "completed".to_string(),
+                        text: Some(text),
+                        error: None,
+                    });
+                }
+            }
+
+            thread::sleep(SPEECH_PROCESS_POLL_INTERVAL);
         }
     }
 }
