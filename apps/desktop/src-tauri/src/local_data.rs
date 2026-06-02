@@ -2105,16 +2105,30 @@ fn reject_secret_material(value: &Value) -> Result<(), String> {
     match value {
         Value::Object(entries) => {
             for (key, value) in entries {
-                let normalized_key = key.to_ascii_lowercase();
+                let normalized_key = normalize_json_key(key);
+                if normalized_key == "tokensource" {
+                    if value != "codex_app_server" {
+                        return Err(
+                            "provider metadata tokenSource must be codex_app_server".to_string()
+                        );
+                    }
+
+                    continue;
+                }
+                if normalized_key == "openaiapikey" {
+                    reject_secret_material(value)?;
+                    continue;
+                }
                 if [
                     "secret",
                     "credential",
                     "password",
-                    "api_key",
                     "apikey",
-                    "access_token",
-                    "refresh_token",
+                    "apikey",
+                    "accesstoken",
+                    "refreshtoken",
                     "token",
+                    "cookie",
                 ]
                 .iter()
                 .any(|blocked| normalized_key.contains(blocked))
@@ -3550,5 +3564,53 @@ mod tests {
                 .expect("read provider metadata"),
             None
         );
+    }
+
+    #[test]
+    fn allows_safe_codex_app_server_token_source_metadata_only() {
+        let service = LocalDataService::in_memory().expect("create in-memory service");
+        let provider = ProviderMetadata {
+            provider_id: "openai".to_string(),
+            provider_kind: "model-provider".to_string(),
+            display_name: "OpenAI".to_string(),
+            auth_status: "configured".to_string(),
+            secret_ref: None,
+            metadata: json!({
+                "codexAuth": {
+                    "provider": "chatgpt_oauth",
+                    "chatGptOAuth": {
+                        "accountId": "user@example.com",
+                        "email": "user@example.com",
+                        "planType": "plus",
+                        "tokenSource": "codex_app_server",
+                        "updatedAt": "2026-06-02T00:00:00Z",
+                        "configured": true,
+                        "availability": "logged-in"
+                    }
+                }
+            }),
+        };
+
+        service
+            .upsert_provider_metadata(&provider)
+            .expect("safe ChatGPT OAuth account metadata is allowed");
+
+        for metadata in [
+            json!({ "tokenSource": "browser_cookie" }),
+            json!({ "accessToken": "eyJ.test.test" }),
+            json!({ "refreshToken": "raw-refresh-token" }),
+            json!({ "browserCookie": "raw-cookie" }),
+        ] {
+            assert!(service
+                .upsert_provider_metadata(&ProviderMetadata {
+                    provider_id: "openai".to_string(),
+                    provider_kind: "model-provider".to_string(),
+                    display_name: "OpenAI".to_string(),
+                    auth_status: "configured".to_string(),
+                    secret_ref: None,
+                    metadata,
+                })
+                .is_err());
+        }
     }
 }

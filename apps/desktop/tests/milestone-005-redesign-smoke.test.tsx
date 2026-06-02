@@ -101,7 +101,9 @@ describe("Milestone 005 redesign smoke coverage", () => {
       soul: ["Soul editor surface states", "Soul markdown", "Save soul"],
       trust: [
         "Provider and trust surface states",
-        "Provider credential",
+        "Provider auth",
+        "ChatGPT OAuth through Codex",
+        "OpenAI API key",
         "Execution authority",
       ],
     } as const;

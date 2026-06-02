@@ -2,6 +2,9 @@ use serde::{Deserialize, Serialize};
 use std::path::Path;
 use tauri::{AppHandle, Manager};
 
+use crate::codex_app_server_auth::CodexAppServerAuthClient;
+
+mod codex_app_server_auth;
 mod local_data;
 mod presence_window;
 mod provider_credentials;
@@ -34,6 +37,22 @@ struct ProviderCredentialStatus {
     display_name: String,
     auth_status: String,
     has_secret: bool,
+    api_key_configured: bool,
+    active_auth_mode: Option<String>,
+    chatgpt_oauth: ChatGptOAuthStatus,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ChatGptOAuthStatus {
+    configured: bool,
+    account_id: Option<String>,
+    email: Option<String>,
+    plan_type: Option<String>,
+    token_source: Option<String>,
+    updated_at: Option<String>,
+    availability: String,
+    last_error: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
@@ -73,8 +92,8 @@ fn provider_secret_store() -> Result<secret_store::KeychainProviderSecretStore, 
     secret_store::KeychainProviderSecretStore::new()
 }
 
-fn provider_auth_status_for_snapshot(has_secret: bool) -> String {
-    if has_secret {
+fn provider_auth_status_for_snapshot(has_secret: bool, chatgpt_oauth_configured: bool) -> String {
+    if has_secret || chatgpt_oauth_configured {
         "configured".to_string()
     } else {
         "needs-secret".to_string()
@@ -258,6 +277,18 @@ where
         provider_credentials::ProviderCredentialService::new(local_data, secret_store);
     let provider_metadata = local_data.read_provider_metadata("openai")?;
     let has_secret = credential_service.has_provider_credential("openai")?;
+    let chatgpt_oauth = chatgpt_oauth_status_from_metadata(
+        provider_metadata
+            .as_ref()
+            .map(|provider| &provider.metadata),
+    );
+    let active_auth_mode = active_auth_mode_from_metadata(
+        provider_metadata
+            .as_ref()
+            .map(|provider| &provider.metadata),
+        has_secret,
+        chatgpt_oauth.configured,
+    );
     let mut local_data_overview = local_data.read_local_data_overview()?;
 
     for category in &mut local_data_overview.categories {
@@ -275,8 +306,11 @@ where
                 .as_ref()
                 .map(|provider| provider.display_name.clone())
                 .unwrap_or_else(|| "OpenAI".to_string()),
-            auth_status: provider_auth_status_for_snapshot(has_secret),
+            auth_status: provider_auth_status_for_snapshot(has_secret, chatgpt_oauth.configured),
             has_secret,
+            api_key_configured: has_secret,
+            active_auth_mode,
+            chatgpt_oauth,
         },
         execution_authority: local_data
             .read_or_import_legacy_execution_authority_policy(legacy_settings_path)?,
@@ -320,6 +354,139 @@ fn remove_provider_credential(
     credential_service.remove_provider_credential(&provider_id)
 }
 
+#[tauri::command]
+fn start_chatgpt_oauth_login(
+    app: AppHandle,
+    mode: codex_app_server_auth::ChatGptLoginMode,
+) -> Result<TrustFoundationSnapshot, String> {
+    let local_data = local_data_service(&app)?;
+    let secret_store = provider_secret_store()?;
+    let legacy_settings_path = legacy_companion_settings_path(&app)?;
+    let mut client = match codex_app_server_auth::open_process_codex_app_server_auth_client() {
+        Ok(client) => client,
+        Err(error) => {
+            let credential_service =
+                provider_credentials::ProviderCredentialService::new(&local_data, secret_store);
+            let _ = credential_service
+                .record_chatgpt_oauth_availability(error.availability(), Some(&error.to_string()));
+            return Err(error.to_string());
+        }
+    };
+
+    start_chatgpt_oauth_login_with_client(
+        &local_data,
+        provider_secret_store()?,
+        &mut client,
+        mode,
+        current_unix_timestamp_string(),
+    )
+    .and_then(|_| {
+        client.close();
+        build_trust_foundation_snapshot(&local_data, provider_secret_store()?, legacy_settings_path)
+    })
+}
+
+fn start_chatgpt_oauth_login_with_client<S, C>(
+    local_data: &local_data::LocalDataService,
+    secret_store: S,
+    client: &mut C,
+    mode: codex_app_server_auth::ChatGptLoginMode,
+    updated_at: String,
+) -> Result<local_data::ProviderMetadata, String>
+where
+    S: secret_store::ProviderSecretStore,
+    C: codex_app_server_auth::CodexAppServerAuthClient,
+{
+    let credential_service =
+        provider_credentials::ProviderCredentialService::new(local_data, secret_store);
+
+    let login = match client.start_chatgpt_oauth_login(mode) {
+        Ok(login) => login,
+        Err(error) => {
+            let _ = credential_service
+                .record_chatgpt_oauth_availability(error.availability(), Some(&error.to_string()));
+            return Err(error.to_string());
+        }
+    };
+
+    credential_service.set_chatgpt_oauth_account(provider_credentials::ChatGptOAuthAccountInput {
+        account_id: login.account.email.clone(),
+        email: login.account.email,
+        plan_type: login.account.plan_type,
+        updated_at: Some(updated_at),
+    })
+}
+
+#[tauri::command]
+fn clear_chatgpt_oauth_login(app: AppHandle) -> Result<TrustFoundationSnapshot, String> {
+    let local_data = local_data_service(&app)?;
+    let secret_store = provider_secret_store()?;
+    let legacy_settings_path = legacy_companion_settings_path(&app)?;
+    let credential_service =
+        provider_credentials::ProviderCredentialService::new(&local_data, secret_store);
+
+    credential_service.clear_chatgpt_oauth_account()?;
+    build_trust_foundation_snapshot(&local_data, provider_secret_store()?, legacy_settings_path)
+}
+
+fn current_unix_timestamp_string() -> String {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| format!("unix:{}", duration.as_secs()))
+        .unwrap_or_else(|_| "unknown".to_string())
+}
+
+fn active_auth_mode_from_metadata(
+    metadata: Option<&serde_json::Value>,
+    has_secret: bool,
+    chatgpt_oauth_configured: bool,
+) -> Option<String> {
+    metadata
+        .and_then(|metadata| metadata.get("codexAuth"))
+        .and_then(|codex_auth| codex_auth.get("provider"))
+        .and_then(serde_json::Value::as_str)
+        .map(ToString::to_string)
+        .or_else(|| {
+            if chatgpt_oauth_configured {
+                Some(provider_credentials::CHATGPT_OAUTH_AUTH_MODE.to_string())
+            } else if has_secret {
+                Some(provider_credentials::OPENAI_API_KEY_AUTH_MODE.to_string())
+            } else {
+                None
+            }
+        })
+}
+
+fn chatgpt_oauth_status_from_metadata(metadata: Option<&serde_json::Value>) -> ChatGptOAuthStatus {
+    let chatgpt_oauth = metadata
+        .and_then(|metadata| metadata.get("codexAuth"))
+        .and_then(|codex_auth| codex_auth.get("chatGptOAuth"));
+
+    ChatGptOAuthStatus {
+        configured: chatgpt_oauth
+            .and_then(|value| value.get("configured"))
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false),
+        account_id: metadata_string(chatgpt_oauth, "accountId"),
+        email: metadata_string(chatgpt_oauth, "email"),
+        plan_type: metadata_string(chatgpt_oauth, "planType"),
+        token_source: metadata_string(chatgpt_oauth, "tokenSource"),
+        updated_at: metadata_string(chatgpt_oauth, "updatedAt"),
+        availability: metadata_string(chatgpt_oauth, "availability")
+            .unwrap_or_else(|| "not-logged-in".to_string()),
+        last_error: metadata_string(chatgpt_oauth, "lastError"),
+    }
+}
+
+fn metadata_string(metadata: Option<&serde_json::Value>, key: &str) -> Option<String> {
+    metadata
+        .and_then(|metadata| metadata.get(key))
+        .and_then(serde_json::Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -346,7 +513,9 @@ pub fn run() {
             read_trust_foundation_snapshot,
             save_provider_credential,
             has_provider_credential,
-            remove_provider_credential
+            remove_provider_credential,
+            start_chatgpt_oauth_login,
+            clear_chatgpt_oauth_login
         ])
         .setup(|app| {
             use tauri::{
@@ -405,9 +574,47 @@ mod tests {
     use serde_json::json;
 
     use super::*;
+    use crate::codex_app_server_auth::{
+        ChatGptLoginMode, ChatGptLoginStarted, ChatGptOAuthLoginResult, CodexAccountSnapshot,
+        CodexAppServerAuthClient, CodexAppServerAuthError,
+    };
     use crate::secret_store::{
         provider_secret_ref, test_support::MemoryProviderSecretStore, ProviderSecretStore,
     };
+
+    struct FakeCodexAuthClient {
+        result: Result<ChatGptOAuthLoginResult, CodexAppServerAuthError>,
+        requested_modes: Vec<ChatGptLoginMode>,
+    }
+
+    impl FakeCodexAuthClient {
+        fn successful() -> Self {
+            Self {
+                result: Ok(ChatGptOAuthLoginResult {
+                    started: ChatGptLoginStarted::Browser {
+                        login_id: "login-1".to_string(),
+                        auth_url: "https://chatgpt.com/auth".to_string(),
+                    },
+                    account: CodexAccountSnapshot {
+                        auth_mode: Some("chatgpt".to_string()),
+                        email: Some("user@example.com".to_string()),
+                        plan_type: Some("plus".to_string()),
+                    },
+                }),
+                requested_modes: Vec::new(),
+            }
+        }
+    }
+
+    impl CodexAppServerAuthClient for FakeCodexAuthClient {
+        fn start_chatgpt_oauth_login(
+            &mut self,
+            mode: ChatGptLoginMode,
+        ) -> Result<ChatGptOAuthLoginResult, CodexAppServerAuthError> {
+            self.requested_modes.push(mode);
+            self.result.clone()
+        }
+    }
 
     fn missing_legacy_settings_path() -> std::path::PathBuf {
         std::env::temp_dir().join(format!(
@@ -503,5 +710,166 @@ mod tests {
                 .status,
             "active"
         );
+    }
+
+    #[test]
+    fn chatgpt_oauth_login_persists_safe_account_metadata_with_fake_codex_client() {
+        let local_data =
+            local_data::LocalDataService::in_memory().expect("create local data service");
+        let secret_store = MemoryProviderSecretStore::default();
+        secret_store
+            .save_provider_credential("openai", "sk-test-provider-secret")
+            .expect("seed OpenAI API key");
+        local_data
+            .insert_legacy_provider_metadata_for_test(&local_data::ProviderMetadata {
+                provider_id: "openai".to_string(),
+                provider_kind: "model-provider".to_string(),
+                display_name: "OpenAI".to_string(),
+                auth_status: "configured".to_string(),
+                secret_ref: Some(provider_secret_ref("openai")),
+                metadata: json!({
+                    "engine": "codex",
+                    "codexAuth": {
+                        "provider": "openai_api_key",
+                        "openAIApiKey": { "configured": true }
+                    }
+                }),
+            })
+            .expect("seed provider metadata");
+        let mut client = FakeCodexAuthClient::successful();
+
+        let metadata = start_chatgpt_oauth_login_with_client(
+            &local_data,
+            secret_store.clone(),
+            &mut client,
+            ChatGptLoginMode::Browser,
+            "2026-06-02T00:00:00Z".to_string(),
+        )
+        .expect("persist ChatGPT OAuth metadata");
+
+        assert_eq!(client.requested_modes, vec![ChatGptLoginMode::Browser]);
+        assert_eq!(metadata.secret_ref, Some(provider_secret_ref("openai")));
+        assert_eq!(
+            secret_store.read_credential("openai"),
+            Some("sk-test-provider-secret".to_string())
+        );
+        assert_eq!(
+            metadata.metadata["codexAuth"]["provider"],
+            json!("chatgpt_oauth")
+        );
+        assert_eq!(
+            metadata.metadata["codexAuth"]["chatGptOAuth"]["tokenSource"],
+            json!("codex_app_server")
+        );
+        assert!(!local_data
+            .contains_plaintext("access_token")
+            .expect("search local data for OAuth access token field"));
+        assert!(!local_data
+            .contains_plaintext("refresh_token")
+            .expect("search local data for OAuth refresh token field"));
+    }
+
+    #[test]
+    fn chatgpt_oauth_login_failure_records_login_failed_availability() {
+        let local_data =
+            local_data::LocalDataService::in_memory().expect("create local data service");
+        let secret_store = MemoryProviderSecretStore::default();
+        let mut client = FakeCodexAuthClient {
+            result: Err(CodexAppServerAuthError::LoginFailed(
+                "user cancelled".to_string(),
+            )),
+            requested_modes: Vec::new(),
+        };
+
+        let error = start_chatgpt_oauth_login_with_client(
+            &local_data,
+            secret_store,
+            &mut client,
+            ChatGptLoginMode::Browser,
+            "2026-06-02T00:00:00Z".to_string(),
+        )
+        .expect_err("login should fail");
+
+        let metadata = local_data
+            .read_provider_metadata("openai")
+            .expect("read provider metadata")
+            .expect("provider metadata");
+        assert_eq!(error, "user cancelled");
+        assert_eq!(
+            metadata.metadata["codexAuth"]["chatGptOAuth"]["availability"],
+            json!("login-failed")
+        );
+        assert_eq!(
+            metadata.metadata["codexAuth"]["chatGptOAuth"]["lastError"],
+            json!("user cancelled")
+        );
+    }
+
+    #[test]
+    fn missing_codex_runtime_records_missing_runtime_availability() {
+        let local_data =
+            local_data::LocalDataService::in_memory().expect("create local data service");
+        let secret_store = MemoryProviderSecretStore::default();
+        let mut client = FakeCodexAuthClient {
+            result: Err(CodexAppServerAuthError::MissingRuntime(
+                "Codex CLI/app-server is not installed or is not on PATH".to_string(),
+            )),
+            requested_modes: Vec::new(),
+        };
+
+        let error = start_chatgpt_oauth_login_with_client(
+            &local_data,
+            secret_store,
+            &mut client,
+            ChatGptLoginMode::Browser,
+            "2026-06-02T00:00:00Z".to_string(),
+        )
+        .expect_err("runtime should be missing");
+
+        let metadata = local_data
+            .read_provider_metadata("openai")
+            .expect("read provider metadata")
+            .expect("provider metadata");
+        assert_eq!(
+            error,
+            "Codex CLI/app-server is not installed or is not on PATH"
+        );
+        assert_eq!(
+            metadata.metadata["codexAuth"]["chatGptOAuth"]["availability"],
+            json!("missing-runtime")
+        );
+    }
+
+    #[test]
+    fn clear_chatgpt_oauth_keeps_api_key_available_in_trust_snapshot() {
+        let local_data =
+            local_data::LocalDataService::in_memory().expect("create local data service");
+        let secret_store = MemoryProviderSecretStore::default();
+        secret_store
+            .save_provider_credential("openai", "sk-test-provider-secret")
+            .expect("seed OpenAI API key");
+        let credential_service =
+            provider_credentials::ProviderCredentialService::new(&local_data, secret_store.clone());
+        credential_service
+            .set_chatgpt_oauth_account(provider_credentials::ChatGptOAuthAccountInput {
+                account_id: Some("acct-1".to_string()),
+                email: Some("user@example.com".to_string()),
+                plan_type: Some("plus".to_string()),
+                updated_at: Some("2026-06-02T00:00:00Z".to_string()),
+            })
+            .expect("seed OAuth metadata");
+
+        credential_service
+            .clear_chatgpt_oauth_account()
+            .expect("clear OAuth metadata");
+        let snapshot = build_trust_foundation_snapshot(
+            &local_data,
+            secret_store,
+            missing_legacy_settings_path(),
+        )
+        .expect("build trust snapshot");
+
+        assert!(snapshot.provider_credential.has_secret);
+        assert_eq!(snapshot.provider_credential.auth_status, "configured");
     }
 }

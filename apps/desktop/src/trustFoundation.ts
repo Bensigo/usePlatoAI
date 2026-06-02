@@ -26,6 +26,20 @@ export type ProviderCredentialStatus = {
   displayName: string;
   authStatus: string;
   hasSecret: boolean;
+  apiKeyConfigured: boolean;
+  activeAuthMode: string | null;
+  chatgptOauth: ChatGptOAuthStatus;
+};
+
+export type ChatGptOAuthStatus = {
+  configured: boolean;
+  accountId: string | null;
+  email: string | null;
+  planType: string | null;
+  tokenSource: string | null;
+  updatedAt: string | null;
+  availability: string;
+  lastError: string | null;
 };
 
 export type TrustFoundationSnapshot = {
@@ -42,6 +56,10 @@ export type TrustFoundationStore = {
   read: () => Promise<TrustFoundationSnapshot>;
   saveOpenAiCredential: (credential: string) => Promise<TrustFoundationSnapshot>;
   removeOpenAiCredential: () => Promise<TrustFoundationSnapshot>;
+  startChatGptOAuthLogin: (
+    mode: "browser" | "device-code",
+  ) => Promise<TrustFoundationSnapshot>;
+  clearChatGptOAuthLogin: () => Promise<TrustFoundationSnapshot>;
 };
 
 export function defaultTrustFoundationSnapshot(
@@ -85,6 +103,18 @@ export function defaultTrustFoundationSnapshot(
       displayName: "OpenAI",
       authStatus: "needs-secret",
       hasSecret: false,
+      apiKeyConfigured: false,
+      activeAuthMode: null,
+      chatgptOauth: {
+        configured: false,
+        accountId: null,
+        email: null,
+        planType: null,
+        tokenSource: null,
+        updatedAt: null,
+        availability: "not-logged-in",
+        lastError: null,
+      },
     },
     executionAuthority: {
       ...defaultExecutionAuthorityPolicy,
@@ -123,6 +153,9 @@ export function createMemoryTrustFoundationStore(
           displayName: "OpenAI",
           authStatus: "configured",
           hasSecret: true,
+          apiKeyConfigured: true,
+          activeAuthMode: "openai_api_key",
+          chatgptOauth: snapshot.providerCredential.chatgptOauth,
         },
         auditHistory: [
           {
@@ -150,8 +183,58 @@ export function createMemoryTrustFoundationStore(
         providerCredential: {
           providerId: "openai",
           displayName: "OpenAI",
-          authStatus: "needs-secret",
+          authStatus: snapshot.providerCredential.chatgptOauth.configured
+            ? "configured"
+            : "needs-secret",
           hasSecret: false,
+          apiKeyConfigured: false,
+          activeAuthMode: snapshot.providerCredential.chatgptOauth.configured
+            ? "chatgpt_oauth"
+            : null,
+          chatgptOauth: snapshot.providerCredential.chatgptOauth,
+        },
+      };
+      return snapshot;
+    },
+    async startChatGptOAuthLogin() {
+      snapshot = {
+        ...snapshot,
+        providerCredential: {
+          ...snapshot.providerCredential,
+          authStatus: "configured",
+          activeAuthMode: "chatgpt_oauth",
+          chatgptOauth: {
+            configured: true,
+            accountId: "user@example.com",
+            email: "user@example.com",
+            planType: "plus",
+            tokenSource: "codex_app_server",
+            updatedAt: "test",
+            availability: "logged-in",
+            lastError: null,
+          },
+        },
+      };
+      return snapshot;
+    },
+    async clearChatGptOAuthLogin() {
+      const hasSecret = snapshot.providerCredential.hasSecret;
+      snapshot = {
+        ...snapshot,
+        providerCredential: {
+          ...snapshot.providerCredential,
+          authStatus: hasSecret ? "configured" : "needs-secret",
+          activeAuthMode: hasSecret ? "openai_api_key" : null,
+          chatgptOauth: {
+            configured: false,
+            accountId: null,
+            email: null,
+            planType: null,
+            tokenSource: null,
+            updatedAt: null,
+            availability: "not-logged-in",
+            lastError: null,
+          },
         },
       };
       return snapshot;
@@ -194,6 +277,24 @@ export function createTauriTrustFoundationStore(): TrustFoundationStore {
       const { invoke } = await import("@tauri-apps/api/core");
       await invoke("remove_provider_credential", { providerId: "openai" });
       return invoke<TrustFoundationSnapshot>("read_trust_foundation_snapshot");
+    },
+    async startChatGptOAuthLogin(mode) {
+      if (!isTauriRuntime()) {
+        return defaultTrustFoundationSnapshot();
+      }
+
+      const { invoke } = await import("@tauri-apps/api/core");
+      return invoke<TrustFoundationSnapshot>("start_chatgpt_oauth_login", {
+        mode,
+      });
+    },
+    async clearChatGptOAuthLogin() {
+      if (!isTauriRuntime()) {
+        return defaultTrustFoundationSnapshot();
+      }
+
+      const { invoke } = await import("@tauri-apps/api/core");
+      return invoke<TrustFoundationSnapshot>("clear_chatgpt_oauth_login");
     },
   };
 }
