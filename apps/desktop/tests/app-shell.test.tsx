@@ -103,10 +103,10 @@ import {
 } from "../src/tasks";
 import {
   createVoiceOutputSession,
-  mockVoiceResponse,
+  sampleVoiceResponse,
   setVoiceOutputMuted,
-  startMockSpeech,
-  stopMockSpeech,
+  startVoiceOutputSpeech,
+  stopVoiceOutputSpeech,
 } from "../src/voiceOutput";
 import {
   createMemorySoulGuidanceStore,
@@ -118,10 +118,11 @@ import {
   companionPromptForInputWithCorrections,
   companionPromptForInput,
   defaultVoiceInteractionSnapshot,
-  nextMockVoiceSnapshot,
+  previewVoiceInteractionSnapshot,
   presenceLabelForState,
   textFallbackResponseSnapshot,
   textFallbackThinkingSnapshot,
+  voiceInteractionSnapshotFromRuntime,
   voiceSessionStateFrom,
 } from "../src/voiceInteraction";
 import {
@@ -556,9 +557,9 @@ describe("desktop app shell", () => {
     expect(markup).toContain("Voice output controls");
     expect(markup).toContain("Audio waits for activation");
     expect(markup).toContain("No passive listening.");
-    expect(markup).toContain("Voice ready");
+    expect(markup).toContain("Ready for voice or text.");
     expect(markup).toContain("Mute");
-    expect(markup).toContain("Stop speech");
+    expect(markup).toContain("Interrupt");
   });
 
   it("injects reusable experience tokens into the visible shell", () => {
@@ -1145,9 +1146,10 @@ describe("desktop app shell", () => {
 
     expect(markup).toContain("Voice surface states");
     expect(markup).toContain("Local voice");
-    expect(markup).toContain("configured");
+    expect(markup).toContain("runtime ready");
     expect(markup).toContain("Cloud voice");
-    expect(markup).toContain("missing");
+    expect(markup).toContain("provider not configured");
+    expect(markup).toContain("unavailable until provider configured");
     expect(markup).toContain("unavailable until enabled");
     expect(markup).toContain("Start listening");
     expect(markup).toContain("Mute voice output");
@@ -1157,6 +1159,9 @@ describe("desktop app shell", () => {
     expect(markup).toContain("Error");
     expect(markup).toContain("Text fallback");
     expect(markup).toContain("Ready for voice or text.");
+    expect(markup).toContain(
+      "Voice and text responses use configured runtime providers",
+    );
     expect(markup).not.toContain("OpenAI credential");
   });
 
@@ -1493,13 +1498,13 @@ describe("desktop app shell", () => {
         voiceInteraction={{
           ...defaultVoiceInteractionSnapshot,
           sessionState: "listening",
-          transcript: "Listening through local mock voice...",
+          transcript: "Listening through the voice runtime...",
         }}
       />,
     );
 
     expect(markup).toContain("listening");
-    expect(markup).toContain("Listening through local mock voice...");
+    expect(markup).toContain("Listening through the voice runtime...");
     expect(markup).toContain("Send text");
   });
 
@@ -1512,7 +1517,7 @@ describe("desktop app shell", () => {
     expect(markup).toContain('data-presence-bubble-state="listening"');
     expect(markup).toContain("presence-sound-wave");
     expect(markup).toContain("Listening");
-    expect(markup).not.toContain("Listening through local mock voice");
+    expect(markup).not.toContain("Listening through the voice runtime");
   });
 
   it("keeps paused task controls out of the companion surface while voice is idle", () => {
@@ -1600,7 +1605,7 @@ describe("desktop app shell", () => {
         currentTaskState={presenceStateSnapshot("task_running")}
         voiceInteraction={{
           ...defaultVoiceInteractionSnapshot,
-          transcript: "Listening through local mock voice...",
+          transcript: "Listening through the voice runtime...",
           fallbackText: "Can you review this?",
           response: "Ready for voice or text.",
         }}
@@ -1611,7 +1616,7 @@ describe("desktop app shell", () => {
     expect(markup).toContain("Centered Plato chat panel");
     expect(markup).toContain("Chat with Plato");
     expect(markup).toContain("Transcript");
-    expect(markup).toContain("Listening through local mock voice...");
+    expect(markup).toContain("Listening through the voice runtime...");
     expect(markup).toContain("Text chat");
     expect(markup).toContain("Current task");
     expect(markup).toContain("Task running");
@@ -1689,13 +1694,13 @@ describe("desktop app shell", () => {
         voiceInteraction={{
           ...defaultVoiceInteractionSnapshot,
           sessionState: "listening",
-          transcript: "Listening through local mock voice...",
+          transcript: "Listening through the voice runtime...",
         }}
         onDismiss={() => undefined}
       />,
     );
 
-    expect(markup).toContain("Listening through local mock voice...");
+    expect(markup).toContain("Listening through the voice runtime...");
     expect(markup).not.toContain("Current task");
     expect(markup).not.toContain("Pause");
     expect(markup).not.toContain("Cancel");
@@ -1871,9 +1876,14 @@ describe("desktop app shell", () => {
     expect(presenceLabelForState("listening")).toBe("Listening");
     expect(presenceLabelForState("thinking")).toBe("Thinking");
     expect(presenceLabelForState("speaking")).toBe("Speaking");
+    expect(presenceLabelForState("muted")).toBe("Muted");
+    expect(presenceLabelForState("error")).toBe("Needs repair");
     expect(presenceLabelForState("idle")).toBe("Idle presence");
+    expect(companionPresenceForVoiceState("transcribing")).toBe("thinking");
+    expect(companionPresenceForVoiceState("unavailable")).toBe("error");
     expect(voiceSessionStateFrom("thinking")).toBe("thinking");
     expect(voiceSessionStateFrom("speaking")).toBe("speaking");
+    expect(voiceSessionStateFrom("interrupted")).toBe("interrupted");
     expect(voiceSessionStateFrom("unknown")).toBeUndefined();
   });
 
@@ -1940,13 +1950,13 @@ describe("desktop app shell", () => {
     );
   });
 
-  it("progresses mock voice and text fallback snapshots", () => {
-    const listening = nextMockVoiceSnapshot(
+  it("progresses controlled voice and text fallback snapshots", () => {
+    const listening = previewVoiceInteractionSnapshot(
       defaultVoiceInteractionSnapshot,
       "listening",
     );
-    const thinking = nextMockVoiceSnapshot(listening, "thinking");
-    const speaking = nextMockVoiceSnapshot(thinking, "speaking");
+    const thinking = previewVoiceInteractionSnapshot(listening, "thinking");
+    const speaking = previewVoiceInteractionSnapshot(thinking, "speaking");
     const textThinking = textFallbackThinkingSnapshot(speaking, "Fallback now");
     const textSpeaking = textFallbackResponseSnapshot(textThinking);
 
@@ -1980,6 +1990,35 @@ describe("desktop app shell", () => {
     expect(textSpeaking.companionPrompt).not.toContain("Next draft");
   });
 
+  it("clears stale submitted text fallback when voice runtime snapshots arrive", () => {
+    const previousTextFallback = textFallbackThinkingSnapshot(
+      {
+        ...defaultVoiceInteractionSnapshot,
+        response: "Previous provider response.",
+      },
+      "Previous typed request",
+    );
+    const nextVoiceSnapshot = voiceInteractionSnapshotFromRuntime(
+      {
+        state: "listening",
+        activationSource: "voice",
+        isMuted: false,
+        transcript: "",
+        responseText: "",
+        error: null,
+        avatarState: "listening",
+      },
+      previousTextFallback,
+    );
+
+    expect(previousTextFallback.submittedFallbackText).toBe(
+      "Previous typed request",
+    );
+    expect(nextVoiceSnapshot.activationSource).toBe("voice");
+    expect(nextVoiceSnapshot.submittedFallbackText).toBeNull();
+    expect(nextVoiceSnapshot.response).toBe("Waiting for speech.");
+  });
+
   it("clears stale companion prompts outside active response snapshots", () => {
     const activeResponse = textFallbackResponseSnapshot({
       ...defaultVoiceInteractionSnapshot,
@@ -1988,9 +2027,9 @@ describe("desktop app shell", () => {
 
     expect(activeResponse.companionPrompt).toContain("Previous request");
 
-    const listening = nextMockVoiceSnapshot(activeResponse, "listening");
-    const thinking = nextMockVoiceSnapshot(activeResponse, "thinking");
-    const idle = nextMockVoiceSnapshot(activeResponse, "idle");
+    const listening = previewVoiceInteractionSnapshot(activeResponse, "listening");
+    const thinking = previewVoiceInteractionSnapshot(activeResponse, "thinking");
+    const idle = previewVoiceInteractionSnapshot(activeResponse, "idle");
     const textThinking = textFallbackThinkingSnapshot(
       activeResponse,
       "Next request",
@@ -2413,22 +2452,22 @@ describe("desktop app shell", () => {
     expect(markup).not.toContain("First-run setup");
   });
 
-  it("routes mocked speech to text fallback while muted", () => {
+  it("routes voice output speech to text fallback while muted", () => {
     const mutedSession = setVoiceOutputMuted(createVoiceOutputSession(), true);
-    const nextSession = startMockSpeech(mutedSession, mockVoiceResponse);
+    const nextSession = startVoiceOutputSpeech(mutedSession, sampleVoiceResponse);
 
     expect(nextSession.isMuted).toBe(true);
     expect(nextSession.phase).toBe("text_fallback");
     expect(nextSession.presenceState).toBe("muted");
     expect(nextSession.spokenText).toBeNull();
-    expect(nextSession.textFallback).toBe(mockVoiceResponse);
+    expect(nextSession.textFallback).toBe(sampleVoiceResponse);
     expect(nextSession.statusLabel).toBe("Voice muted - text fallback visible");
   });
 
-  it("mutes in-progress mocked speech and returns presence to muted", () => {
-    const speakingSession = startMockSpeech(
+  it("mutes in-progress voice output and returns presence to muted", () => {
+    const speakingSession = startVoiceOutputSpeech(
       createVoiceOutputSession(),
-      mockVoiceResponse,
+      sampleVoiceResponse,
     );
     const mutedSession = setVoiceOutputMuted(speakingSession, true);
 
@@ -2436,7 +2475,7 @@ describe("desktop app shell", () => {
     expect(mutedSession.phase).toBe("text_fallback");
     expect(mutedSession.presenceState).toBe("muted");
     expect(mutedSession.spokenText).toBeNull();
-    expect(mutedSession.textFallback).toBe(mockVoiceResponse);
+    expect(mutedSession.textFallback).toBe(sampleVoiceResponse);
   });
 
   it("returns muted voice output to idle presence after unmuting", () => {
@@ -2449,11 +2488,11 @@ describe("desktop app shell", () => {
   });
 
   it("preserves muted presence when stopping muted text fallback", () => {
-    const mutedSession = startMockSpeech(
+    const mutedSession = startVoiceOutputSpeech(
       setVoiceOutputMuted(createVoiceOutputSession(), true),
-      mockVoiceResponse,
+      sampleVoiceResponse,
     );
-    const stoppedSession = stopMockSpeech(mutedSession);
+    const stoppedSession = stopVoiceOutputSpeech(mutedSession);
 
     expect(mutedSession.isMuted).toBe(true);
     expect(mutedSession.phase).toBe("text_fallback");
@@ -2465,19 +2504,19 @@ describe("desktop app shell", () => {
     );
   });
 
-  it("stops mocked speech and returns presence to idle", () => {
-    const speakingSession = startMockSpeech(
+  it("stops voice output speech and returns presence to idle", () => {
+    const speakingSession = startVoiceOutputSpeech(
       createVoiceOutputSession(),
-      mockVoiceResponse,
+      sampleVoiceResponse,
     );
-    const stoppedSession = stopMockSpeech(speakingSession);
+    const stoppedSession = stopVoiceOutputSpeech(speakingSession);
 
     expect(speakingSession.phase).toBe("speaking");
     expect(speakingSession.presenceState).toBe("speaking");
     expect(stoppedSession.phase).toBe("idle");
     expect(stoppedSession.presenceState).toBe("idle");
     expect(stoppedSession.spokenText).toBeNull();
-    expect(stoppedSession.textFallback).toBe(mockVoiceResponse);
+    expect(stoppedSession.textFallback).toBe(sampleVoiceResponse);
     expect(stoppedSession.statusLabel).toBe("Speech stopped");
   });
 

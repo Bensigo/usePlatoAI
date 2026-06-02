@@ -1,4 +1,18 @@
 import {
+  voiceRuntimeError,
+  voiceRuntimeSessionStateFrom,
+  type VoiceAudioPlaybackAdapter,
+  type VoiceMicrophoneInputAdapter,
+  type VoiceResponseGenerationAdapter,
+  type VoiceRuntimeAdapterResult,
+  type VoiceSessionAdapters,
+  type VoiceSessionSnapshot as RuntimeVoiceSessionSnapshot,
+  type VoiceRuntimeSessionState,
+  type VoiceSpeechToTextAdapter,
+  type VoiceTextToSpeechAdapter,
+} from "@useplatoai/voice";
+
+import {
   buildCompanionBehaviorPrompt,
   fallbackSoulGuidance,
   type SoulGuidance,
@@ -9,21 +23,12 @@ import {
   type MemoryStore,
 } from "./memory";
 
-export type VoiceSessionState = "idle" | "listening" | "thinking" | "speaking";
+export type VoiceSessionState = VoiceRuntimeSessionState;
 
 export function voiceSessionStateFrom(
   value: string | null,
 ): VoiceSessionState | undefined {
-  if (
-    value === "idle" ||
-    value === "listening" ||
-    value === "thinking" ||
-    value === "speaking"
-  ) {
-    return value;
-  }
-
-  return undefined;
+  return voiceRuntimeSessionStateFrom(value);
 }
 
 export type VoiceActivationSource = "voice" | "text";
@@ -32,7 +37,9 @@ export type CompanionPresenceState =
   | "idle"
   | "listening"
   | "thinking"
-  | "speaking";
+  | "speaking"
+  | "muted"
+  | "error";
 
 export type VoiceInteractionSnapshot = {
   sessionState: VoiceSessionState;
@@ -43,6 +50,7 @@ export type VoiceInteractionSnapshot = {
   submittedFallbackText: string | null;
   response: string;
   companionPrompt: string | null;
+  error: string | null;
 };
 
 export const defaultVoiceInteractionSnapshot: VoiceInteractionSnapshot = {
@@ -54,11 +62,12 @@ export const defaultVoiceInteractionSnapshot: VoiceInteractionSnapshot = {
   submittedFallbackText: null,
   response: "Ready for voice or text.",
   companionPrompt: null,
+  error: null,
 };
 
-export const mockVoiceTranscript = "Mock voice input: help me plan the next step.";
-export const mockVoiceResponse =
-  "I heard the mock request. Voice is running locally without provider credentials.";
+export const sampleVoiceTranscript = "Test voice input: help me plan the next step.";
+export const sampleVoiceResponse =
+  "Voice runtime test response.";
 
 export function companionPromptForInput(
   userInput: string,
@@ -107,7 +116,23 @@ function appendCorrectionMemoryPrompt(
 export function companionPresenceForVoiceState(
   sessionState: VoiceSessionState,
 ): CompanionPresenceState {
-  return sessionState;
+  switch (sessionState) {
+    case "listening":
+      return "listening";
+    case "transcribing":
+    case "thinking":
+      return "thinking";
+    case "speaking":
+      return "speaking";
+    case "muted":
+      return "muted";
+    case "error":
+    case "unavailable":
+      return "error";
+    case "idle":
+    case "interrupted":
+      return "idle";
+  }
 }
 
 export function presenceLabelForState(state: CompanionPresenceState): string {
@@ -118,12 +143,137 @@ export function presenceLabelForState(state: CompanionPresenceState): string {
       return "Thinking";
     case "speaking":
       return "Speaking";
+    case "muted":
+      return "Muted";
+    case "error":
+      return "Needs repair";
     case "idle":
       return "Idle presence";
   }
 }
 
-export function nextMockVoiceSnapshot(
+export function voiceInteractionSnapshotFromRuntime(
+  runtimeSnapshot: RuntimeVoiceSessionSnapshot,
+  currentSnapshot: VoiceInteractionSnapshot = defaultVoiceInteractionSnapshot,
+): VoiceInteractionSnapshot {
+  const submittedFallbackText =
+    runtimeSnapshot.activationSource === "voice"
+      ? null
+      : currentSnapshot.submittedFallbackText;
+  const fallbackResponse = (() => {
+    if (runtimeSnapshot.activationSource === "voice") {
+      switch (runtimeSnapshot.state) {
+        case "listening":
+          return "Waiting for speech.";
+        case "transcribing":
+          return "Transcribing voice input.";
+        case "thinking":
+          return "Thinking through the voice request.";
+        case "interrupted":
+          return "Voice operation was interrupted.";
+        case "idle":
+          return "Ready for voice or text.";
+        default:
+          return currentSnapshot.response;
+      }
+    }
+
+    if (runtimeSnapshot.state === "thinking") {
+      return "Reading text fallback.";
+    }
+
+    return currentSnapshot.response;
+  })();
+
+  return {
+    ...currentSnapshot,
+    sessionState: runtimeSnapshot.state,
+    activationSource: runtimeSnapshot.activationSource,
+    isMuted: runtimeSnapshot.isMuted,
+    transcript: runtimeSnapshot.transcript,
+    submittedFallbackText,
+    response:
+      runtimeSnapshot.error?.message ||
+      runtimeSnapshot.responseText ||
+      fallbackResponse,
+    companionPrompt: null,
+    error: runtimeSnapshot.error?.message ?? null,
+  };
+}
+
+function unavailableResult<TPayload extends object = object>(
+  message: string,
+): VoiceRuntimeAdapterResult<TPayload> {
+  return {
+    status: "failed",
+    providerId: "desktop-voice-provider",
+    error: voiceRuntimeError("provider_unavailable", message, true),
+  };
+}
+
+export function createUnavailableDesktopVoiceAdapters(
+  message = "Voice providers are not configured. Configure STT, response generation, and TTS before starting a voice session.",
+): VoiceSessionAdapters {
+  const microphone: VoiceMicrophoneInputAdapter = {
+    async capture() {
+      return unavailableResult<{ audio: Uint8Array }>(message);
+    },
+    async stop() {
+      return;
+    },
+  };
+  const speechToText: VoiceSpeechToTextAdapter = {
+    async transcribe() {
+      return unavailableResult<{ transcript: string }>(message);
+    },
+    async stop() {
+      return;
+    },
+  };
+  const responseGeneration: VoiceResponseGenerationAdapter = {
+    async generate() {
+      return unavailableResult<{ text: string }>(message);
+    },
+    async stop() {
+      return;
+    },
+  };
+  const textToSpeech: VoiceTextToSpeechAdapter = {
+    async synthesize() {
+      return unavailableResult<{ audio: Uint8Array }>(message);
+    },
+    async stop() {
+      return;
+    },
+  };
+  const playback: VoiceAudioPlaybackAdapter = {
+    async play() {
+      return unavailableResult(message);
+    },
+    async stop() {
+      return;
+    },
+  };
+
+  return {
+    availability: {
+      async check() {
+        return {
+          status: "unavailable",
+          providerId: "desktop-voice-provider",
+          reason: message,
+        };
+      },
+    },
+    microphone,
+    speechToText,
+    responseGeneration,
+    textToSpeech,
+    playback,
+  };
+}
+
+export function previewVoiceInteractionSnapshot(
   snapshot: VoiceInteractionSnapshot,
   sessionState: VoiceSessionState,
   soulGuidance: SoulGuidance = fallbackSoulGuidance,
@@ -133,7 +283,7 @@ export function nextMockVoiceSnapshot(
       ...snapshot,
       activationSource: "voice",
       sessionState,
-      transcript: "Listening through local mock voice...",
+      transcript: "Listening through the voice runtime...",
       response: "Waiting for speech.",
       submittedFallbackText: null,
       companionPrompt: null,
@@ -144,22 +294,22 @@ export function nextMockVoiceSnapshot(
     return {
       ...snapshot,
       sessionState,
-      transcript: mockVoiceTranscript,
-      response: "Thinking through the mock voice request.",
+      transcript: sampleVoiceTranscript,
+      response: "Thinking through the voice request.",
       companionPrompt: null,
     };
   }
 
   if (sessionState === "speaking") {
     const companionPrompt = companionPromptForInput(
-      snapshot.transcript || mockVoiceTranscript,
+      snapshot.transcript || sampleVoiceTranscript,
       soulGuidance,
     );
 
     return {
       ...snapshot,
       sessionState,
-      response: snapshot.isMuted ? "Muted response ready." : mockVoiceResponse,
+      response: snapshot.isMuted ? "Muted response ready." : sampleVoiceResponse,
       companionPrompt,
     };
   }
