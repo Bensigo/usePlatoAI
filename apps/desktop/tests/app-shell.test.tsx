@@ -19,6 +19,7 @@ import {
   PresenceListeningBubble,
   SoulEditorPanel,
   VoiceInteractionPanel,
+  VoiceSetupPanel,
   currentTaskPresenceStateForAction,
   currentTaskPresenceStateForLocalTasks,
   avatarEyeTrackingClientPointFromDesktopCursor,
@@ -1186,17 +1187,9 @@ describe("desktop app shell", () => {
       <App initialSettings={completedSettings} initialControlsExpanded />,
     );
 
-    expect(markup).toContain("Voice surface states");
-    expect(markup).toContain("Local voice");
-    expect(markup).toContain("Supported");
-    expect(markup).toContain("Cloud voice");
-    expect(markup).toContain("paid remote");
-    expect(markup).toContain("Apple local");
-    expect(markup).toContain("Local Whisper");
-    expect(markup).toContain("whisper.cpp binary");
-    expect(markup).toContain("ggml model");
-    expect(markup).toContain("Microphone");
-    expect(markup).toContain("asks on start");
+    expect(markup).toContain("Voice setup");
+    expect(markup).toContain("Local Whisper setup needs paths.");
+    expect(markup).toContain('data-voice-live-state="idle"');
     expect(markup).toContain("Start listening");
     expect(markup).toContain("Mute voice output");
     expect(markup).toContain("Muted");
@@ -1208,14 +1201,19 @@ describe("desktop app shell", () => {
     expect(markup).toContain(
       "Voice and text responses use configured runtime providers",
     );
+    expect(markup).not.toContain("Voice surface states");
+    expect(markup).not.toContain("TTS provider options");
+    expect(markup).not.toContain("whisper.cpp binary");
+    expect(markup).not.toContain("ggml model");
     expect(markup).not.toContain("OpenAI credential");
   });
 
-  it("renders Apple local TTS as the selected no-paid voice output provider", () => {
+  it("renders Apple local TTS in the dedicated voice setup surface", () => {
     const markup = renderToStaticMarkup(
-      <App initialSettings={completedSettings} initialControlsExpanded />,
+      <VoiceSetupPanel settings={completedSettings} />,
     );
 
+    expect(markup).toContain("Voice setup surface states");
     expect(markup).toContain("Apple local voices");
     expect(markup).toContain("Free local macOS speech");
     expect(markup).toContain("OpenAI TTS");
@@ -2038,6 +2036,8 @@ describe("desktop app shell", () => {
 
     expect(markup).toContain("listening");
     expect(markup).toContain("Listening through the voice runtime...");
+    expect(markup).not.toContain("whisper.cpp binary");
+    expect(markup).not.toContain("ggml model");
     expect(markup).toContain("Send text");
   });
 
@@ -3164,6 +3164,10 @@ describe("desktop app shell", () => {
     expect(markup).toContain("Launch");
     expect(markup).toContain("Provider");
     expect(markup).toContain("Configuration stays local-first");
+    expect(markup).toContain("Voice setup surface states");
+    expect(markup).toContain("Local Whisper");
+    expect(markup).toContain("whisper.cpp binary");
+    expect(markup).toContain("ggml model");
   });
 
   it("renders saved settings with the shared surface treatment", () => {
