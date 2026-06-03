@@ -71,6 +71,7 @@ import {
   companionVoiceActivationIntent,
   shouldDelayAvatarVoiceActivation,
 } from "../src/companionVoiceActivation";
+import { defaultWakeNameActivationSnapshot } from "../src/wakeNameActivation";
 import {
   createMemoryStore,
   createSensitiveMemoryApprovalRecord,
@@ -267,7 +268,8 @@ describe("desktop app shell", () => {
 
     expect(markup).toContain("usePlatoAI");
     expect(markup).toContain("Plato");
-    expect(markup).toContain("Wake name: Plato");
+    expect(markup).toContain("Wake name: Amber");
+    expect(markup).toContain("Wake-name activation: disabled");
     expect(markup).toContain("Idle presence");
     expect(markup).toContain("data-avatar-motion-group=\"idle\"");
     expect(markup).toContain("data-avatar-expression=\"idle\"");
@@ -1192,6 +1194,10 @@ describe("desktop app shell", () => {
     expect(markup).toContain('data-voice-live-state="idle"');
     expect(markup).toContain("Start listening");
     expect(markup).toContain("Mute voice output");
+    expect(markup).toContain("Wake-name activation");
+    expect(markup).toContain("Wake name off");
+    expect(markup).toContain("Enable wake name");
+    expect(markup).toContain("Amber");
     expect(markup).toContain("Muted");
     expect(markup).toContain("Active");
     expect(markup).toContain("Unavailable");
@@ -1219,6 +1225,9 @@ describe("desktop app shell", () => {
     expect(markup).toContain("OpenAI TTS");
     expect(markup).toContain("Paid remote API audio");
     expect(markup).toContain("No OpenAI TTS billing");
+    expect(markup).toContain("Wake name");
+    expect(markup).toContain("Vosk");
+    expect(markup).toContain("Vosk model path");
   });
 
   it("renders audio activation states as explicit UI states", () => {
@@ -1299,6 +1308,13 @@ describe("desktop app shell", () => {
         presenceDragMode: "locked",
       }),
     ).toBe("start");
+    expect(
+      companionVoiceActivationIntent({
+        trigger: "wake-name",
+        voiceSessionState: "idle",
+        presenceDragMode: "locked",
+      }),
+    ).toBe("start");
 
     for (const voiceSessionState of [
       "listening",
@@ -1316,6 +1332,13 @@ describe("desktop app shell", () => {
       expect(
         companionVoiceActivationIntent({
           trigger: "avatar-click",
+          voiceSessionState,
+          presenceDragMode: "locked",
+        }),
+      ).toBe("interrupt");
+      expect(
+        companionVoiceActivationIntent({
+          trigger: "wake-name",
           voiceSessionState,
           presenceDragMode: "locked",
         }),
@@ -1338,6 +1361,7 @@ describe("desktop app shell", () => {
     ).toBe("ignore");
     expect(shouldDelayAvatarVoiceActivation("avatar-click")).toBe(true);
     expect(shouldDelayAvatarVoiceActivation("hotkey")).toBe(false);
+    expect(shouldDelayAvatarVoiceActivation("wake-name")).toBe(false);
   });
 
   it("routes the configured voice hotkey through companion activation without expanding controls", async () => {
@@ -1410,6 +1434,7 @@ describe("desktop app shell", () => {
     expect(source).toContain("voiceListeningHotkeyDetector.current(event)");
     expect(source).toContain("activateOrInterruptCompanionVoice(\"hotkey\")");
     expect(source).toContain("activateOrInterruptCompanionVoice(\"avatar-click\")");
+    expect(source).toContain("activateOrInterruptCompanionVoice(\"wake-name\")");
     expect(source).toContain("clearPendingAvatarVoiceActivation()");
     expect(source).toContain("latestCompanionVoiceActivationState.current");
     expect(source).toContain("if (latestIntent === \"start\")");
@@ -1421,6 +1446,13 @@ describe("desktop app shell", () => {
     expect(hotkeyHandlerSource).toBeDefined();
     expect(hotkeyHandlerSource).not.toContain("setActiveEntry");
     expect(hotkeyHandlerSource).not.toContain("setAreControlsExpanded");
+    const wakeNameEffectSource = source.match(
+      /startWakeNameActivation\(\{[\s\S]*?settings\.wakeNameDetectorModelPath,/,
+    )?.[0];
+
+    expect(wakeNameEffectSource).toBeDefined();
+    expect(wakeNameEffectSource).not.toContain("setActiveEntry");
+    expect(wakeNameEffectSource).not.toContain("setAreControlsExpanded");
   });
 
   it("configures macOS microphone permission copy for real capture", () => {
@@ -3264,6 +3296,8 @@ describe("desktop app shell", () => {
     const localSettings = {
       companionName: "Ada",
       wakeName: "Ada",
+      wakeNameActivationEnabled: false,
+      wakeNameDetectorModelPath: "",
       launchBehavior: "manual-only" as const,
       memoryMode: "paused" as const,
       executionAuthority: "ask-first" as const,
@@ -3280,6 +3314,17 @@ describe("desktop app shell", () => {
   });
 
   it("defaults saved settings to Apple local TTS when no paid TTS opt-in exists", () => {
+    expect(defaultCompanionSettings.wakeName).toBe("Amber");
+    expect(defaultCompanionSettings.wakeNameActivationEnabled).toBe(false);
+    expect(defaultWakeNameActivationSnapshot).toMatchObject({
+      state: "disabled",
+      wakeName: "Amber",
+    });
+    expect(normalizeCompanionSettings(null)).toMatchObject({
+      wakeName: "Amber",
+      wakeNameActivationEnabled: false,
+      wakeNameDetectorModelPath: "",
+    });
     expect(normalizeCompanionSettings(null).ttsProvider).toBe(
       "apple-local-tts",
     );

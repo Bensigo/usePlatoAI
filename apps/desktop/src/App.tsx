@@ -139,6 +139,15 @@ import {
   type CompanionVoiceActivationTrigger,
 } from "./companionVoiceActivation";
 import {
+  createUnavailableVoskWakeNameDetector,
+  defaultWakeNameActivationSnapshot,
+  startWakeNameActivation,
+  wakeNameActivationSnapshotForState,
+  type WakeNameActivationState,
+  type WakeNameActivationSnapshot,
+  type WakeNameDetector,
+} from "./wakeNameActivation";
+import {
   millisecondsUntilNextStartupIdleWave,
   nextStartupIdleWaveIntervalMs,
   runStartupCompanionSequence,
@@ -541,6 +550,7 @@ export function ControlSurfacePanel({
   onStopVoiceInteraction,
   onMuteChange,
   onOpenVoiceSetup,
+  wakeNameActivation,
   onTextFallbackChange,
   onSubmitTextFallback,
   soulGuidanceStore,
@@ -554,6 +564,7 @@ export function ControlSurfacePanel({
   soulGuidanceStore?: SoulGuidanceStore;
   onSoulGuidanceChange?: (guidance: SoulGuidance) => void;
   voiceInteraction?: VoiceInteractionSnapshot;
+  wakeNameActivation?: WakeNameActivationSnapshot;
   onStartVoiceInteraction?: () => void;
   onStopVoiceInteraction?: () => void;
   onMuteChange?: (isMuted: boolean) => void;
@@ -587,6 +598,8 @@ export function ControlSurfacePanel({
         <VoiceInteractionPanel
           voiceInteraction={voiceInteraction}
           settings={settings}
+          wakeNameActivation={wakeNameActivation}
+          onSettingsChange={onSettingsChange}
           onStartVoiceInteraction={onStartVoiceInteraction}
           onStopVoiceInteraction={onStopVoiceInteraction}
           onMuteChange={onMuteChange}
@@ -718,10 +731,14 @@ export function VoiceSetupPanel({
   const localWhisperConfigured = Boolean(
     settings.localWhisperBinaryPath && settings.localWhisperModelPath,
   );
+  const wakeNameDetectorConfigured = Boolean(settings.wakeNameDetectorModelPath);
   const appleAvailability: TextToSpeechProviderAvailabilityState = "supported";
 
   function updateLocalWhisperPath(
-    key: "localWhisperBinaryPath" | "localWhisperModelPath",
+    key:
+      | "localWhisperBinaryPath"
+      | "localWhisperModelPath"
+      | "wakeNameDetectorModelPath",
     value: string,
   ) {
     if (!onSettingsChange) {
@@ -753,6 +770,18 @@ export function VoiceSetupPanel({
             label: "Local Whisper",
             value: localWhisperConfigured ? "configured" : "missing paths",
             tone: localWhisperConfigured ? "configured" : "missing",
+          },
+          {
+            label: "Wake name",
+            value: settings.wakeNameActivationEnabled
+              ? "enabled"
+              : "disabled",
+            tone: settings.wakeNameActivationEnabled ? "active" : "disabled",
+          },
+          {
+            label: "Vosk",
+            value: wakeNameDetectorConfigured ? "model path" : "missing model",
+            tone: wakeNameDetectorConfigured ? "configured" : "missing",
           },
         ]}
       />
@@ -788,6 +817,27 @@ export function VoiceSetupPanel({
             onChange={(event) =>
               updateLocalWhisperPath(
                 "localWhisperModelPath",
+                event.currentTarget.value,
+              )
+            }
+          />
+        </label>
+      </section>
+
+      <section
+        className="wake-name-config"
+        aria-label="Wake-name detector config"
+      >
+        <label>
+          <span>Vosk model path</span>
+          <input
+            type="text"
+            value={settings.wakeNameDetectorModelPath}
+            placeholder="/path/to/vosk-model-small-en-us"
+            readOnly={!onSettingsChange}
+            onChange={(event) =>
+              updateLocalWhisperPath(
+                "wakeNameDetectorModelPath",
                 event.currentTarget.value,
               )
             }
@@ -1232,6 +1282,8 @@ export function MemoryBrowserPanel({
 export function VoiceInteractionPanel({
   voiceInteraction,
   settings,
+  wakeNameActivation = defaultWakeNameActivationSnapshot,
+  onSettingsChange,
   onStartVoiceInteraction,
   onStopVoiceInteraction,
   onMuteChange,
@@ -1241,6 +1293,8 @@ export function VoiceInteractionPanel({
 }: {
   voiceInteraction: VoiceInteractionSnapshot;
   settings?: CompanionSettings;
+  wakeNameActivation?: WakeNameActivationSnapshot;
+  onSettingsChange?: (settings: CompanionSettings) => Promise<void>;
   onStartVoiceInteraction?: () => void;
   onStopVoiceInteraction?: () => void;
   onMuteChange?: (isMuted: boolean) => void;
@@ -1259,10 +1313,23 @@ export function VoiceInteractionPanel({
   const voiceSetupMessage = localWhisperConfigured
     ? "Voice setup ready."
     : "Local Whisper setup needs paths.";
+  const wakeNameEnabled = settings?.wakeNameActivationEnabled === true;
+  const wakeName = settings?.wakeName ?? defaultCompanionSettings.wakeName;
 
   function submitTextFallback(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     onSubmitTextFallback?.();
+  }
+
+  function toggleWakeNameActivation() {
+    if (!settings || !onSettingsChange) {
+      return;
+    }
+
+    void onSettingsChange({
+      ...settings,
+      wakeNameActivationEnabled: !settings.wakeNameActivationEnabled,
+    });
   }
 
   return (
@@ -1302,6 +1369,53 @@ export function VoiceInteractionPanel({
           <dd>{voiceInteraction.isMuted ? "Muted" : "Audible"}</dd>
         </div>
       </dl>
+
+      <section className="wake-name-panel" aria-label="Wake-name activation">
+        <SurfaceStateStrip
+          label="Wake-name activation states"
+          states={[
+            {
+              label: "Wake name",
+              value: wakeName,
+              tone: "configured",
+            },
+            {
+              label: "Activation",
+              value: wakeNameEnabled ? "enabled" : "disabled",
+              tone: wakeNameEnabled ? "active" : "disabled",
+            },
+            {
+              label: "Detector",
+              value: wakeNameActivation.state,
+              tone:
+                wakeNameActivation.state === "error"
+                  ? "error"
+                  : wakeNameActivation.state === "unavailable"
+                    ? "unavailable"
+                    : wakeNameActivation.state === "listening" ||
+                        wakeNameActivation.state === "matched"
+                      ? "active"
+                      : wakeNameActivation.state === "false-positive"
+                        ? "permission"
+                        : "disabled",
+            },
+          ]}
+        />
+        <div className="wake-name-controls">
+          <div>
+            <strong>{wakeNameEnabled ? "Wake name on" : "Wake name off"}</strong>
+            <span>{wakeNameActivation.detail}</span>
+          </div>
+          <button
+            type="button"
+            aria-pressed={wakeNameEnabled}
+            disabled={!settings || !onSettingsChange}
+            onClick={toggleWakeNameActivation}
+          >
+            {wakeNameEnabled ? "Kill wake name" : "Enable wake name"}
+          </button>
+        </div>
+      </section>
 
       <div className="voice-actions" role="group" aria-label="Voice controls">
         <button
@@ -2157,6 +2271,8 @@ export function FirstRunOnboarding({
       wakeName:
         formData.get("wakeName")?.toString().trim() ||
         defaultCompanionSettings.wakeName,
+      wakeNameActivationEnabled: initialSettings.wakeNameActivationEnabled,
+      wakeNameDetectorModelPath: initialSettings.wakeNameDetectorModelPath,
       launchBehavior: formData.get("launchBehavior") as LaunchBehavior,
       memoryMode: formData.get("memoryMode") as MemoryMode,
       executionAuthority: formData.get(
@@ -2310,6 +2426,8 @@ export function App({
   presenceStateSource,
   initialAudioActivationState,
   initialVoiceSessionState,
+  initialWakeNameActivationState,
+  wakeNameDetector,
 }: {
   initialSettings?: CompanionSettings;
   initialActiveEntry?: ControlSurfaceId;
@@ -2318,6 +2436,8 @@ export function App({
   initialControlsExpanded?: boolean;
   initialAudioActivationState?: AudioActivationState;
   initialVoiceSessionState?: VoiceSessionState;
+  initialWakeNameActivationState?: WakeNameActivationState;
+  wakeNameDetector?: WakeNameDetector;
   settingsStore?: SettingsStore;
   trustFoundationStore?: TrustFoundationStore;
   soulGuidanceStore?: SoulGuidanceStore;
@@ -2358,6 +2478,10 @@ export function App({
   const durablePresencePositionStore = useMemo(
     () => presencePositionStore ?? createTauriPresencePositionStore(),
     [presencePositionStore],
+  );
+  const durableWakeNameDetector = useMemo(
+    () => wakeNameDetector ?? createUnavailableVoskWakeNameDetector(),
+    [wakeNameDetector],
   );
   const presence = usePresenceState(companionPresenceStateSource);
   const [activeEntry, setActiveEntry] =
@@ -2414,6 +2538,17 @@ export function App({
         ? voiceInteractionSnapshotForRuntimeState(initialVoiceSessionState)
         : defaultVoiceInteractionSnapshot,
     );
+  const [wakeNameActivation, setWakeNameActivation] =
+    useState<WakeNameActivationSnapshot>(() => ({
+      ...(initialWakeNameActivationState
+        ? wakeNameActivationSnapshotForState({
+            state: initialWakeNameActivationState,
+            wakeName:
+              initialSettings?.wakeName ?? defaultCompanionSettings.wakeName,
+          })
+        : defaultWakeNameActivationSnapshot),
+      wakeName: initialSettings?.wakeName ?? defaultCompanionSettings.wakeName,
+    }));
   const [soulGuidance, setSoulGuidance] =
     useState<SoulGuidance>(fallbackSoulGuidance);
   const [tasks, setTasks] = useState<LocalTaskRecord[]>(initialTasks);
@@ -2690,6 +2825,42 @@ export function App({
 
     activateVoiceListening();
   }
+
+  useEffect(() => {
+    if (initialWakeNameActivationState) {
+      return;
+    }
+
+    let dispose: (() => Promise<void>) | null = null;
+    let isCurrent = true;
+
+    void startWakeNameActivation({
+      settings,
+      detector: durableWakeNameDetector,
+      onActivation: () => activateOrInterruptCompanionVoice("wake-name"),
+      onSnapshot: (snapshot) => setWakeNameActivation(snapshot),
+    }).then((nextDispose) => {
+      if (isCurrent) {
+        dispose = nextDispose;
+        return;
+      }
+
+      void nextDispose();
+    });
+
+    return () => {
+      isCurrent = false;
+      if (dispose) {
+        void dispose();
+      }
+    };
+  }, [
+    durableWakeNameDetector,
+    initialWakeNameActivationState,
+    settings.wakeName,
+    settings.wakeNameActivationEnabled,
+    settings.wakeNameDetectorModelPath,
+  ]);
 
   function reactToAvatarClick(event: MouseEvent<HTMLButtonElement>) {
     if (event.detail >= 2) {
@@ -3663,6 +3834,7 @@ export function App({
             onSettingsChange={completeOnboarding}
             trustFoundationStore={trustFoundationStore}
             voiceInteraction={voiceInteraction}
+            wakeNameActivation={wakeNameActivation}
             onStartVoiceInteraction={activateVoiceListening}
             onStopVoiceInteraction={stopVoiceInteraction}
             onMuteChange={setVoiceMuted}
@@ -3842,6 +4014,9 @@ export function App({
               <h1 id="presence-title">{settings.companionName}</h1>
               <p className="status-label">{avatarSurfaceHook.statusText}</p>
               <p className="wake-name">Wake name: {settings.wakeName}</p>
+              <p className="wake-name">
+                Wake-name activation: {wakeNameActivation.state}
+              </p>
             </div>
 
           </section>

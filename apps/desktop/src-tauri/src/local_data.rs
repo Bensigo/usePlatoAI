@@ -1371,7 +1371,9 @@ fn decode_json<T: DeserializeOwned>(value: &str) -> Result<T, String> {
 fn default_companion_settings() -> CompanionSettings {
     CompanionSettings {
         companion_name: "Plato".to_string(),
-        wake_name: "Plato".to_string(),
+        wake_name: "Amber".to_string(),
+        wake_name_activation_enabled: false,
+        wake_name_detector_model_path: String::new(),
         launch_behavior: "launch-at-login".to_string(),
         memory_mode: "enabled".to_string(),
         execution_authority: execution_authority_mode_key(DEFAULT_EXECUTION_AUTHORITY).to_string(),
@@ -1412,6 +1414,12 @@ fn settings_audit_metadata(
     }
     if baseline.wake_name != next_settings.wake_name {
         changed_fields.push("wakeName");
+    }
+    if baseline.wake_name_activation_enabled != next_settings.wake_name_activation_enabled {
+        changed_fields.push("wakeNameActivationEnabled");
+    }
+    if baseline.wake_name_detector_model_path != next_settings.wake_name_detector_model_path {
+        changed_fields.push("wakeNameDetectorModelPath");
     }
     if baseline.launch_behavior != next_settings.launch_behavior {
         changed_fields.push("launchBehavior");
@@ -2194,7 +2202,9 @@ mod tests {
     fn test_settings() -> CompanionSettings {
         CompanionSettings {
             companion_name: "Plato".to_string(),
-            wake_name: "Plato".to_string(),
+            wake_name: "Amber".to_string(),
+            wake_name_activation_enabled: false,
+            wake_name_detector_model_path: String::new(),
             launch_behavior: "launch-at-login".to_string(),
             memory_mode: "enabled".to_string(),
             execution_authority: "ask-first".to_string(),

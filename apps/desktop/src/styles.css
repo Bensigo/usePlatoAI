@@ -1354,6 +1354,61 @@ h1 {
   background: rgb(254 242 242 / 86%);
 }
 
+.wake-name-panel {
+  display: grid;
+  gap: 8px;
+  border: 1px solid rgb(203 213 225 / 72%);
+  border-radius: var(--plato-radius-control);
+  padding: 8px;
+  background: var(--plato-color-surface-raised);
+}
+
+.wake-name-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.wake-name-controls div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.wake-name-controls strong {
+  color: var(--plato-color-text);
+  font-size: 0.78rem;
+}
+
+.wake-name-controls span {
+  color: var(--plato-color-text-soft);
+  font-size: 0.72rem;
+  line-height: 1.35;
+}
+
+.wake-name-controls button {
+  min-height: 32px;
+  border: 1px solid var(--plato-color-border);
+  border-radius: var(--plato-radius-control);
+  padding: 0 10px;
+  background: #ffffff;
+  color: var(--plato-color-text);
+  font-size: 0.74rem;
+  font-weight: 900;
+}
+
+.wake-name-controls button[aria-pressed="true"] {
+  border-color: rgb(220 38 38 / 28%);
+  background: rgb(254 242 242 / 92%);
+  color: #991b1b;
+}
+
+.wake-name-config {
+  display: grid;
+  gap: 8px;
+}
+
 .voice-setup-panel {
   display: grid;
   gap: 8px;

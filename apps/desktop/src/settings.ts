@@ -25,6 +25,8 @@ export type ProviderPlaceholder =
 export type CompanionSettings = {
   companionName: string;
   wakeName: string;
+  wakeNameActivationEnabled: boolean;
+  wakeNameDetectorModelPath: string;
   launchBehavior: LaunchBehavior;
   memoryMode: MemoryMode;
   executionAuthority: ExecutionAuthority;
@@ -61,7 +63,9 @@ export type AuditHistoryEntry = {
 
 export const defaultCompanionSettings: CompanionSettings = {
   companionName: "Plato",
-  wakeName: "Plato",
+  wakeName: "Amber",
+  wakeNameActivationEnabled: false,
+  wakeNameDetectorModelPath: "",
   launchBehavior: "launch-at-login",
   memoryMode: "enabled",
   executionAuthority: "ask-first",
@@ -93,6 +97,8 @@ export function normalizeCompanionSettings(
   return {
     ...defaultCompanionSettings,
     ...settings,
+    wakeName: settings?.wakeName?.trim() || defaultCompanionSettings.wakeName,
+    wakeNameDetectorModelPath: settings?.wakeNameDetectorModelPath?.trim() ?? "",
     localWhisperBinaryPath: settings?.localWhisperBinaryPath?.trim() ?? "",
     localWhisperModelPath: settings?.localWhisperModelPath?.trim() ?? "",
     ttsProvider: resolveTextToSpeechProvider({

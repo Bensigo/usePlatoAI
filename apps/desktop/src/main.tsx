@@ -15,6 +15,7 @@ import {
   mockTaskTrayVisualTasks,
 } from "./tasks";
 import { voiceSessionStateFrom } from "./voiceInteraction";
+import { wakeNameActivationStateFrom } from "./wakeNameActivation";
 
 const root = document.getElementById("root");
 
@@ -36,6 +37,10 @@ const initialVoiceSessionState = voiceSessionStateFrom(
   searchParams.get("voiceState") ??
     import.meta.env.VITE_PLATO_INITIAL_VOICE_STATE,
 );
+const initialWakeNameActivationState = wakeNameActivationStateFrom(
+  searchParams.get("wakeNameState") ??
+    import.meta.env.VITE_PLATO_WAKE_NAME_VISUAL_STATE,
+);
 const avatarTestCommand =
   searchParams.get("avatarTestCommand") ??
   import.meta.env.VITE_PLATO_AVATAR_TEST_COMMAND;
@@ -44,13 +49,21 @@ const initialAvatarTestCommand =
     ? undefined
     : (avatarTestCommand as AvatarTestAnimationCommand);
 const initialSettings =
-  !("__TAURI_INTERNALS__" in window) &&
-  searchParams.get("onboardingComplete") === "true"
+  initialWakeNameActivationState
     ? {
         ...defaultCompanionSettings,
+        wakeNameActivationEnabled: initialWakeNameActivationState !== "disabled",
+        wakeNameDetectorModelPath:
+          initialWakeNameActivationState === "disabled" ? "" : "/visual/vosk",
         onboardingComplete: true,
       }
-    : undefined;
+    : !("__TAURI_INTERNALS__" in window) &&
+        searchParams.get("onboardingComplete") === "true"
+      ? {
+          ...defaultCompanionSettings,
+          onboardingComplete: true,
+        }
+      : undefined;
 const initialControlsExpanded =
   !("__TAURI_INTERNALS__" in window) &&
   searchParams.get("controlsExpanded") === "true";
@@ -76,6 +89,7 @@ createRoot(root).render(
       initialAvatarTestCommand={initialAvatarTestCommand}
       initialPresenceState={initialPresenceState}
       initialVoiceSessionState={initialVoiceSessionState}
+      initialWakeNameActivationState={initialWakeNameActivationState}
       initialSettings={initialSettings}
       initialTasks={initialTasks}
       initialSelectedTaskId={initialSelectedTaskId}
