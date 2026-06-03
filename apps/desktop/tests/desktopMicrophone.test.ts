@@ -50,6 +50,7 @@ describe("desktop microphone capture", () => {
       mediaDevices: { getUserMedia },
       MediaRecorderConstructor: FakeMediaRecorder,
       maxCaptureMs: 50,
+      convertToWav: vi.fn(async (audio) => audio),
     });
 
     expect(getUserMedia).not.toHaveBeenCalled();
@@ -68,6 +69,68 @@ describe("desktop microphone capture", () => {
     });
     expect(getUserMedia).toHaveBeenCalledWith({ audio: true, video: false });
     expect(stop).toHaveBeenCalledTimes(1);
+  });
+
+  it("converts captured microphone audio to 16-bit mono wav before returning bytes", async () => {
+    FakeMediaRecorder.instances = [];
+    const { stream } = createStream();
+    const getUserMedia = vi.fn().mockResolvedValue(stream);
+    const wavAudio = new Uint8Array([
+      82, 73, 70, 70, 40, 0, 0, 0, 87, 65, 86, 69, 102, 109, 116, 32,
+    ]);
+    const convertToWav = vi.fn().mockResolvedValue(wavAudio);
+    const adapter = createDesktopMicrophoneInputAdapter({
+      mediaDevices: { getUserMedia },
+      MediaRecorderConstructor: FakeMediaRecorder,
+      maxCaptureMs: 50,
+      convertToWav,
+    });
+
+    const capture = adapter.capture();
+    await vi.waitFor(() => expect(FakeMediaRecorder.instances).toHaveLength(1));
+    FakeMediaRecorder.instances[0]?.ondataavailable?.({
+      data: new Blob([new Uint8Array([9, 8, 7])], { type: "audio/webm" }),
+    } as BlobEvent);
+    FakeMediaRecorder.instances[0]?.stop();
+
+    await expect(capture).resolves.toEqual({
+      status: "success",
+      providerId: "desktop-microphone",
+      audio: wavAudio,
+    });
+    expect(convertToWav).toHaveBeenCalledWith(
+      new Uint8Array([9, 8, 7]),
+      "audio/webm",
+    );
+  });
+
+  it("reports invalid audio when captured bytes cannot be converted to wav", async () => {
+    FakeMediaRecorder.instances = [];
+    const { stream } = createStream();
+    const adapter = createDesktopMicrophoneInputAdapter({
+      mediaDevices: { getUserMedia: vi.fn().mockResolvedValue(stream) },
+      MediaRecorderConstructor: FakeMediaRecorder,
+      maxCaptureMs: 50,
+      convertToWav: vi.fn().mockRejectedValue(new Error("decode failed")),
+    });
+
+    const capture = adapter.capture();
+    await vi.waitFor(() => expect(FakeMediaRecorder.instances).toHaveLength(1));
+    FakeMediaRecorder.instances[0]?.ondataavailable?.({
+      data: new Blob([new Uint8Array([1, 2, 3])], { type: "audio/webm" }),
+    } as BlobEvent);
+    FakeMediaRecorder.instances[0]?.stop();
+
+    await expect(capture).resolves.toMatchObject({
+      status: "failed",
+      providerId: "desktop-microphone",
+      error: {
+        code: "invalid_microphone_audio",
+        message:
+          "Microphone audio could not be converted to 16-bit mono WAV.",
+        retryable: true,
+      },
+    });
   });
 
   it("maps denied microphone permission to an explicit retryable failure", async () => {

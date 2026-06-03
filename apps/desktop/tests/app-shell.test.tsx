@@ -1158,6 +1158,9 @@ describe("desktop app shell", () => {
     expect(markup).toContain("Cloud voice");
     expect(markup).toContain("paid remote");
     expect(markup).toContain("Apple local");
+    expect(markup).toContain("Local Whisper");
+    expect(markup).toContain("whisper.cpp binary");
+    expect(markup).toContain("ggml model");
     expect(markup).toContain("Microphone");
     expect(markup).toContain("asks on start");
     expect(markup).toContain("Start listening");
@@ -1333,7 +1336,7 @@ describe("desktop app shell", () => {
     );
   });
 
-  it("keeps desktop voice available for real microphone capture while STT stays unavailable", async () => {
+  it("keeps desktop voice available for real microphone capture and validates local Whisper STT", async () => {
     class FakeMediaRecorder {
       state: RecordingState = "inactive";
       ondataavailable: ((event: BlobEvent) => void) | null = null;
@@ -1351,12 +1354,30 @@ describe("desktop app shell", () => {
     }
 
     const adapters = createDesktopVoiceSessionAdapters({
-      mediaDevices: {
-        getUserMedia: vi.fn().mockResolvedValue({
-          getTracks: () => [{ stop: vi.fn() }],
-        } as unknown as MediaStream),
+      microphoneDependencies: {
+        mediaDevices: {
+          getUserMedia: vi.fn().mockResolvedValue({
+            getTracks: () => [{ stop: vi.fn() }],
+          } as unknown as MediaStream),
+        },
+        MediaRecorderConstructor: FakeMediaRecorder,
       },
-      MediaRecorderConstructor: FakeMediaRecorder,
+      getLocalWhisperConfig: () => ({
+        binaryPath: "/usr/local/bin/whisper-cli",
+        modelPath: "/models/ggml-base.en.bin",
+      }),
+      localWhisperInvoke: vi
+        .fn()
+        .mockResolvedValueOnce({
+          providerId: "local-whisper-stt",
+          state: "available",
+          detail: "Local Whisper STT is available.",
+        })
+        .mockResolvedValueOnce({
+          providerId: "local-whisper-stt",
+          status: "completed",
+          transcript: "Check Apple speech.",
+        }),
     });
 
     await expect(
@@ -1366,17 +1387,18 @@ describe("desktop app shell", () => {
       }),
     ).resolves.toEqual({
       status: "available",
-      providerId: "desktop-microphone",
+      providerId: "desktop-voice-provider",
     });
     await expect(
-      adapters.speechToText.transcribe({ audio: new Uint8Array([1]) }),
+      adapters.speechToText.transcribe({
+        audio: new Uint8Array([
+          82, 73, 70, 70, 40, 0, 0, 0, 87, 65, 86, 69, 102, 109, 116, 32,
+        ]),
+      }),
     ).resolves.toMatchObject({
-      status: "failed",
-      error: {
-        code: "provider_unavailable",
-        message:
-          "Voice transcription provider is not configured. Captured microphone audio cannot be transcribed yet.",
-      },
+      status: "success",
+      providerId: "local-whisper-stt",
+      transcript: "Check Apple speech.",
     });
   });
 
@@ -1411,6 +1433,7 @@ describe("desktop app shell", () => {
     );
 
     expect(source).toContain("createAppleLocalVoiceRuntimeAdapters()");
+    expect(source).toContain("createLocalWhisperSpeechToTextAdapter");
     expect(source).toContain(
       "responseGeneration: createDesktopTextFallbackResponseAdapter()",
     );
@@ -2792,6 +2815,8 @@ describe("desktop app shell", () => {
       executionAuthority: "ask-first" as const,
       providerPlaceholder: "local-model" as const,
       ttsProvider: "apple-local-tts" as const,
+      localWhisperBinaryPath: "",
+      localWhisperModelPath: "",
       onboardingComplete: true,
     };
 

@@ -28,6 +28,10 @@ import {
   type DesktopMicrophoneCaptureDependencies,
 } from "./desktopMicrophone";
 import { createAppleLocalVoiceRuntimeAdapters } from "./appleLocalTts";
+import {
+  createLocalWhisperSpeechToTextAdapter,
+  type LocalWhisperConfig,
+} from "./localWhisperStt";
 
 export type VoiceSessionState = VoiceRuntimeSessionState;
 
@@ -400,10 +404,37 @@ export function createUnavailableDesktopVoiceAdapters(
   };
 }
 
+export type DesktopVoiceSessionAdapterOptions = {
+  microphoneDependencies?: DesktopMicrophoneCaptureDependencies;
+  getLocalWhisperConfig?: () => LocalWhisperConfig;
+  localWhisperInvoke?: (
+    command: string,
+    args?: Record<string, unknown>,
+  ) => Promise<unknown>;
+};
+
+const defaultLocalWhisperConfig = {
+  binaryPath: "",
+  modelPath: "",
+} satisfies LocalWhisperConfig;
+
 export function createDesktopVoiceSessionAdapters(
-  microphoneDependencies: DesktopMicrophoneCaptureDependencies = {},
+  options: DesktopMicrophoneCaptureDependencies | DesktopVoiceSessionAdapterOptions = {},
 ): VoiceSessionAdapters {
+  const normalizedOptions =
+    "microphoneDependencies" in options ||
+    "getLocalWhisperConfig" in options ||
+    "localWhisperInvoke" in options
+      ? (options as DesktopVoiceSessionAdapterOptions)
+      : { microphoneDependencies: options as DesktopMicrophoneCaptureDependencies };
+  const microphoneDependencies = normalizedOptions.microphoneDependencies ?? {};
   const appleLocalVoice = createAppleLocalVoiceRuntimeAdapters();
+  const localWhisper = createLocalWhisperSpeechToTextAdapter({
+    getConfig:
+      normalizedOptions.getLocalWhisperConfig ??
+      (() => defaultLocalWhisperConfig),
+    invoke: normalizedOptions.localWhisperInvoke,
+  });
   const microphoneUnavailableMessage =
     "Desktop microphone capture is unavailable in this runtime.";
   const providerUnavailableMessage =
@@ -428,13 +459,20 @@ export function createDesktopVoiceSessionAdapters(
           };
         }
 
+        const whisperAvailability = await localWhisper.availability.check(input);
+
+        if (whisperAvailability.status !== "available") {
+          return whisperAvailability;
+        }
+
         return {
           status: "available",
-          providerId: "desktop-microphone",
+          providerId: "desktop-voice-provider",
         };
       },
     },
     microphone: createDesktopMicrophoneInputAdapter(microphoneDependencies),
+    speechToText: localWhisper.speechToText,
     responseGeneration: createDesktopTextFallbackResponseAdapter(),
     textToSpeech: appleLocalVoice.textToSpeech,
     playback: appleLocalVoice.playback,

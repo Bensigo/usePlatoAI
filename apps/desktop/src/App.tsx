@@ -578,6 +578,7 @@ export function ControlSurfacePanel({
         <VoiceInteractionPanel
           voiceInteraction={voiceInteraction}
           settings={settings}
+          onSettingsChange={onSettingsChange}
           onStartVoiceInteraction={onStartVoiceInteraction}
           onStopVoiceInteraction={onStopVoiceInteraction}
           onMuteChange={onMuteChange}
@@ -1122,6 +1123,7 @@ export function MemoryBrowserPanel({
 export function VoiceInteractionPanel({
   voiceInteraction,
   settings,
+  onSettingsChange,
   onStartVoiceInteraction,
   onStopVoiceInteraction,
   onMuteChange,
@@ -1130,6 +1132,7 @@ export function VoiceInteractionPanel({
 }: {
   voiceInteraction: VoiceInteractionSnapshot;
   settings?: CompanionSettings;
+  onSettingsChange?: (settings: CompanionSettings) => Promise<void>;
   onStartVoiceInteraction?: () => void;
   onStopVoiceInteraction?: () => void;
   onMuteChange?: (isMuted: boolean) => void;
@@ -1142,7 +1145,24 @@ export function VoiceInteractionPanel({
   const isError = voiceInteraction.sessionState === "error";
   const isUnavailable = voiceInteraction.sessionState === "unavailable";
   const ttsProvider = settings?.ttsProvider ?? "apple-local-tts";
+  const localWhisperConfigured = Boolean(
+    settings?.localWhisperBinaryPath && settings.localWhisperModelPath,
+  );
   const appleAvailability: TextToSpeechProviderAvailabilityState = "supported";
+
+  function updateLocalWhisperPath(
+    key: "localWhisperBinaryPath" | "localWhisperModelPath",
+    value: string,
+  ) {
+    if (!settings || !onSettingsChange) {
+      return;
+    }
+
+    void onSettingsChange({
+      ...settings,
+      [key]: value,
+    });
+  }
 
   function submitTextFallback(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -1168,6 +1188,11 @@ export function VoiceInteractionPanel({
             label: "Output",
             value: voiceInteraction.isMuted ? "muted" : "Apple local",
             tone: voiceInteraction.isMuted ? "muted" : "configured",
+          },
+          {
+            label: "Local Whisper",
+            value: localWhisperConfigured ? "configured" : "missing paths",
+            tone: localWhisperConfigured ? "configured" : "missing",
           },
           {
             label: "Session",
@@ -1209,6 +1234,37 @@ export function VoiceInteractionPanel({
       </dl>
 
       <TtsProviderSummary selectedProviderId={ttsProvider} />
+
+      <section className="local-whisper-config" aria-label="Local Whisper STT config">
+        <label>
+          <span>whisper.cpp binary</span>
+          <input
+            type="text"
+            value={settings?.localWhisperBinaryPath ?? ""}
+            placeholder="/path/to/whisper-cli"
+            onChange={(event) =>
+              updateLocalWhisperPath(
+                "localWhisperBinaryPath",
+                event.currentTarget.value,
+              )
+            }
+          />
+        </label>
+        <label>
+          <span>ggml model</span>
+          <input
+            type="text"
+            value={settings?.localWhisperModelPath ?? ""}
+            placeholder="/path/to/ggml-base.en.bin"
+            onChange={(event) =>
+              updateLocalWhisperPath(
+                "localWhisperModelPath",
+                event.currentTarget.value,
+              )
+            }
+          />
+        </label>
+      </section>
 
       <div className="voice-actions" role="group" aria-label="Voice controls">
         <button
@@ -1989,6 +2045,8 @@ export function FirstRunOnboarding({
         "providerPlaceholder",
       ) as ProviderPlaceholder,
       ttsProvider: defaultCompanionSettings.ttsProvider,
+      localWhisperBinaryPath: initialSettings.localWhisperBinaryPath,
+      localWhisperModelPath: initialSettings.localWhisperModelPath,
       onboardingComplete: true,
     };
 
@@ -2200,9 +2258,19 @@ export function App({
   const [settings, setSettings] = useState<CompanionSettings>(
     () => initialSettings ?? defaultCompanionSettings,
   );
+  const localWhisperConfigRef = useRef({
+    binaryPath:
+      initialSettings?.localWhisperBinaryPath ??
+      defaultCompanionSettings.localWhisperBinaryPath,
+    modelPath:
+      initialSettings?.localWhisperModelPath ??
+      defaultCompanionSettings.localWhisperModelPath,
+  });
   const voiceRuntimeRef = useRef(
     createVoiceSessionRuntime({
-      adapters: createDesktopVoiceSessionAdapters(),
+      adapters: createDesktopVoiceSessionAdapters({
+        getLocalWhisperConfig: () => localWhisperConfigRef.current,
+      }),
     }),
   );
   const voiceListeningHotkeyDetector = useRef(
@@ -2887,11 +2955,19 @@ export function App({
       .read()
       .then((savedSettings) => {
         if (isCurrent) {
+          localWhisperConfigRef.current = {
+            binaryPath: savedSettings.localWhisperBinaryPath,
+            modelPath: savedSettings.localWhisperModelPath,
+          };
           setSettings(savedSettings);
         }
       })
       .catch(() => {
         if (isCurrent) {
+          localWhisperConfigRef.current = {
+            binaryPath: defaultCompanionSettings.localWhisperBinaryPath,
+            modelPath: defaultCompanionSettings.localWhisperModelPath,
+          };
           setSettings(defaultCompanionSettings);
         }
       })
@@ -3315,6 +3391,10 @@ export function App({
 
   async function completeOnboarding(updatedSettings: CompanionSettings) {
     await durableSettingsStore.save(updatedSettings);
+    localWhisperConfigRef.current = {
+      binaryPath: updatedSettings.localWhisperBinaryPath,
+      modelPath: updatedSettings.localWhisperModelPath,
+    };
     setSettings(updatedSettings);
   }
 

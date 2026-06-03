@@ -7,6 +7,7 @@ use crate::codex_app_server_auth::CodexAppServerAuthClient;
 mod apple_tts;
 mod codex_app_server_auth;
 mod local_data;
+mod local_whisper;
 mod presence_window;
 mod provider_credentials;
 mod secret_store;
@@ -30,6 +31,10 @@ pub struct CompanionSettings {
     provider_placeholder: String,
     #[serde(default = "default_tts_provider")]
     tts_provider: String,
+    #[serde(default)]
+    local_whisper_binary_path: String,
+    #[serde(default)]
+    local_whisper_model_path: String,
     onboarding_complete: bool,
 }
 
@@ -458,6 +463,29 @@ fn apple_tts_stop(
     runtime.stop()
 }
 
+#[tauri::command]
+fn local_whisper_availability(
+    runtime: tauri::State<'_, local_whisper::LocalWhisperRuntime>,
+    request: local_whisper::LocalWhisperConfig,
+) -> local_whisper::LocalWhisperAvailability {
+    runtime.availability(request)
+}
+
+#[tauri::command]
+fn local_whisper_transcribe(
+    runtime: tauri::State<'_, local_whisper::LocalWhisperRuntime>,
+    request: local_whisper::LocalWhisperTranscribeRequest,
+) -> local_whisper::LocalWhisperCommandResult {
+    runtime.transcribe(request)
+}
+
+#[tauri::command]
+fn local_whisper_stop(
+    runtime: tauri::State<'_, local_whisper::LocalWhisperRuntime>,
+) -> local_whisper::LocalWhisperCommandResult {
+    runtime.stop()
+}
+
 fn current_unix_timestamp_string() -> String {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -520,6 +548,7 @@ fn metadata_string(metadata: Option<&serde_json::Value>, key: &str) -> Option<St
 pub fn run() {
     tauri::Builder::default()
         .manage(apple_tts::AppleTtsRuntime::default())
+        .manage(local_whisper::LocalWhisperRuntime::default())
         .invoke_handler(tauri::generate_handler![
             read_companion_settings,
             save_companion_settings,
@@ -548,7 +577,10 @@ pub fn run() {
             clear_chatgpt_oauth_login,
             apple_tts_availability,
             apple_tts_speak,
-            apple_tts_stop
+            apple_tts_stop,
+            local_whisper_availability,
+            local_whisper_transcribe,
+            local_whisper_stop
         ])
         .setup(|app| {
             use tauri::{

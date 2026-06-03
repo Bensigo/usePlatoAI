@@ -1377,6 +1377,8 @@ fn default_companion_settings() -> CompanionSettings {
         execution_authority: execution_authority_mode_key(DEFAULT_EXECUTION_AUTHORITY).to_string(),
         provider_placeholder: "configure-later".to_string(),
         tts_provider: crate::apple_tts::APPLE_LOCAL_TTS_PROVIDER_ID.to_string(),
+        local_whisper_binary_path: String::new(),
+        local_whisper_model_path: String::new(),
         onboarding_complete: false,
     }
 }
@@ -2198,6 +2200,8 @@ mod tests {
             execution_authority: "ask-first".to_string(),
             provider_placeholder: "openai-api-key".to_string(),
             tts_provider: crate::apple_tts::APPLE_LOCAL_TTS_PROVIDER_ID.to_string(),
+            local_whisper_binary_path: String::new(),
+            local_whisper_model_path: String::new(),
             onboarding_complete: true,
         }
     }

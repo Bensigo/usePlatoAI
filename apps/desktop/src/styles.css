@@ -1414,6 +1414,37 @@ h1 {
   line-height: 1.3;
 }
 
+.local-whisper-config {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.local-whisper-config label {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.local-whisper-config span {
+  color: var(--plato-color-text-muted);
+  font-size: 0.68rem;
+  font-weight: 750;
+  line-height: 1.2;
+}
+
+.local-whisper-config input {
+  min-width: 0;
+  width: 100%;
+  border: 1px solid var(--plato-color-border);
+  border-radius: var(--plato-radius-control);
+  padding: 7px;
+  background: var(--plato-color-surface-raised);
+  color: var(--plato-color-text);
+  font: inherit;
+  font-size: 0.74rem;
+}
+
 .voice-actions {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
