@@ -1214,6 +1214,44 @@ describe("desktop app shell", () => {
     expect(markup).not.toContain("OpenAI credential");
   });
 
+  it("renders enabled wake-name kill switch and saves the disabled state", () => {
+    const onSettingsChange = vi.fn(async () => undefined);
+    const enabledSettings: CompanionSettings = {
+      ...completedSettings,
+      wakeNameActivationEnabled: true,
+      wakeNameDetectorModelPath: "/models/vosk",
+    };
+    const panel = VoiceInteractionPanel({
+      voiceInteraction: defaultVoiceInteractionSnapshot,
+      settings: enabledSettings,
+      wakeNameActivation: {
+        ...defaultWakeNameActivationSnapshot,
+        state: "listening",
+        detail: "Listening locally for Amber.",
+      },
+      onSettingsChange,
+    });
+
+    const markup = renderToStaticMarkup(panel);
+
+    expect(markup).toContain("Wake name on");
+    expect(markup).toContain("Kill wake name");
+    expect(markup).toContain("Listening locally for Amber.");
+
+    const killWakeName = findButtonClickHandler(panel, "Kill wake name");
+    expect(killWakeName).toBeDefined();
+
+    killWakeName?.();
+
+    expect(onSettingsChange).toHaveBeenCalledWith(
+      expect.objectContaining({
+        wakeName: "Amber",
+        wakeNameActivationEnabled: false,
+        wakeNameDetectorModelPath: "/models/vosk",
+      }),
+    );
+  });
+
   it("renders Apple local TTS in the dedicated voice setup surface", () => {
     const markup = renderToStaticMarkup(
       <VoiceSetupPanel settings={completedSettings} />,
