@@ -4,6 +4,7 @@ use tauri::{AppHandle, Manager};
 
 use crate::codex_app_server_auth::CodexAppServerAuthClient;
 
+mod agent_response;
 mod apple_tts;
 mod codex_app_server_auth;
 mod local_data;
@@ -486,6 +487,28 @@ fn local_whisper_stop(
     runtime.stop()
 }
 
+#[tauri::command]
+fn agent_engine_response_availability(
+    runtime: tauri::State<'_, agent_response::AgentResponseRuntime>,
+) -> agent_response::AgentResponseAvailability {
+    runtime.availability()
+}
+
+#[tauri::command]
+fn agent_engine_generate_response(
+    runtime: tauri::State<'_, agent_response::AgentResponseRuntime>,
+    request: agent_response::AgentResponseRequest,
+) -> agent_response::AgentResponseCommandResult {
+    runtime.generate(request)
+}
+
+#[tauri::command]
+fn agent_engine_stop_response(
+    runtime: tauri::State<'_, agent_response::AgentResponseRuntime>,
+) -> agent_response::AgentResponseCommandResult {
+    runtime.stop()
+}
+
 fn current_unix_timestamp_string() -> String {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -549,6 +572,7 @@ pub fn run() {
     tauri::Builder::default()
         .manage(apple_tts::AppleTtsRuntime::default())
         .manage(local_whisper::LocalWhisperRuntime::default())
+        .manage(agent_response::AgentResponseRuntime::default())
         .invoke_handler(tauri::generate_handler![
             read_companion_settings,
             save_companion_settings,
@@ -580,7 +604,10 @@ pub fn run() {
             apple_tts_stop,
             local_whisper_availability,
             local_whisper_transcribe,
-            local_whisper_stop
+            local_whisper_stop,
+            agent_engine_response_availability,
+            agent_engine_generate_response,
+            agent_engine_stop_response
         ])
         .setup(|app| {
             use tauri::{

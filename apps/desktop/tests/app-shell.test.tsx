@@ -4,6 +4,7 @@ import { resolve } from "node:path";
 import { isValidElement, type ReactElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
+import { createVoiceSessionRuntime } from "@useplatoai/voice";
 
 import {
   App,
@@ -154,6 +155,33 @@ import {
 const completedSettings: CompanionSettings = {
   ...defaultCompanionSettings,
   onboardingComplete: true,
+};
+
+const configuredCodexAuthSnapshot = {
+  activeAuthMode: "chatgpt_oauth",
+  chatgptOauth: {
+    configured: true,
+    availability: "logged-in",
+    tokenSource: "codex_app_server",
+  },
+};
+
+const missingCodexAuthSnapshot = {
+  activeAuthMode: null,
+  chatgptOauth: {
+    configured: false,
+    availability: "not-logged-in",
+    tokenSource: null,
+  },
+};
+
+const openAiApiKeyAuthSnapshot = {
+  activeAuthMode: "openai_api_key",
+  chatgptOauth: {
+    configured: false,
+    availability: "not-logged-in",
+    tokenSource: null,
+  },
 };
 
 function createStartupSequenceStorage() {
@@ -1378,6 +1406,14 @@ describe("desktop app shell", () => {
           status: "completed",
           transcript: "Check Apple speech.",
         }),
+      agentResponse: {
+        getAuthSnapshot: async () => configuredCodexAuthSnapshot,
+        invoke: vi.fn().mockResolvedValue({
+          providerId: "codex-agent-engine-response",
+          state: "available",
+          detail: "Codex Agent Engine is available.",
+        }),
+      },
     });
 
     await expect(
@@ -1402,8 +1438,25 @@ describe("desktop app shell", () => {
     });
   });
 
-  it("uses local text fallback response generation to drive Apple TTS without paid providers", async () => {
-    const adapters = createDesktopVoiceSessionAdapters();
+  it("routes configured Agent Engine response generation without fake echo text", async () => {
+    const invoke = vi
+      .fn()
+      .mockResolvedValueOnce({
+        providerId: "codex-agent-engine-response",
+        state: "available",
+        detail: "Codex Agent Engine is available.",
+      })
+      .mockResolvedValueOnce({
+        providerId: "codex-agent-engine-response",
+        status: "completed",
+        text: "Use the release checklist and start with the blocker.",
+      });
+    const adapters = createDesktopVoiceSessionAdapters({
+      agentResponse: {
+        getAuthSnapshot: async () => configuredCodexAuthSnapshot,
+        invoke,
+      },
+    });
 
     await expect(
       adapters.availability.check({
@@ -1412,17 +1465,213 @@ describe("desktop app shell", () => {
       }),
     ).resolves.toEqual({
       status: "available",
-      providerId: "desktop-text-fallback",
+      providerId: "codex-agent-engine-response",
     });
     await expect(
       adapters.responseGeneration.generate({
         transcript: "Check Apple speech.",
-        activationSource: "text",
+        activationSource: "voice",
       }),
     ).resolves.toEqual({
       status: "success",
-      providerId: "desktop-text-fallback",
-      text: "I heard: Check Apple speech.",
+      providerId: "codex-agent-engine-response",
+      text: "Use the release checklist and start with the blocker.",
+    });
+    expect(
+      invoke.mock.calls.some((call) =>
+        JSON.stringify(call).includes("I heard: Check Apple speech."),
+      ),
+    ).toBe(false);
+  });
+
+  it("reports unavailable when local SDK auth is missing or API-key mode is active", async () => {
+    const missingAuthAdapters = createDesktopVoiceSessionAdapters({
+      agentResponse: {
+        getAuthSnapshot: async () => missingCodexAuthSnapshot,
+        invoke: vi.fn(),
+      },
+    });
+    const apiKeyAdapters = createDesktopVoiceSessionAdapters({
+      agentResponse: {
+        getAuthSnapshot: async () => openAiApiKeyAuthSnapshot,
+        invoke: vi.fn(),
+      },
+    });
+
+    await expect(
+      missingAuthAdapters.availability.check({
+        activationSource: "text",
+        outputMode: "audible",
+      }),
+    ).resolves.toMatchObject({
+      status: "unavailable",
+      providerId: "codex-agent-engine-response",
+      reason:
+        "Codex local SDK auth is not configured. Connect ChatGPT OAuth through Codex before using voice response generation.",
+    });
+    await expect(
+      apiKeyAdapters.availability.check({
+        activationSource: "text",
+        outputMode: "audible",
+      }),
+    ).resolves.toMatchObject({
+      status: "unavailable",
+      providerId: "codex-agent-engine-response",
+      reason:
+        "Voice response generation requires local SDK auth; OpenAI API-key mode is not used for this voice path.",
+    });
+  });
+
+  it("maps Agent Engine timeout and runtime failures to explicit errors", async () => {
+    const adapters = createDesktopVoiceSessionAdapters({
+      agentResponse: {
+        getAuthSnapshot: async () => configuredCodexAuthSnapshot,
+        invoke: vi.fn().mockResolvedValue({
+          providerId: "codex-agent-engine-response",
+          status: "failed",
+          error: {
+            code: "provider_timeout",
+            message: "Agent Engine response generation timed out.",
+            retryable: true,
+          },
+        }),
+      },
+    });
+
+    await expect(
+      adapters.responseGeneration.generate({
+        transcript: "Plan this.",
+        activationSource: "voice",
+      }),
+    ).resolves.toEqual({
+      status: "failed",
+      providerId: "codex-agent-engine-response",
+      error: {
+        code: "provider_timeout",
+        message: "Agent Engine response generation timed out.",
+        retryable: true,
+      },
+    });
+  });
+
+  it("hard-interrupts Agent Engine response generation and suppresses stale replies", async () => {
+    let resolveGenerate: (value: unknown) => void = () => {};
+    const invoke = vi.fn((command: string) => {
+      if (command === "agent_engine_generate_response") {
+        return new Promise((resolve) => {
+          resolveGenerate = resolve;
+        });
+      }
+
+      return Promise.resolve({
+        providerId: "codex-agent-engine-response",
+        status: "stopped",
+      });
+    });
+    const adapters = createDesktopVoiceSessionAdapters({
+      agentResponse: {
+        getAuthSnapshot: async () => configuredCodexAuthSnapshot,
+        invoke,
+      },
+    });
+    adapters.availability.check = vi.fn().mockResolvedValue({
+      status: "available",
+      providerId: "desktop-voice-provider",
+    });
+    adapters.microphone.capture = vi.fn().mockResolvedValue({
+      status: "success",
+      providerId: "desktop-microphone",
+      audio: new Uint8Array([1]),
+    });
+    adapters.speechToText.transcribe = vi.fn().mockResolvedValue({
+      status: "success",
+      providerId: "local-whisper-stt",
+      transcript: "Plan this.",
+    });
+    const runtime = createVoiceSessionRuntime({
+      adapters,
+      interruptedRecoveryMs: 1,
+    });
+
+    const activeRun = runtime.startVoice();
+    await vi.waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith("agent_engine_generate_response", {
+        request: {
+          transcript: "Plan this.",
+          activationSource: "voice",
+          timeoutMs: 20000,
+        },
+      });
+    });
+
+    await runtime.interrupt("user_interrupt");
+    resolveGenerate({
+      providerId: "codex-agent-engine-response",
+      status: "completed",
+      text: "This stale response must not surface.",
+    });
+    await activeRun;
+
+    expect(runtime.getSnapshot().responseText).not.toBe(
+      "This stale response must not surface.",
+    );
+    expect(invoke).toHaveBeenCalledWith("agent_engine_stop_response");
+  });
+
+  it("hands configured Agent Engine response text to Apple local TTS through the voice runtime", async () => {
+    const agentInvoke = vi
+      .fn()
+      .mockResolvedValue({
+        providerId: "codex-agent-engine-response",
+        status: "completed",
+        text: "Start with the smallest release blocker.",
+      });
+    const appleInvoke = vi.fn().mockResolvedValue({
+        providerId: "apple-local-tts",
+        status: "completed",
+      });
+    const adapters = createDesktopVoiceSessionAdapters({
+      agentResponse: {
+        getAuthSnapshot: async () => configuredCodexAuthSnapshot,
+        invoke: agentInvoke,
+      },
+      appleLocalTtsInvoke: appleInvoke,
+    });
+    adapters.availability.check = vi.fn().mockResolvedValue({
+      status: "available",
+      providerId: "desktop-voice-provider",
+    });
+    adapters.microphone.capture = vi.fn().mockResolvedValue({
+      status: "success",
+      providerId: "desktop-microphone",
+      audio: new Uint8Array([1]),
+    });
+    adapters.speechToText.transcribe = vi.fn().mockResolvedValue({
+      status: "success",
+      providerId: "local-whisper-stt",
+      transcript: "What should I do first?",
+    });
+    const runtime = createVoiceSessionRuntime({ adapters });
+
+    await runtime.startVoice();
+
+    expect(runtime.getSnapshot()).toMatchObject({
+      state: "idle",
+      transcript: "What should I do first?",
+      responseText: "Start with the smallest release blocker.",
+    });
+    expect(agentInvoke).toHaveBeenCalledWith("agent_engine_generate_response", {
+      request: {
+        transcript: "What should I do first?",
+        activationSource: "voice",
+        timeoutMs: 20000,
+      },
+    });
+    expect(appleInvoke).toHaveBeenCalledWith("apple_tts_speak", {
+      request: {
+        text: "Start with the smallest release blocker.",
+        voiceId: undefined,
+      },
     });
   });
 
@@ -1432,11 +1681,10 @@ describe("desktop app shell", () => {
       "utf8",
     );
 
-    expect(source).toContain("createAppleLocalVoiceRuntimeAdapters()");
+    expect(source).toContain("createAppleLocalVoiceRuntimeAdapters({");
     expect(source).toContain("createLocalWhisperSpeechToTextAdapter");
-    expect(source).toContain(
-      "responseGeneration: createDesktopTextFallbackResponseAdapter()",
-    );
+    expect(source).toContain("createAgentEngineResponseAdapters");
+    expect(source).toContain("responseGeneration: agentResponse.responseGeneration");
     expect(source).toContain("textToSpeech: appleLocalVoice.textToSpeech");
     expect(source).toContain("playback: appleLocalVoice.playback");
   });
