@@ -2332,6 +2332,10 @@ export function App({
   const correctionPromptRequestId = useRef(0);
   const previousVoiceInteractionSessionState =
     useRef<VoiceSessionState>(voiceInteraction.sessionState);
+  const latestCompanionVoiceActivationState = useRef({
+    presenceDragMode,
+    voiceSessionState: voiceInteraction.sessionState,
+  });
   const latestAgentResponseText = useRef(voiceInteraction.response);
   const isPresenceDraggable = presenceDragMode === "draggable";
 
@@ -2417,6 +2421,11 @@ export function App({
   );
 
   useEffect(() => {
+    latestCompanionVoiceActivationState.current = {
+      presenceDragMode,
+      voiceSessionState: voiceInteraction.sessionState,
+    };
+
     if (voiceInteraction.sessionState === "speaking") {
       latestAgentResponseText.current = voiceInteraction.response;
     }
@@ -2437,6 +2446,7 @@ export function App({
     voiceInteraction.isMuted,
     voiceInteraction.response,
     voiceInteraction.sessionState,
+    presenceDragMode,
   ]);
 
   function startVoiceInteraction() {
@@ -2536,7 +2546,16 @@ export function App({
       clearPendingAvatarVoiceActivation();
       pendingAvatarVoiceActivationTimer.current = setTimeout(() => {
         pendingAvatarVoiceActivationTimer.current = null;
-        activateVoiceListening();
+        const latestState = latestCompanionVoiceActivationState.current;
+        const latestIntent = companionVoiceActivationIntent({
+          trigger,
+          voiceSessionState: latestState.voiceSessionState,
+          presenceDragMode: latestState.presenceDragMode,
+        });
+
+        if (latestIntent === "start") {
+          activateVoiceListening();
+        }
       }, avatarVoiceActivationDelayMs);
       return;
     }

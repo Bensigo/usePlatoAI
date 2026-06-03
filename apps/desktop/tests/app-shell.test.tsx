@@ -1411,6 +1411,8 @@ describe("desktop app shell", () => {
     expect(source).toContain("activateOrInterruptCompanionVoice(\"hotkey\")");
     expect(source).toContain("activateOrInterruptCompanionVoice(\"avatar-click\")");
     expect(source).toContain("clearPendingAvatarVoiceActivation()");
+    expect(source).toContain("latestCompanionVoiceActivationState.current");
+    expect(source).toContain("if (latestIntent === \"start\")");
     expect(source).toContain("window.addEventListener(\"keyup\"");
     const hotkeyHandlerSource = source.match(
       /function handleVoiceHotkey\(event: KeyboardEvent\) \{[\s\S]*?\n    \}/,
