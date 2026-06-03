@@ -30,6 +30,8 @@ export type CompanionSettings = {
   executionAuthority: ExecutionAuthority;
   providerPlaceholder: ProviderPlaceholder;
   ttsProvider: TextToSpeechProviderId;
+  localWhisperBinaryPath: string;
+  localWhisperModelPath: string;
   onboardingComplete: boolean;
 };
 
@@ -65,6 +67,8 @@ export const defaultCompanionSettings: CompanionSettings = {
   executionAuthority: "ask-first",
   providerPlaceholder: "configure-later",
   ttsProvider: "apple-local-tts",
+  localWhisperBinaryPath: "",
+  localWhisperModelPath: "",
   onboardingComplete: false,
 };
 
@@ -89,6 +93,8 @@ export function normalizeCompanionSettings(
   return {
     ...defaultCompanionSettings,
     ...settings,
+    localWhisperBinaryPath: settings?.localWhisperBinaryPath?.trim() ?? "",
+    localWhisperModelPath: settings?.localWhisperModelPath?.trim() ?? "",
     ttsProvider: resolveTextToSpeechProvider({
       preferredProviderId: preferredProvider,
       paidTtsOptIn: false,

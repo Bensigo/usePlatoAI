@@ -22,6 +22,7 @@ export type DesktopMicrophoneCaptureDependencies = {
   MediaRecorderConstructor?: DesktopMediaRecorderConstructor;
   maxCaptureMs?: number;
   mimeType?: string;
+  convertToWav?: (audio: Uint8Array, mimeType: string) => Promise<Uint8Array>;
 };
 
 type ActiveCapture = {
@@ -122,6 +123,96 @@ function failureFromGetUserMediaError(error: unknown) {
 async function audioBytesFromChunks(chunks: Blob[], mimeType: string) {
   const blob = new Blob(chunks, { type: mimeType });
   return new Uint8Array(await blob.arrayBuffer());
+}
+
+function isWavAudio(audio: Uint8Array) {
+  return (
+    audio.byteLength >= 12 &&
+    audio[0] === 82 &&
+    audio[1] === 73 &&
+    audio[2] === 70 &&
+    audio[3] === 70 &&
+    audio[8] === 87 &&
+    audio[9] === 65 &&
+    audio[10] === 86 &&
+    audio[11] === 69
+  );
+}
+
+function writeAscii(view: DataView, offset: number, value: string) {
+  for (let index = 0; index < value.length; index += 1) {
+    view.setUint8(offset + index, value.charCodeAt(index));
+  }
+}
+
+function wavFromMonoSamples(samples: Float32Array, sampleRate: number) {
+  const bytesPerSample = 2;
+  const headerBytes = 44;
+  const wav = new ArrayBuffer(headerBytes + samples.length * bytesPerSample);
+  const view = new DataView(wav);
+
+  writeAscii(view, 0, "RIFF");
+  view.setUint32(4, 36 + samples.length * bytesPerSample, true);
+  writeAscii(view, 8, "WAVE");
+  writeAscii(view, 12, "fmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * bytesPerSample, true);
+  view.setUint16(32, bytesPerSample, true);
+  view.setUint16(34, 16, true);
+  writeAscii(view, 36, "data");
+  view.setUint32(40, samples.length * bytesPerSample, true);
+
+  let offset = headerBytes;
+  for (const sample of samples) {
+    const clamped = Math.max(-1, Math.min(1, sample));
+    view.setInt16(
+      offset,
+      clamped < 0 ? clamped * 0x8000 : clamped * 0x7fff,
+      true,
+    );
+    offset += bytesPerSample;
+  }
+
+  return new Uint8Array(wav);
+}
+
+async function defaultConvertToWav(audio: Uint8Array) {
+  if (isWavAudio(audio)) {
+    return audio;
+  }
+
+  const AudioContextConstructor =
+    typeof AudioContext !== "undefined" ? AudioContext : undefined;
+
+  if (!AudioContextConstructor) {
+    throw new Error("Web Audio decode is unavailable.");
+  }
+
+  const audioContext = new AudioContextConstructor();
+  try {
+    const decoded = await audioContext.decodeAudioData(
+      new Uint8Array(audio).buffer,
+    );
+    const frameCount = decoded.length;
+    const channelCount = decoded.numberOfChannels;
+    const monoSamples = new Float32Array(frameCount);
+
+    for (let channel = 0; channel < channelCount; channel += 1) {
+      const channelData = decoded.getChannelData(channel);
+      for (let index = 0; index < frameCount; index += 1) {
+        monoSamples[index] += channelData[index] / channelCount;
+      }
+    }
+
+    return wavFromMonoSamples(monoSamples, decoded.sampleRate);
+  } finally {
+    if ("close" in audioContext) {
+      void audioContext.close();
+    }
+  }
 }
 
 export function createDesktopMicrophoneInputAdapter(
@@ -242,14 +333,31 @@ export function createDesktopMicrophoneInputAdapter(
           chunks,
           dependencies.mimeType ?? "audio/webm",
         ).then((audio) => {
-          settle(
-            audio.byteLength > 0
-              ? successfulCapture(audio)
-              : failedCapture(
-                  "empty_microphone_capture",
-                  "No microphone audio was captured.",
+          if (audio.byteLength === 0) {
+            settle(
+              failedCapture(
+                "empty_microphone_capture",
+                "No microphone audio was captured.",
+                true,
+              ),
+            );
+            return;
+          }
+
+          const convertToWav = dependencies.convertToWav ?? defaultConvertToWav;
+          void convertToWav(audio, dependencies.mimeType ?? "audio/webm").then(
+            (wavAudio) => {
+              settle(successfulCapture(wavAudio));
+            },
+            () => {
+              settle(
+                failedCapture(
+                  "invalid_microphone_audio",
+                  "Microphone audio could not be converted to 16-bit mono WAV.",
                   true,
                 ),
+              );
+            },
           );
         }, () => {
           settle(
