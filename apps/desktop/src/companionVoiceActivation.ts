@@ -4,7 +4,8 @@ import type { VoiceSessionState } from "./voiceInteraction";
 export type CompanionVoiceActivationTrigger =
   | "hotkey"
   | "avatar-click"
-  | "avatar-double-click";
+  | "avatar-double-click"
+  | "wake-name";
 
 export type CompanionVoiceActivationIntent = "start" | "interrupt" | "ignore";
 

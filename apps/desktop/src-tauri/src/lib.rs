@@ -26,6 +26,10 @@ fn is_control_surface_tray_target(target: &str) -> bool {
 pub struct CompanionSettings {
     companion_name: String,
     wake_name: String,
+    #[serde(default)]
+    wake_name_activation_enabled: bool,
+    #[serde(default)]
+    wake_name_detector_model_path: String,
     launch_behavior: String,
     memory_mode: String,
     execution_authority: String,
