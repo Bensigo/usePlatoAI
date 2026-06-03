@@ -32,6 +32,10 @@ import {
   createLocalWhisperSpeechToTextAdapter,
   type LocalWhisperConfig,
 } from "./localWhisperStt";
+import {
+  createAgentEngineResponseAdapters,
+  type AgentEngineResponseAdapterOptions,
+} from "./desktopAgentResponse";
 
 export type VoiceSessionState = VoiceRuntimeSessionState;
 
@@ -295,53 +299,6 @@ function unavailableResult<TPayload extends object = object>(
   };
 }
 
-function operationAbortedResult<TPayload extends object = object>(
-  providerId: string,
-): VoiceRuntimeAdapterResult<TPayload> {
-  return {
-    status: "failed",
-    providerId,
-    error: voiceRuntimeError(
-      "operation_aborted",
-      "Voice operation was interrupted.",
-      true,
-    ),
-  };
-}
-
-function isAborted(context?: { signal?: AbortSignal }) {
-  return context?.signal?.aborted === true;
-}
-
-export function createDesktopTextFallbackResponseAdapter(): VoiceResponseGenerationAdapter {
-  const providerId = "desktop-text-fallback";
-
-  return {
-    async generate(input, context) {
-      if (isAborted(context)) {
-        return operationAbortedResult<{ text: string }>(providerId);
-      }
-
-      const transcript = input.transcript.trim();
-
-      if (!transcript) {
-        return unavailableResult<{ text: string }>(
-          "Text fallback cannot be empty.",
-        );
-      }
-
-      return {
-        status: "success",
-        providerId,
-        text: `I heard: ${transcript}`,
-      };
-    },
-    async stop() {
-      return;
-    },
-  };
-}
-
 export function createUnavailableDesktopVoiceAdapters(
   message = "Voice providers are not configured. Configure STT, response generation, and TTS before starting a voice session.",
 ): VoiceSessionAdapters {
@@ -411,6 +368,11 @@ export type DesktopVoiceSessionAdapterOptions = {
     command: string,
     args?: Record<string, unknown>,
   ) => Promise<unknown>;
+  appleLocalTtsInvoke?: (
+    command: string,
+    args?: Record<string, unknown>,
+  ) => Promise<unknown>;
+  agentResponse?: AgentEngineResponseAdapterOptions;
 };
 
 const defaultLocalWhisperConfig = {
@@ -424,11 +386,18 @@ export function createDesktopVoiceSessionAdapters(
   const normalizedOptions =
     "microphoneDependencies" in options ||
     "getLocalWhisperConfig" in options ||
-    "localWhisperInvoke" in options
+    "localWhisperInvoke" in options ||
+    "appleLocalTtsInvoke" in options ||
+    "agentResponse" in options
       ? (options as DesktopVoiceSessionAdapterOptions)
       : { microphoneDependencies: options as DesktopMicrophoneCaptureDependencies };
   const microphoneDependencies = normalizedOptions.microphoneDependencies ?? {};
-  const appleLocalVoice = createAppleLocalVoiceRuntimeAdapters();
+  const appleLocalVoice = createAppleLocalVoiceRuntimeAdapters({
+    invoke: normalizedOptions.appleLocalTtsInvoke,
+  });
+  const agentResponse = createAgentEngineResponseAdapters(
+    normalizedOptions.agentResponse,
+  );
   const localWhisper = createLocalWhisperSpeechToTextAdapter({
     getConfig:
       normalizedOptions.getLocalWhisperConfig ??
@@ -445,10 +414,7 @@ export function createDesktopVoiceSessionAdapters(
     availability: {
       async check(input) {
         if (input.activationSource === "text") {
-          return {
-            status: "available",
-            providerId: "desktop-text-fallback",
-          };
+          return agentResponse.availability.check(input);
         }
 
         if (!isDesktopMicrophoneCaptureAvailable(microphoneDependencies)) {
@@ -465,6 +431,14 @@ export function createDesktopVoiceSessionAdapters(
           return whisperAvailability;
         }
 
+        const responseAvailability = await agentResponse.availability.check(
+          input,
+        );
+
+        if (responseAvailability.status !== "available") {
+          return responseAvailability;
+        }
+
         return {
           status: "available",
           providerId: "desktop-voice-provider",
@@ -473,7 +447,7 @@ export function createDesktopVoiceSessionAdapters(
     },
     microphone: createDesktopMicrophoneInputAdapter(microphoneDependencies),
     speechToText: localWhisper.speechToText,
-    responseGeneration: createDesktopTextFallbackResponseAdapter(),
+    responseGeneration: agentResponse.responseGeneration,
     textToSpeech: appleLocalVoice.textToSpeech,
     playback: appleLocalVoice.playback,
   };
