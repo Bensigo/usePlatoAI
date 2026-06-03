@@ -66,6 +66,10 @@ import {
 } from "../src/avatarSurface";
 import { controlSurfaceEntries } from "../src/controlSurface";
 import {
+  companionVoiceActivationIntent,
+  shouldDelayAvatarVoiceActivation,
+} from "../src/companionVoiceActivation";
+import {
   createMemoryStore,
   createSensitiveMemoryApprovalRecord,
   rememberApprovedSensitiveMemory,
@@ -1280,7 +1284,63 @@ describe("desktop app shell", () => {
     expect(source).not.toContain("startupSoundAttempted");
   });
 
-  it("routes the configured voice hotkey through the same audio activation path", async () => {
+  it("maps companion voice activation gestures to start, interrupt, or ignore", () => {
+    expect(
+      companionVoiceActivationIntent({
+        trigger: "hotkey",
+        voiceSessionState: "idle",
+        presenceDragMode: "locked",
+      }),
+    ).toBe("start");
+    expect(
+      companionVoiceActivationIntent({
+        trigger: "avatar-click",
+        voiceSessionState: "idle",
+        presenceDragMode: "locked",
+      }),
+    ).toBe("start");
+
+    for (const voiceSessionState of [
+      "listening",
+      "transcribing",
+      "thinking",
+      "speaking",
+    ] as const) {
+      expect(
+        companionVoiceActivationIntent({
+          trigger: "hotkey",
+          voiceSessionState,
+          presenceDragMode: "locked",
+        }),
+      ).toBe("interrupt");
+      expect(
+        companionVoiceActivationIntent({
+          trigger: "avatar-click",
+          voiceSessionState,
+          presenceDragMode: "locked",
+        }),
+      ).toBe("interrupt");
+    }
+
+    expect(
+      companionVoiceActivationIntent({
+        trigger: "avatar-click",
+        voiceSessionState: "idle",
+        presenceDragMode: "draggable",
+      }),
+    ).toBe("ignore");
+    expect(
+      companionVoiceActivationIntent({
+        trigger: "avatar-double-click",
+        voiceSessionState: "idle",
+        presenceDragMode: "locked",
+      }),
+    ).toBe("ignore");
+    expect(shouldDelayAvatarVoiceActivation("avatar-click")).toBe(true);
+    expect(shouldDelayAvatarVoiceActivation("hotkey")).toBe(false);
+  });
+
+  it("routes the configured voice hotkey through companion activation without expanding controls", async () => {
     const source = readFileSync(resolve(process.cwd(), "src/App.tsx"), "utf8");
     const isVoiceListeningHotkey = createVoiceListeningHotkeyDetector();
 
@@ -1348,9 +1408,17 @@ describe("desktop app shell", () => {
       }),
     ).toBe(false);
     expect(source).toContain("voiceListeningHotkeyDetector.current(event)");
-    expect(source).toContain("activateVoiceListening();");
-    expect(source).toContain("setActiveEntry(\"voice\")");
+    expect(source).toContain("activateOrInterruptCompanionVoice(\"hotkey\")");
+    expect(source).toContain("activateOrInterruptCompanionVoice(\"avatar-click\")");
+    expect(source).toContain("clearPendingAvatarVoiceActivation()");
     expect(source).toContain("window.addEventListener(\"keyup\"");
+    const hotkeyHandlerSource = source.match(
+      /function handleVoiceHotkey\(event: KeyboardEvent\) \{[\s\S]*?\n    \}/,
+    )?.[0];
+
+    expect(hotkeyHandlerSource).toBeDefined();
+    expect(hotkeyHandlerSource).not.toContain("setActiveEntry");
+    expect(hotkeyHandlerSource).not.toContain("setAreControlsExpanded");
   });
 
   it("configures macOS microphone permission copy for real capture", () => {

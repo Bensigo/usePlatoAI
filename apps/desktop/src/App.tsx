@@ -133,6 +133,11 @@ import {
   voiceListeningHotkeyLabel,
 } from "./voiceHotkey";
 import {
+  companionVoiceActivationIntent,
+  shouldDelayAvatarVoiceActivation,
+  type CompanionVoiceActivationTrigger,
+} from "./companionVoiceActivation";
+import {
   millisecondsUntilNextStartupIdleWave,
   nextStartupIdleWaveIntervalMs,
   runStartupCompanionSequence,
@@ -165,6 +170,7 @@ const activeVoiceInteractionStates = new Set<VoiceSessionState>([
   "thinking",
   "speaking",
 ]);
+const avatarVoiceActivationDelayMs = 360;
 
 type AvatarEyeTrackingDesktopPoint = {
   x: number;
@@ -2308,6 +2314,9 @@ export function App({
   const [agentOutputFrame, setAgentOutputFrame] = useState(0);
   const latestTasks = useRef<LocalTaskRecord[]>(initialTasks);
   const avatarActionRef = useRef<HTMLButtonElement | null>(null);
+  const pendingAvatarVoiceActivationTimer = useRef<ReturnType<
+    typeof setTimeout
+  > | null>(null);
   const voiceTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
   const taskTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
   const avatarReactionTimer = useRef<ReturnType<typeof setTimeout> | null>(
@@ -2377,6 +2386,13 @@ export function App({
       idleWaveTimer.current = null;
     }
   }, []);
+
+  function clearPendingAvatarVoiceActivation() {
+    if (pendingAvatarVoiceActivationTimer.current) {
+      clearTimeout(pendingAvatarVoiceActivationTimer.current);
+      pendingAvatarVoiceActivationTimer.current = null;
+    }
+  }
 
   const schedulePresenceDragIdleExit = useCallback(() => {
     clearPresenceDragIdleTimer();
@@ -2498,17 +2514,45 @@ export function App({
     });
   }
 
+  function activateOrInterruptCompanionVoice(
+    trigger: CompanionVoiceActivationTrigger,
+  ) {
+    const intent = companionVoiceActivationIntent({
+      trigger,
+      voiceSessionState: voiceInteraction.sessionState,
+      presenceDragMode,
+    });
+
+    if (intent === "interrupt") {
+      stopVoiceInteraction();
+      return;
+    }
+
+    if (intent !== "start") {
+      return;
+    }
+
+    if (shouldDelayAvatarVoiceActivation(trigger)) {
+      clearPendingAvatarVoiceActivation();
+      pendingAvatarVoiceActivationTimer.current = setTimeout(() => {
+        pendingAvatarVoiceActivationTimer.current = null;
+        activateVoiceListening();
+      }, avatarVoiceActivationDelayMs);
+      return;
+    }
+
+    activateVoiceListening();
+  }
+
   function reactToAvatarClick(event: MouseEvent<HTMLButtonElement>) {
     if (event.detail >= 2) {
+      clearPendingAvatarVoiceActivation();
       togglePresenceDragMode(event);
       return;
     }
 
-    if (isPresenceDraggable) {
-      return;
-    }
-
     acknowledgeAvatarClick();
+    activateOrInterruptCompanionVoice("avatar-click");
   }
 
   function togglePresenceDragMode(event: MouseEvent<HTMLButtonElement>) {
@@ -2529,6 +2573,7 @@ export function App({
       return;
     }
 
+    clearPendingAvatarVoiceActivation();
     startPresenceDrag(event, {
       onDragStart: clearPresenceDragIdleTimer,
     });
@@ -2553,9 +2598,7 @@ export function App({
       }
 
       event.preventDefault();
-      setActiveEntry("voice");
-      setAreControlsExpanded(true);
-      activateVoiceListening();
+      activateOrInterruptCompanionVoice("hotkey");
     }
 
     window.addEventListener("keyup", handleVoiceHotkey);
@@ -3382,6 +3425,7 @@ export function App({
         clearTimeout(avatarReactionTimer.current);
       }
 
+      clearPendingAvatarVoiceActivation();
       clearIdleWaveTimer();
       clearPresenceDragIdleTimer();
       clearTaskTimers();
