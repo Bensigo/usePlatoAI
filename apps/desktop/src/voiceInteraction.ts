@@ -67,6 +67,26 @@ export type VoiceInteractionSnapshot = {
   error: string | null;
 };
 
+export type NearAvatarVoiceSurfaceTone =
+  | "idle"
+  | "active"
+  | "muted"
+  | "interrupted"
+  | "error";
+
+export type NearAvatarVoiceSurfaceSnapshot = {
+  state: VoiceSessionState;
+  presenceState: CompanionPresenceState;
+  tone: NearAvatarVoiceSurfaceTone;
+  label: string;
+  detail: string;
+  transcript: string | null;
+  reply: string | null;
+  canMute: boolean;
+  canInterrupt: boolean;
+  canOpenSettings: boolean;
+};
+
 export const defaultVoiceInteractionSnapshot: VoiceInteractionSnapshot = {
   sessionState: "idle",
   activationSource: "voice",
@@ -286,6 +306,119 @@ export function nearAvatarVoiceTextForSnapshot(
       return "Desktop voice path failed.";
     case "idle":
       return null;
+  }
+}
+
+export function nearAvatarVoiceSurfaceForSnapshot(
+  snapshot: VoiceInteractionSnapshot,
+  {
+    companionName = "Plato",
+    activationHint = "Tap or double-tap Option to talk.",
+  }: {
+    companionName?: string;
+    activationHint?: string;
+  } = {},
+): NearAvatarVoiceSurfaceSnapshot {
+  const transcript = snapshot.transcript.trim() || null;
+  const reply = snapshot.response.trim() || null;
+  const base = {
+    state: snapshot.sessionState,
+    presenceState: companionPresenceForVoiceState(snapshot.sessionState),
+    transcript,
+    reply: null,
+    canMute: false,
+    canInterrupt: false,
+    canOpenSettings: false,
+  } satisfies Omit<
+    NearAvatarVoiceSurfaceSnapshot,
+    "tone" | "label" | "detail"
+  >;
+
+  switch (snapshot.sessionState) {
+    case "idle":
+      return {
+        ...base,
+        tone: "idle",
+        label: `${companionName} is here`,
+        detail: activationHint,
+        reply: null,
+      };
+    case "listening":
+      return {
+        ...base,
+        tone: "active",
+        label: "Listening",
+        detail: transcript ? "I heard this so far." : "Say what you need.",
+        canMute: true,
+        canInterrupt: true,
+      };
+    case "transcribing":
+      return {
+        ...base,
+        tone: "active",
+        label: "Transcribing",
+        detail: transcript
+          ? "Turning this into a request."
+          : "Reading the microphone audio.",
+        canMute: true,
+        canInterrupt: true,
+      };
+    case "thinking":
+      return {
+        ...base,
+        tone: "active",
+        label: "Thinking",
+        detail: transcript ? "Working from your request." : "Preparing a reply.",
+        canMute: true,
+        canInterrupt: true,
+      };
+    case "speaking":
+      return {
+        ...base,
+        tone: snapshot.isMuted ? "muted" : "active",
+        label: snapshot.isMuted ? "Muted reply" : "Speaking",
+        detail: snapshot.isMuted
+          ? "Voice output is muted. Text reply is shown."
+          : "Replying out loud.",
+        reply,
+        canMute: true,
+        canInterrupt: true,
+      };
+    case "muted":
+      return {
+        ...base,
+        tone: "muted",
+        label: "Muted",
+        detail: "Voice output is off. Text reply stays visible.",
+        reply,
+        canMute: true,
+      };
+    case "interrupted":
+      return {
+        ...base,
+        tone: "interrupted",
+        label: "Interrupted",
+        detail: "Voice stopped.",
+        reply: null,
+      };
+    case "unavailable":
+      return {
+        ...base,
+        tone: "error",
+        label: "Voice setup needed",
+        detail: snapshot.error || "Desktop voice is unavailable.",
+        reply: null,
+        canOpenSettings: true,
+      };
+    case "error":
+      return {
+        ...base,
+        tone: "error",
+        label: "Voice needs repair",
+        detail: snapshot.error || "Desktop voice failed.",
+        reply: null,
+        canOpenSettings: true,
+      };
   }
 }
 

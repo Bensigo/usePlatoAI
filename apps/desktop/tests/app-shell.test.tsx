@@ -10,6 +10,7 @@ import {
   App,
   AudioActivationStatus,
   CenteredChatPanel,
+  CompanionVoiceSurface,
   ConfigPanel,
   ControlSurfacePanel,
   DismissedPresence,
@@ -126,6 +127,7 @@ import {
   companionPromptForInputWithCorrections,
   companionPromptForInput,
   defaultVoiceInteractionSnapshot,
+  nearAvatarVoiceSurfaceForSnapshot,
   nearAvatarVoiceTextForSnapshot,
   presenceLabelForState,
   textFallbackResponseSnapshot,
@@ -2418,6 +2420,126 @@ describe("desktop app shell", () => {
     expect(voiceSessionStateFrom("unknown")).toBeUndefined();
   });
 
+  it("maps voice snapshots into the primary near-avatar voice surface", () => {
+    const idle = nearAvatarVoiceSurfaceForSnapshot(
+      defaultVoiceInteractionSnapshot,
+      {
+        companionName: "Ada",
+        activationHint: "Double-tap Option or tap to talk.",
+      },
+    );
+    const thinking = nearAvatarVoiceSurfaceForSnapshot(
+      voiceInteractionSnapshotFromRuntime(
+        {
+          state: "thinking",
+          activationSource: "voice",
+          isMuted: false,
+          transcript: "Ship the demo path.",
+          responseText: "",
+          error: null,
+          avatarState: "thinking",
+        },
+        defaultVoiceInteractionSnapshot,
+      ),
+    );
+    const speaking = nearAvatarVoiceSurfaceForSnapshot(
+      voiceInteractionSnapshotFromRuntime(
+        {
+          state: "speaking",
+          activationSource: "voice",
+          isMuted: false,
+          transcript: "Ship the demo path.",
+          responseText: "I will tighten the voice surface first.",
+          error: null,
+          avatarState: "speaking",
+        },
+        defaultVoiceInteractionSnapshot,
+      ),
+    );
+    const unavailable = nearAvatarVoiceSurfaceForSnapshot(
+      voiceInteractionSnapshotForRuntimeState("unavailable"),
+    );
+
+    expect(idle).toMatchObject({
+      state: "idle",
+      tone: "idle",
+      label: "Ada is here",
+      detail: "Double-tap Option or tap to talk.",
+      canMute: false,
+      canInterrupt: false,
+    });
+    expect(thinking).toMatchObject({
+      state: "thinking",
+      tone: "active",
+      label: "Thinking",
+      transcript: "Ship the demo path.",
+      canMute: true,
+      canInterrupt: true,
+    });
+    expect(speaking).toMatchObject({
+      state: "speaking",
+      tone: "active",
+      label: "Speaking",
+      transcript: "Ship the demo path.",
+      reply: "I will tighten the voice surface first.",
+      canMute: true,
+      canInterrupt: true,
+    });
+    expect(unavailable).toMatchObject({
+      state: "unavailable",
+      tone: "error",
+      label: "Voice setup needed",
+      canOpenSettings: true,
+    });
+  });
+
+  it("renders voice surface controls without the full dashboard", () => {
+    const speakingSurface = nearAvatarVoiceSurfaceForSnapshot(
+      voiceInteractionSnapshotFromRuntime(
+        {
+          state: "speaking",
+          activationSource: "voice",
+          isMuted: false,
+          transcript: "What changed?",
+          responseText: "The floating presence is now the voice surface.",
+          error: null,
+          avatarState: "speaking",
+        },
+        defaultVoiceInteractionSnapshot,
+      ),
+    );
+    const errorSurface = nearAvatarVoiceSurfaceForSnapshot(
+      voiceInteractionSnapshotForRuntimeState("error"),
+    );
+    const speakingMarkup = renderToStaticMarkup(
+      <CompanionVoiceSurface
+        surface={speakingSurface}
+        isMuted={false}
+        onToggleMute={() => undefined}
+        onInterrupt={() => undefined}
+      />,
+    );
+    const errorMarkup = renderToStaticMarkup(
+      <CompanionVoiceSurface
+        surface={errorSurface}
+        isMuted={false}
+        onOpenSettings={() => undefined}
+      />,
+    );
+
+    expect(speakingMarkup).toContain('data-voice-surface-state="speaking"');
+    expect(speakingMarkup).toContain('data-voice-surface-tone="active"');
+    expect(speakingMarkup).toContain("What changed?");
+    expect(speakingMarkup).toContain(
+      "The floating presence is now the voice surface.",
+    );
+    expect(speakingMarkup).toContain("Mute");
+    expect(speakingMarkup).toContain("Interrupt");
+    expect(speakingMarkup).not.toContain("control-surface");
+    expect(errorMarkup).toContain('data-voice-surface-tone="error"');
+    expect(errorMarkup).toContain("Settings");
+  });
+
   it("drives thinking and speaking avatar states from the voice loop", () => {
     const thinkingState = renderedPresenceStateFor({
       audioActivationState: "active",
@@ -2449,6 +2571,12 @@ describe("desktop app shell", () => {
   });
 
   it("renders initial voice session state for browser visual smoke checks", () => {
+    const idleMarkup = renderToStaticMarkup(
+      <App
+        initialSettings={completedSettings}
+        initialAudioActivationState="active"
+      />,
+    );
     const thinkingMarkup = renderToStaticMarkup(
       <App
         initialSettings={completedSettings}
@@ -2464,12 +2592,16 @@ describe("desktop app shell", () => {
       />,
     );
 
+    expect(idleMarkup).toContain('data-voice-surface-state="idle"');
+    expect(idleMarkup).toContain("Plato is here");
+    expect(idleMarkup).toContain("Double-tap Option or tap to talk.");
+    expect(idleMarkup).not.toContain("control-surface");
     expect(thinkingMarkup).toContain('data-presence-state="thinking"');
     expect(thinkingMarkup).toContain('data-presence-bubble-state="thinking"');
-    expect(thinkingMarkup).toContain("Thinking through the voice request.");
+    expect(thinkingMarkup).toContain("Preparing a reply.");
     expect(thinkingMarkup).toContain("presence-thinking-indicator");
     expect(thinkingMarkup).toContain("presence-avatar-stack");
-    expect(thinkingMarkup.indexOf("presence-listening-bubble")).toBeLessThan(
+    expect(thinkingMarkup.indexOf("companion-voice-surface")).toBeLessThan(
       thinkingMarkup.indexOf("live2d-avatar-surface"),
     );
     expect(thinkingMarkup).not.toContain("presence-sound-wave");
@@ -2477,10 +2609,10 @@ describe("desktop app shell", () => {
     expect(thinkingMarkup).not.toContain("Voice runtime test response");
     expect(speakingMarkup).toContain('data-presence-state="speaking"');
     expect(speakingMarkup).toContain('data-presence-bubble-state="speaking"');
-    expect(speakingMarkup).toContain("Speaking through Apple local TTS.");
+    expect(speakingMarkup).toContain("Replying out loud.");
     expect(speakingMarkup).toContain("presence-sound-wave");
     expect(speakingMarkup).toContain("presence-avatar-stack");
-    expect(speakingMarkup.indexOf("presence-listening-bubble")).toBeLessThan(
+    expect(speakingMarkup.indexOf("companion-voice-surface")).toBeLessThan(
       speakingMarkup.indexOf("live2d-avatar-surface"),
     );
     expect(speakingMarkup).not.toContain("Test voice input");
@@ -2492,12 +2624,12 @@ describe("desktop app shell", () => {
       {
         sessionState: "muted",
         presenceState: "muted",
-        detail: "Voice output is muted. Showing text fallback.",
+        detail: "Voice output is off. Text reply stays visible.",
       },
       {
         sessionState: "interrupted",
         presenceState: "idle",
-        detail: "Voice operation was interrupted.",
+        detail: "Voice stopped.",
       },
       {
         sessionState: "unavailable",

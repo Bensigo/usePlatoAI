@@ -120,11 +120,12 @@ import {
   companionPromptForInputWithCorrections,
   companionPresenceForVoiceState,
   defaultVoiceInteractionSnapshot,
-  nearAvatarVoiceTextForSnapshot,
+  nearAvatarVoiceSurfaceForSnapshot,
   textFallbackResponseSnapshot,
   textFallbackThinkingSnapshot,
   voiceInteractionSnapshotForRuntimeState,
   voiceInteractionSnapshotFromRuntime,
+  type NearAvatarVoiceSurfaceSnapshot,
   type VoiceInteractionSnapshot,
   type VoiceSessionState,
 } from "./voiceInteraction";
@@ -1571,6 +1572,90 @@ export function PresenceListeningBubble({
   );
 }
 
+export function CompanionVoiceSurface({
+  surface,
+  isMuted,
+  onToggleMute,
+  onInterrupt,
+  onOpenSettings,
+}: {
+  surface: NearAvatarVoiceSurfaceSnapshot;
+  isMuted: boolean;
+  onToggleMute?: () => void;
+  onInterrupt?: () => void;
+  onOpenSettings?: () => void;
+}) {
+  const hasSoundWave =
+    surface.presenceState === "listening" ||
+    surface.presenceState === "speaking";
+  const hasThinkingIndicator = surface.presenceState === "thinking";
+
+  return (
+    <section
+      className="companion-voice-surface"
+      data-voice-surface-state={surface.state}
+      data-voice-surface-tone={surface.tone}
+      data-presence-bubble-state={surface.presenceState}
+      data-native-hit-region="capture"
+      aria-label={`${surface.label}: ${surface.detail}`}
+    >
+      <div className="voice-surface-status">
+        <span className="presence-bubble-label">{surface.label}</span>
+        {hasSoundWave ? (
+          <span className="presence-sound-wave" aria-hidden="true">
+            <span />
+            <span />
+            <span />
+            <span />
+          </span>
+        ) : hasThinkingIndicator ? (
+          <span className="presence-thinking-indicator" aria-hidden="true">
+            <span />
+            <span />
+            <span />
+          </span>
+        ) : null}
+      </div>
+      <p className="presence-bubble-detail">{surface.detail}</p>
+      {surface.transcript ? (
+        <p className="voice-surface-transcript">
+          <strong>You</strong>
+          <span>{surface.transcript}</span>
+        </p>
+      ) : null}
+      {surface.reply ? (
+        <p className="voice-surface-reply">
+          <strong>Plato</strong>
+          <span>{surface.reply}</span>
+        </p>
+      ) : null}
+      {surface.canMute || surface.canInterrupt || surface.canOpenSettings ? (
+        <div className="voice-surface-actions">
+          {surface.canMute ? (
+            <button
+              type="button"
+              aria-pressed={isMuted}
+              onClick={onToggleMute}
+            >
+              {isMuted ? "Unmute" : "Mute"}
+            </button>
+          ) : null}
+          {surface.canInterrupt ? (
+            <button type="button" onClick={onInterrupt}>
+              Interrupt
+            </button>
+          ) : null}
+          {surface.canOpenSettings ? (
+            <button type="button" onClick={onOpenSettings}>
+              Settings
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
 export function AudioActivationStatus({
   audioActivation,
 }: {
@@ -2500,6 +2585,19 @@ export function App({
     setIsChatPanelOpen(true);
   }
 
+  function openVoiceSettings() {
+    setActiveEntry("voice");
+    setAreControlsExpanded(true);
+  }
+
+  function setVoiceMuted(isMuted: boolean) {
+    const runtimeSnapshot = voiceRuntimeRef.current.setMuted(isMuted);
+    setVoiceInteraction((current) =>
+      voiceInteractionSnapshotFromRuntime(runtimeSnapshot, current),
+    );
+    setAudioActivation((snapshot) => setAudioActivationMuted(snapshot, isMuted));
+  }
+
   function activateVoiceListening() {
     if (
       canStartVoiceInteractionWithAudio(audioActivation) ||
@@ -2965,7 +3063,16 @@ export function App({
   });
   const avatarPresenceState = avatarPresenceStateFor(renderedPresenceState);
   const avatarSurfaceHook = getLive2DAvatarSurfaceHook(avatarPresenceState);
-  const nearAvatarVoiceText = nearAvatarVoiceTextForSnapshot(voiceInteraction);
+  const nearAvatarVoiceSurface = nearAvatarVoiceSurfaceForSnapshot(
+    voiceInteraction,
+    {
+      companionName: settings.companionName,
+      activationHint: `${voiceListeningHotkeyLabel} or tap to talk.`,
+    },
+  );
+  const showCurrentTaskPanelOpener = shouldSurfaceTaskStateNearCompanion(
+    taskAwarePresence.state,
+  );
   const startupAvatarCompanionState =
     startupCompanionStateForPresenceState(startupPresenceState);
   const activeAvatarCompanionState =
@@ -2986,11 +3093,6 @@ export function App({
             "Voice response",
         })
       : undefined;
-  const showCenteredChatPanelOpener = shouldShowCenteredChatPanelOpener({
-    voiceInteractionSessionState: voiceInteraction.sessionState,
-    currentTaskState: taskAwarePresence,
-  });
-
   useEffect(() => {
     if (renderedPresenceState !== "speaking") {
       setAgentOutputFrame(0);
@@ -3533,15 +3635,7 @@ export function App({
             voiceInteraction={voiceInteraction}
             onStartVoiceInteraction={activateVoiceListening}
             onStopVoiceInteraction={stopVoiceInteraction}
-            onMuteChange={(isMuted) => {
-              const runtimeSnapshot = voiceRuntimeRef.current.setMuted(isMuted);
-              setVoiceInteraction((current) =>
-                voiceInteractionSnapshotFromRuntime(runtimeSnapshot, current),
-              );
-              setAudioActivation((snapshot) =>
-                setAudioActivationMuted(snapshot, isMuted),
-              );
-            }}
+            onMuteChange={setVoiceMuted}
             onTextFallbackChange={(fallbackText) =>
               setVoiceInteraction((current) => ({ ...current, fallbackText }))
             }
@@ -3565,20 +3659,7 @@ export function App({
               <button
                 type="button"
                 aria-pressed={voiceInteraction.isMuted}
-                onClick={() => {
-                  const nextMuted = !voiceInteraction.isMuted;
-                  const runtimeSnapshot =
-                    voiceRuntimeRef.current.setMuted(nextMuted);
-                  setVoiceInteraction((current) =>
-                    voiceInteractionSnapshotFromRuntime(
-                      runtimeSnapshot,
-                      current,
-                    ),
-                  );
-                  setAudioActivation((snapshot) =>
-                    setAudioActivationMuted(snapshot, nextMuted),
-                  );
-                }}
+                onClick={() => setVoiceMuted(!voiceInteraction.isMuted)}
               >
                 {voiceInteraction.isMuted ? "Unmute" : "Mute"}
               </button>
@@ -3685,24 +3766,20 @@ export function App({
             </div>
 
             <div className="presence-avatar-stack">
-              {showCenteredChatPanelOpener ? (
+              <CompanionVoiceSurface
+                surface={nearAvatarVoiceSurface}
+                isMuted={voiceInteraction.isMuted}
+                onToggleMute={() => setVoiceMuted(!voiceInteraction.isMuted)}
+                onInterrupt={stopVoiceInteraction}
+                onOpenSettings={openVoiceSettings}
+              />
+
+              {showCurrentTaskPanelOpener ? (
                 <PresenceListeningBubble
                   state={avatarPresenceState}
-                  label={
-                    isCurrentTaskControlState(taskAwarePresence.state)
-                      ? taskAwarePresence.label
-                      : undefined
-                  }
-                  detail={
-                    isCurrentTaskControlState(taskAwarePresence.state)
-                      ? null
-                      : nearAvatarVoiceText
-                  }
-                  ariaLabel={
-                    isCurrentTaskControlState(taskAwarePresence.state)
-                      ? `Open current task controls: ${taskAwarePresence.label}`
-                      : undefined
-                  }
+                  label={taskAwarePresence.label}
+                  detail={null}
+                  ariaLabel={`Open current task controls: ${taskAwarePresence.label}`}
                   onOpenControls={openCenteredChatPanel}
                 />
               ) : null}
