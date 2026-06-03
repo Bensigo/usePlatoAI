@@ -540,6 +540,7 @@ export function ControlSurfacePanel({
   onStartVoiceInteraction,
   onStopVoiceInteraction,
   onMuteChange,
+  onOpenVoiceSetup,
   onTextFallbackChange,
   onSubmitTextFallback,
   soulGuidanceStore,
@@ -556,6 +557,7 @@ export function ControlSurfacePanel({
   onStartVoiceInteraction?: () => void;
   onStopVoiceInteraction?: () => void;
   onMuteChange?: (isMuted: boolean) => void;
+  onOpenVoiceSetup?: () => void;
   onTextFallbackChange?: (value: string) => void;
   onSubmitTextFallback?: () => void;
   memoryStore?: MemoryStore;
@@ -585,17 +587,17 @@ export function ControlSurfacePanel({
         <VoiceInteractionPanel
           voiceInteraction={voiceInteraction}
           settings={settings}
-          onSettingsChange={onSettingsChange}
           onStartVoiceInteraction={onStartVoiceInteraction}
           onStopVoiceInteraction={onStopVoiceInteraction}
           onMuteChange={onMuteChange}
+          onOpenVoiceSetup={onOpenVoiceSetup}
           onTextFallbackChange={onTextFallbackChange}
           onSubmitTextFallback={onSubmitTextFallback}
         />
       ) : activeEntry === "settings" && settings ? (
         <SettingsPanel settings={settings} />
       ) : activeEntry === "config" && settings ? (
-        <ConfigPanel settings={settings} />
+        <ConfigPanel settings={settings} onSettingsChange={onSettingsChange} />
       ) : activeEntry === "trust" && settings ? (
         onSettingsChange ? (
           <TrustFoundationSettings
@@ -706,7 +708,103 @@ export function SettingsPanel({ settings }: { settings: CompanionSettings }) {
   );
 }
 
-export function ConfigPanel({ settings }: { settings: CompanionSettings }) {
+export function VoiceSetupPanel({
+  settings,
+  onSettingsChange,
+}: {
+  settings: CompanionSettings;
+  onSettingsChange?: (settings: CompanionSettings) => Promise<void>;
+}) {
+  const localWhisperConfigured = Boolean(
+    settings.localWhisperBinaryPath && settings.localWhisperModelPath,
+  );
+  const appleAvailability: TextToSpeechProviderAvailabilityState = "supported";
+
+  function updateLocalWhisperPath(
+    key: "localWhisperBinaryPath" | "localWhisperModelPath",
+    value: string,
+  ) {
+    if (!onSettingsChange) {
+      return;
+    }
+
+    void onSettingsChange({
+      ...settings,
+      [key]: value,
+    });
+  }
+
+  return (
+    <section className="voice-setup-panel" aria-label="Voice setup">
+      <SurfaceStateStrip
+        label="Voice setup surface states"
+        states={[
+          {
+            label: "Local voice",
+            value: textToSpeechProviderLabelForAvailability(appleAvailability),
+            tone: "configured",
+          },
+          {
+            label: "Output",
+            value: ttsProviderLabel(settings.ttsProvider),
+            tone: "configured",
+          },
+          {
+            label: "Local Whisper",
+            value: localWhisperConfigured ? "configured" : "missing paths",
+            tone: localWhisperConfigured ? "configured" : "missing",
+          },
+        ]}
+      />
+
+      <TtsProviderSummary selectedProviderId={settings.ttsProvider} />
+
+      <section
+        className="local-whisper-config"
+        aria-label="Local Whisper STT config"
+      >
+        <label>
+          <span>whisper.cpp binary</span>
+          <input
+            type="text"
+            value={settings.localWhisperBinaryPath}
+            placeholder="/path/to/whisper-cli"
+            readOnly={!onSettingsChange}
+            onChange={(event) =>
+              updateLocalWhisperPath(
+                "localWhisperBinaryPath",
+                event.currentTarget.value,
+              )
+            }
+          />
+        </label>
+        <label>
+          <span>ggml model</span>
+          <input
+            type="text"
+            value={settings.localWhisperModelPath}
+            placeholder="/path/to/ggml-base.en.bin"
+            readOnly={!onSettingsChange}
+            onChange={(event) =>
+              updateLocalWhisperPath(
+                "localWhisperModelPath",
+                event.currentTarget.value,
+              )
+            }
+          />
+        </label>
+      </section>
+    </section>
+  );
+}
+
+export function ConfigPanel({
+  settings,
+  onSettingsChange,
+}: {
+  settings: CompanionSettings;
+  onSettingsChange?: (settings: CompanionSettings) => Promise<void>;
+}) {
   return (
     <div className="config-panel">
       <SurfaceStateStrip
@@ -755,6 +853,10 @@ export function ConfigPanel({ settings }: { settings: CompanionSettings }) {
         Configuration stays local-first. Provider credentials and execution
         authority live under Provider/trust.
       </p>
+      <VoiceSetupPanel
+        settings={settings}
+        onSettingsChange={onSettingsChange}
+      />
     </div>
   );
 }
@@ -1130,19 +1232,19 @@ export function MemoryBrowserPanel({
 export function VoiceInteractionPanel({
   voiceInteraction,
   settings,
-  onSettingsChange,
   onStartVoiceInteraction,
   onStopVoiceInteraction,
   onMuteChange,
+  onOpenVoiceSetup,
   onTextFallbackChange,
   onSubmitTextFallback,
 }: {
   voiceInteraction: VoiceInteractionSnapshot;
   settings?: CompanionSettings;
-  onSettingsChange?: (settings: CompanionSettings) => Promise<void>;
   onStartVoiceInteraction?: () => void;
   onStopVoiceInteraction?: () => void;
   onMuteChange?: (isMuted: boolean) => void;
+  onOpenVoiceSetup?: () => void;
   onTextFallbackChange?: (value: string) => void;
   onSubmitTextFallback?: () => void;
 }) {
@@ -1151,25 +1253,12 @@ export function VoiceInteractionPanel({
   );
   const isError = voiceInteraction.sessionState === "error";
   const isUnavailable = voiceInteraction.sessionState === "unavailable";
-  const ttsProvider = settings?.ttsProvider ?? "apple-local-tts";
   const localWhisperConfigured = Boolean(
     settings?.localWhisperBinaryPath && settings.localWhisperModelPath,
   );
-  const appleAvailability: TextToSpeechProviderAvailabilityState = "supported";
-
-  function updateLocalWhisperPath(
-    key: "localWhisperBinaryPath" | "localWhisperModelPath",
-    value: string,
-  ) {
-    if (!settings || !onSettingsChange) {
-      return;
-    }
-
-    void onSettingsChange({
-      ...settings,
-      [key]: value,
-    });
-  }
+  const voiceSetupMessage = localWhisperConfigured
+    ? "Voice setup ready."
+    : "Local Whisper setup needs paths.";
 
   function submitTextFallback(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -1178,49 +1267,27 @@ export function VoiceInteractionPanel({
 
   return (
     <div className="voice-panel">
-      <SurfaceStateStrip
-        label="Voice surface states"
-        states={[
-          {
-            label: "Local voice",
-            value: textToSpeechProviderLabelForAvailability(appleAvailability),
-            tone: "configured",
-          },
-          {
-            label: "Cloud voice",
-            value: "paid remote",
-            tone: "missing",
-          },
-          {
-            label: "Output",
-            value: voiceInteraction.isMuted ? "muted" : "Apple local",
-            tone: voiceInteraction.isMuted ? "muted" : "configured",
-          },
-          {
-            label: "Local Whisper",
-            value: localWhisperConfigured ? "configured" : "missing paths",
-            tone: localWhisperConfigured ? "configured" : "missing",
-          },
-          {
-            label: "Session",
-            value: voiceInteraction.sessionState,
-            tone: isError
-              ? "error"
-              : isUnavailable
-                ? "unavailable"
-                : isRunning
-                  ? "active"
-                  : voiceInteraction.isMuted
-                    ? "muted"
-                    : "empty",
-          },
-          {
-            label: "Microphone",
-            value: "asks on start",
-            tone: "configured",
-          },
-        ]}
-      />
+      <div
+        className="voice-live-state"
+        data-voice-live-state={
+          isError
+            ? "error"
+            : isUnavailable
+              ? "unavailable"
+              : isRunning
+                ? "active"
+                : voiceInteraction.isMuted
+                  ? "muted"
+                  : "idle"
+        }
+      >
+        <span>{voiceSetupMessage}</span>
+        {onOpenVoiceSetup ? (
+          <button type="button" onClick={onOpenVoiceSetup}>
+            Voice setup
+          </button>
+        ) : null}
+      </div>
       <dl className="voice-status" aria-label="Voice session status">
         <div>
           <dt>Session</dt>
@@ -1234,44 +1301,7 @@ export function VoiceInteractionPanel({
           <dt>Output</dt>
           <dd>{voiceInteraction.isMuted ? "Muted" : "Audible"}</dd>
         </div>
-        <div>
-          <dt>TTS provider</dt>
-          <dd>{ttsProviderLabel(ttsProvider)}</dd>
-        </div>
       </dl>
-
-      <TtsProviderSummary selectedProviderId={ttsProvider} />
-
-      <section className="local-whisper-config" aria-label="Local Whisper STT config">
-        <label>
-          <span>whisper.cpp binary</span>
-          <input
-            type="text"
-            value={settings?.localWhisperBinaryPath ?? ""}
-            placeholder="/path/to/whisper-cli"
-            onChange={(event) =>
-              updateLocalWhisperPath(
-                "localWhisperBinaryPath",
-                event.currentTarget.value,
-              )
-            }
-          />
-        </label>
-        <label>
-          <span>ggml model</span>
-          <input
-            type="text"
-            value={settings?.localWhisperModelPath ?? ""}
-            placeholder="/path/to/ggml-base.en.bin"
-            onChange={(event) =>
-              updateLocalWhisperPath(
-                "localWhisperModelPath",
-                event.currentTarget.value,
-              )
-            }
-          />
-        </label>
-      </section>
 
       <div className="voice-actions" role="group" aria-label="Voice controls">
         <button
@@ -3636,6 +3666,7 @@ export function App({
             onStartVoiceInteraction={activateVoiceListening}
             onStopVoiceInteraction={stopVoiceInteraction}
             onMuteChange={setVoiceMuted}
+            onOpenVoiceSetup={() => setActiveEntry("config")}
             onTextFallbackChange={(fallbackText) =>
               setVoiceInteraction((current) => ({ ...current, fallbackText }))
             }

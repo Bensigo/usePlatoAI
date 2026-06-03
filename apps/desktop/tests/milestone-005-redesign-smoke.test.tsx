@@ -86,18 +86,22 @@ describe("Milestone 005 redesign smoke coverage", () => {
   it("smokes memory, soul, settings/config, provider/trust, and voice surfaces with state strips", () => {
     const expectedSurfaceCopy = {
       voice: [
-        "Voice surface states",
+        "Local Whisper setup needs paths.",
+        "Voice setup",
         "Start listening",
         "Text fallback",
-        "Microphone",
-        "asks on start",
       ],
       settings: [
         "Saved companion settings",
         "Launch behavior",
         "Execution authority",
       ],
-      config: ["Config surface states", "Provider", "Memory"],
+      config: [
+        "Config surface states",
+        "Provider",
+        "Memory",
+        "Voice setup surface states",
+      ],
       memory: ["Memory surface states", "Memory browser status", "Records"],
       soul: ["Soul editor surface states", "Soul markdown", "Save soul"],
       trust: [
